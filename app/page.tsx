@@ -5,12 +5,48 @@ import { useMemo, useState } from "react";
 type ProductResult = {
   title: string;
   description: string;
+  benefits: string[];
+  features: string[];
+  faq: { question: string; answer: string }[];
   seoTitle: string;
   metaDescription: string;
-  bullets: string[];
+  keywords: string[];
+  handle: string;
+  tags: string[];
+  productType: string;
+  collection: string;
+  altText: string;
+  sellingAngle: string;
+  cta: string;
 };
 
-const cleanText = (value: string) => value.replace(/\s+/g, " ").trim();
+const cleanText = (value: string) =>
+  value.replace(/\s+/g, " ").trim();
+
+const removeYears = (value: string) =>
+  value
+    .replace(/\b(19|20)\d{2}\b/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+const removeOrigin = (value: string) =>
+  value
+    .replace(
+      /\b(country of origin|origin|made in|place of origin)\b\s*[:\-]?\s*[^,.;|]+/gi,
+      ""
+    )
+    .replace(/\s+/g, " ")
+    .trim();
+
+const cleanSupplierText = (value: string) =>
+  removeOrigin(removeYears(value))
+    .replace(
+      /\b(waterproof|luxury|luxurious|high quality|top quality|best seller|new arrival|hot sale|fashion)\b/gi,
+      (match) => match
+    )
+    .replace(/[|{}[\]]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 
 const limitText = (value: string, max: number) => {
   const clean = cleanText(value);
@@ -26,17 +62,62 @@ const limitText = (value: string, max: number) => {
     .trim();
 };
 
+const slugify = (value: string) =>
+  removeYears(value)
+    .toLowerCase()
+    .replace(/['’]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+
+function detectProductType(original: string) {
+  const text = original.toLowerCase();
+
+  if (
+    text.includes("watch") ||
+    text.includes("timepiece") ||
+    text.includes("chronograph")
+  ) {
+    return "Watches";
+  }
+
+  if (
+    text.includes("shirt") ||
+    text.includes("blouse") ||
+    text.includes("dress") ||
+    text.includes("jacket")
+  ) {
+    return "Apparel";
+  }
+
+  if (
+    text.includes("mirror") ||
+    text.includes("faucet") ||
+    text.includes("shower")
+  ) {
+    return "Home & Bathroom";
+  }
+
+  if (
+    text.includes("bag") ||
+    text.includes("wallet") ||
+    text.includes("purse")
+  ) {
+    return "Accessories";
+  }
+
+  return "General Merchandise";
+}
+
 function createProductTitle(original: string) {
-  const text = cleanText(original);
-  const lower = text.toLowerCase();
+  const cleaned = cleanSupplierText(original);
+  const lower = cleaned.toLowerCase();
 
-  const yearMatch = text.match(/\b20\d{2}\b/);
-  const modelMatch = text.match(/\bv\s?\d+\b/i);
-
-  const year = yearMatch?.[0] || "";
+  const modelMatch = cleaned.match(/\bv\s?\d+\b/i);
 
   const model = modelMatch?.[0]
-    ? modelMatch[0].replace(/\s+/g, "").toUpperCase()
+    ? modelMatch[0]
+        .replace(/\s+/g, "")
+        .toUpperCase()
     : "";
 
   const isWatch =
@@ -48,11 +129,13 @@ function createProductTitle(original: string) {
   if (isWatch) {
     const parts: string[] = [];
 
-    if (year) parts.push(year);
+    if (lower.includes("pagani")) {
+      parts.push("Pagani");
+    }
 
-    parts.push("Pagani");
-
-    if (model) parts.push(model);
+    if (model) {
+      parts.push(model);
+    }
 
     if (lower.includes("moon")) {
       parts.push("Moon");
@@ -63,12 +146,16 @@ function createProductTitle(original: string) {
     return parts.join(" ");
   }
 
-  return text
+  const words = cleaned
+    .replace(
+      /\b(stainless steel|quartz|waterproof|sport|fashion|casual|new|men|women|for men|for women)\b/gi,
+      ""
+    )
     .replace(/[|,:;()[\]{}]/g, " ")
     .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 7)
-    .join(" ");
+    .filter(Boolean);
+
+  return words.slice(0, 7).join(" ");
 }
 
 function createDescription(
@@ -81,11 +168,11 @@ function createDescription(
       ? "women"
       : audience === "Men"
       ? "men"
-      : "everyday wear";
+      : "anyone seeking versatile everyday style";
 
   const styleText =
     style === "Premium / Luxury"
-      ? "a refined, premium look"
+      ? "a refined and premium look"
       : style === "Professional"
       ? "a polished professional look"
       : style === "Sport"
@@ -93,24 +180,99 @@ function createDescription(
       : style === "Gift"
       ? "a thoughtful gifting option"
       : style === "Casual"
-      ? "an easy casual look"
-      : "an easy everyday style";
+      ? "an effortless casual look"
+      : "a versatile everyday look";
 
-  return `${title} is designed for ${styleText}, with a clean and versatile profile for ${audienceText}. Its balanced styling makes it easy to pair with business attire, casual outfits, and special occasions.`;
+  return `${title} is designed for ${audienceText} who appreciate ${styleText}. Its clean styling makes it easy to pair with different outfits and occasions, giving you a polished look without unnecessary details.`;
+}
+
+function createBenefits(style: string) {
+  if (style === "Sport") {
+    return [
+      "Versatile design for active everyday styling",
+      "Easy to pair with casual and sport-inspired outfits",
+      "Comfort-focused design for regular wear",
+      "Suitable for everyday use and gifting",
+    ];
+  }
+
+  if (style === "Professional") {
+    return [
+      "Polished design suited to professional settings",
+      "Pairs naturally with business and formal attire",
+      "Versatile enough for everyday wear",
+      "Refined choice for personal use or gifting",
+    ];
+  }
+
+  if (style === "Gift") {
+    return [
+      "Refined design suitable for gifting",
+      "Versatile style for different occasions",
+      "Easy to pair with casual or formal outfits",
+      "A thoughtful option for someone special",
+    ];
+  }
+
+  return [
+    "Clean and refined design",
+    "Versatile styling for different occasions",
+    "Easy to pair with everyday outfits",
+    "Suitable for personal wear or gifting",
+  ];
+}
+
+function createFeatures(original: string) {
+  const lower = original.toLowerCase();
+
+  const features: string[] = [];
+
+  if (lower.includes("quartz")) {
+    features.push("Quartz movement");
+  }
+
+  if (lower.includes("chronograph")) {
+    features.push("Chronograph styling");
+  }
+
+  if (lower.includes("stainless steel")) {
+    features.push("Stainless steel construction");
+  }
+
+  if (lower.includes("waterproof") || lower.includes("water resistant")) {
+    features.push("Water-resistant design");
+  }
+
+  if (lower.includes("leather")) {
+    features.push("Leather strap");
+  }
+
+  if (lower.includes("automatic")) {
+    features.push("Automatic movement");
+  }
+
+  if (!features.length) {
+    features.push(
+      "Refined product design",
+      "Versatile everyday styling",
+      "Designed for practical everyday use"
+    );
+  }
+
+  return features.slice(0, 5);
 }
 
 function createSeoTitle(title: string) {
   const candidates = [
-    `${title} | Men's Luxury Watch`,
-    `${title} | Men's Premium Watch`,
+    title,
+    `${title} | Premium Watch`,
     `${title} | Luxury Timepiece`,
     `${title} | Premium Timepiece`,
-    title,
   ];
 
   return (
     candidates.find((item) => item.length <= 60) ||
-    limitText(title, 60)
+    limitText(candidates[0], 60)
   );
 }
 
@@ -124,17 +286,17 @@ function createMetaDescription(
       : style === "Professional"
       ? "a polished professional look"
       : style === "Sport"
-      ? "versatile sport-inspired styling"
+      ? "sport-inspired versatility"
       : style === "Gift"
       ? "an elegant gifting option"
       : "versatile everyday styling";
 
   const candidates = [
-    `Discover the ${title}, designed with ${styleText}. A versatile timepiece for business, everyday wear and special occasions.`,
+    `Discover the ${title}, designed with ${styleText}. A versatile choice for everyday wear, business looks and special occasions.`,
 
-    `Shop the ${title}, featuring ${styleText} for business and everyday wear. Discover a polished timepiece today.`,
+    `Shop the ${title}, featuring ${styleText} for everyday wear and special occasions. Explore the collection today.`,
 
-    `Explore the ${title}, created for ${styleText}. A refined choice for everyday outfits and special occasions.`,
+    `Explore the ${title}, created for ${styleText}. A refined choice for everyday outfits and thoughtful gifting.`,
   ];
 
   return (
@@ -143,78 +305,239 @@ function createMetaDescription(
   );
 }
 
-function createBullets(style: string) {
-  if (style === "Sport") {
-    return [
-      "Versatile design for active everyday styling",
-      "Easy to pair with casual and sport-inspired outfits",
-      "Comfort-focused design for regular wear",
-      "A practical choice for personal use or gifting",
-    ];
-  }
+function createKeywords(title: string, type: string) {
+  const base = title
+    .replace(/[|,:;()[\]{}]/g, "")
+    .split(/\s+/)
+    .filter(Boolean);
 
-  if (style === "Professional") {
-    return [
-      "Polished design suited to professional settings",
-      "Easy to pair with business and formal attire",
-      "Versatile enough for everyday wear",
-      "A refined option for personal use or gifting",
-    ];
-  }
+  const keywords = [
+    ...base,
+    type,
+    `${type} online`,
+    `premium ${type.toLowerCase()}`,
+  ];
 
-  if (style === "Gift") {
-    return [
-      "Refined design suitable for gifting",
-      "Versatile style for different occasions",
-      "Easy to pair with casual or formal outfits",
-      "A timeless choice for someone special",
-    ];
-  }
+  return Array.from(
+    new Set(
+      keywords
+        .map((item) => cleanText(item))
+        .filter(Boolean)
+    )
+  ).slice(0, 8);
+}
 
+function createTags(
+  title: string,
+  type: string,
+  style: string
+) {
+  const tags = [
+    type,
+    style,
+    ...title
+      .replace(/['’]/g, "")
+      .split(/\s+/)
+      .filter((word) => word.length > 3)
+      .slice(0, 5),
+  ];
+
+  return Array.from(
+    new Set(tags.map(cleanText))
+  ).slice(0, 8);
+}
+
+function createFaq(
+  title: string,
+  features: string[]
+) {
   return [
-    "Refined design for a polished appearance",
-    "Versatile styling for business and casual wear",
-    "Comfort-focused design for everyday use",
-    "A timeless option for personal wear or gifting",
+    {
+      question: `Is the ${title} suitable for everyday wear?`,
+      answer:
+        "Yes. Its versatile design makes it suitable for everyday outfits, business looks and a variety of occasions.",
+    },
+    {
+      question: "What are the main product features?",
+      answer:
+        features.slice(0, 3).join(", ") + ".",
+    },
+    {
+      question: "Can it be given as a gift?",
+      answer:
+        "Yes. The clean and versatile design makes it a practical and thoughtful gifting option.",
+    },
   ];
 }
 
-export default function Home() {
-  const [productTitle, setProductTitle] = useState("");
-  const [price, setPrice] = useState("129.99");
-  const [audience, setAudience] = useState("Men");
-  const [style, setStyle] = useState("Premium / Luxury");
-  const [imageCount, setImageCount] = useState(4);
+function createSellingAngle(
+  audience: string,
+  style: string
+) {
+  if (style === "Premium / Luxury") {
+    return `Position this product around refined style, versatility and a premium appearance for ${audience.toLowerCase()} shoppers.`;
+  }
 
-  const [generated, setGenerated] = useState(false);
-  const [result, setResult] = useState<ProductResult | null>(null);
+  if (style === "Professional") {
+    return `Position this product as a polished everyday choice for ${audience.toLowerCase()} customers who want a professional look.`;
+  }
 
-  const generatedResult = useMemo<ProductResult | null>(() => {
-    if (!productTitle.trim()) return null;
+  if (style === "Sport") {
+    return `Position this product around versatility and active everyday styling for ${audience.toLowerCase()} shoppers.`;
+  }
 
-    const title = createProductTitle(productTitle);
+  return `Position this product around practical design, versatility and everyday value for ${audience.toLowerCase()} shoppers.`;
+}
 
-    return {
+function createCta(style: string) {
+  if (style === "Premium / Luxury") {
+    return "Explore the Collection";
+  }
+
+  if (style === "Gift") {
+    return "Find the Perfect Gift";
+  }
+
+  return "Shop Now";
+}
+
+function createResult(
+  original: string,
+  audience: string,
+  style: string
+): ProductResult {
+  const title = createProductTitle(original);
+  const type = detectProductType(original);
+  const features = createFeatures(original);
+
+  return {
+    title,
+    description: createDescription(
       title,
-      description: createDescription(
-        title,
+      audience,
+      style
+    ),
+    benefits: createBenefits(style),
+    features,
+    faq: createFaq(title, features),
+    seoTitle: createSeoTitle(title),
+    metaDescription: createMetaDescription(
+      title,
+      style
+    ),
+    keywords: createKeywords(title, type),
+    handle: slugify(title),
+    tags: createTags(
+      title,
+      type,
+      style
+    ),
+    productType: type,
+    collection:
+      type === "Watches"
+        ? "Watches"
+        : type,
+    altText: `${title} product image`,
+    sellingAngle: createSellingAngle(
+      audience,
+      style
+    ),
+    cta: createCta(style),
+  };
+}
+
+function scoreSeo(result: ProductResult) {
+  let score = 70;
+
+  if (result.seoTitle.length <= 60) score += 8;
+  if (result.metaDescription.length <= 160) score += 8;
+  if (result.title.length <= 70) score += 5;
+  if (result.keywords.length >= 4) score += 4;
+  if (result.handle.length <= 60) score += 5;
+
+  return Math.min(score, 100);
+}
+
+function scoreContent(result: ProductResult) {
+  let score = 75;
+
+  if (result.description.length >= 120) score += 7;
+  if (result.benefits.length >= 4) score += 5;
+  if (result.features.length >= 3) score += 5;
+  if (result.faq.length >= 3) score += 4;
+
+  return Math.min(score, 100);
+}
+
+function scoreConversion(result: ProductResult) {
+  let score = 72;
+
+  if (result.benefits.length >= 4) score += 7;
+  if (result.sellingAngle) score += 7;
+  if (result.cta) score += 5;
+  if (result.faq.length >= 3) score += 4;
+  if (result.description.length >= 120) score += 5;
+
+  return Math.min(score, 100);
+}
+
+export default function Home() {
+  const [productTitle, setProductTitle] =
+    useState("");
+
+  const [currentDescription, setCurrentDescription] =
+    useState("");
+
+  const [price, setPrice] =
+    useState("129.99");
+
+  const [vendor, setVendor] =
+    useState("");
+
+  const [productCategory, setProductCategory] =
+    useState("");
+
+  const [audience, setAudience] =
+    useState("Men");
+
+  const [style, setStyle] =
+    useState("Premium / Luxury");
+
+  const [imageCount, setImageCount] =
+    useState(4);
+
+  const [generated, setGenerated] =
+    useState(false);
+
+  const [result, setResult] =
+    useState<ProductResult | null>(null);
+
+  const [copied, setCopied] =
+    useState("");
+
+  const generatedResult =
+    useMemo<ProductResult | null>(() => {
+      if (!productTitle.trim()) return null;
+
+      return createResult(
+        productTitle,
         audience,
         style
-      ),
-      seoTitle: createSeoTitle(title),
-      metaDescription: createMetaDescription(
-        title,
-        style
-      ),
-      bullets: createBullets(style),
-    };
-  }, [productTitle, audience, style]);
+      );
+    }, [
+      productTitle,
+      audience,
+      style,
+    ]);
 
-  const activeResult = result || generatedResult;
+  const activeResult =
+    result || generatedResult;
 
   function generateProductPage() {
     if (!productTitle.trim()) {
-      alert("Please enter your original product title.");
+      alert(
+        "Please enter the original product title."
+      );
       return;
     }
 
@@ -232,6 +555,18 @@ export default function Home() {
     }, 50);
   }
 
+  function regenerate() {
+    if (!productTitle.trim()) return;
+
+    setResult(
+      createResult(
+        productTitle,
+        audience,
+        style
+      )
+    );
+  }
+
   function editProduct() {
     setGenerated(false);
     setResult(null);
@@ -242,10 +577,41 @@ export default function Home() {
     });
   }
 
+  async function copyText(
+    label: string,
+    text: string
+  ) {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(label);
+
+      setTimeout(() => {
+        setCopied("");
+      }, 1600);
+    } catch {
+      alert(
+        "Copy is not available on this browser."
+      );
+    }
+  }
+
+  const seoScore = activeResult
+    ? scoreSeo(activeResult)
+    : 0;
+
+  const contentScore = activeResult
+    ? scoreContent(activeResult)
+    : 0;
+
+  const conversionScore = activeResult
+    ? scoreConversion(activeResult)
+    : 0;
+
   return (
     <main className="page">
 
       <header className="header">
+
         <div>
           <div className="brand-name">
             VIRELLO
@@ -255,6 +621,11 @@ export default function Home() {
             AI PRODUCT OPTIMIZER
           </div>
         </div>
+
+        <div className="header-status">
+          PRODUCT OPTIMIZER
+        </div>
+
       </header>
 
       {!generated ? (
@@ -266,19 +637,20 @@ export default function Home() {
           </div>
 
           <h1>
-            Create a better product page.
+            Turn product data into
+            better product pages.
           </h1>
 
           <p className="intro">
-            Turn a supplier product title into
-            a cleaner product page with a short
-            title, natural copy, and search-ready
-            SEO information.
+            Optimize your product content,
+            SEO and conversion messaging
+            from one workspace.
           </p>
 
           <div className="panel">
 
-            <div className="section-title">
+            <div className="section-heading">
+              <span>01</span>
               Product Information
             </div>
 
@@ -291,15 +663,35 @@ export default function Home() {
               className="input title-input"
               value={productTitle}
               onChange={(e) =>
-                setProductTitle(e.target.value)
+                setProductTitle(
+                  e.target.value
+                )
               }
-              placeholder="Paste the full supplier product title here"
+              placeholder="Paste the full supplier or Shopify product title"
               rows={4}
+            />
+
+            <label htmlFor="description">
+              Current Description
+            </label>
+
+            <textarea
+              id="description"
+              className="input"
+              value={currentDescription}
+              onChange={(e) =>
+                setCurrentDescription(
+                  e.target.value
+                )
+              }
+              placeholder="Optional — paste the current product description"
+              rows={5}
             />
 
             <div className="form-grid">
 
               <div>
+
                 <label htmlFor="price">
                   Product Price
                 </label>
@@ -312,48 +704,88 @@ export default function Home() {
                     id="price"
                     value={price}
                     onChange={(e) =>
-                      setPrice(e.target.value)
+                      setPrice(
+                        e.target.value
+                      )
                     }
                     inputMode="decimal"
                   />
 
                 </div>
+
               </div>
 
               <div>
 
-                <label>
-                  Target Audience
+                <label htmlFor="vendor">
+                  Vendor / Brand
                 </label>
 
-                <div className="button-row">
-
-                  {[
-                    "Women",
-                    "Men",
-                    "Unisex",
-                  ].map((item) => (
-
-                    <button
-                      type="button"
-                      key={item}
-                      className={
-                        audience === item
-                          ? "choice active"
-                          : "choice"
-                      }
-                      onClick={() =>
-                        setAudience(item)
-                      }
-                    >
-                      {item}
-                    </button>
-
-                  ))}
-
-                </div>
+                <input
+                  id="vendor"
+                  className="simple-input"
+                  value={vendor}
+                  onChange={(e) =>
+                    setVendor(
+                      e.target.value
+                    )
+                  }
+                  placeholder="Optional"
+                />
 
               </div>
+
+            </div>
+
+            <label htmlFor="category">
+              Product Category
+            </label>
+
+            <input
+              id="category"
+              className="simple-input"
+              value={productCategory}
+              onChange={(e) =>
+                setProductCategory(
+                  e.target.value
+                )
+              }
+              placeholder="Optional — e.g. Watches"
+            />
+
+            <div className="section-heading section-gap">
+              <span>02</span>
+              Optimization Settings
+            </div>
+
+            <label>
+              Target Audience
+            </label>
+
+            <div className="button-row">
+
+              {[
+                "Women",
+                "Men",
+                "Unisex",
+              ].map((item) => (
+
+                <button
+                  type="button"
+                  key={item}
+                  className={
+                    audience === item
+                      ? "choice active"
+                      : "choice"
+                  }
+                  onClick={() =>
+                    setAudience(item)
+                  }
+                >
+                  {item}
+                </button>
+
+              ))}
 
             </div>
 
@@ -361,7 +793,7 @@ export default function Home() {
               Copywriting Style
             </label>
 
-            <div className="button-row wrap">
+            <div className="button-row">
 
               {[
                 "Premium / Luxury",
@@ -409,7 +841,9 @@ export default function Home() {
                         : "image-choice"
                     }
                     onClick={() =>
-                      setImageCount(number)
+                      setImageCount(
+                        number
+                      )
                     }
                   >
                     {number}
@@ -420,13 +854,43 @@ export default function Home() {
 
             </div>
 
+            <div className="rules-box">
+
+              <div className="rules-title">
+                Virello Content Rules
+              </div>
+
+              <div className="rule">
+                ✓ No years in product titles
+              </div>
+
+              <div className="rule">
+                ✓ No origin information in specs
+              </div>
+
+              <div className="rule">
+                ✓ No supplier-style keyword stuffing
+              </div>
+
+              <div className="rule">
+                ✓ SEO title kept within 60 characters
+              </div>
+
+              <div className="rule">
+                ✓ Meta description kept within 160 characters
+              </div>
+
+            </div>
+
             <button
               type="button"
               className="generate"
-              onClick={generateProductPage}
+              onClick={
+                generateProductPage
+              }
             >
-              Generate AI Product Page
-              <span> →</span>
+              Generate Full Optimization
+              <span>→</span>
             </button>
 
           </div>
@@ -440,234 +904,461 @@ export default function Home() {
           className="preview-page"
         >
 
-          <button
-            type="button"
-            className="edit-button"
-            onClick={editProduct}
-          >
-            ← Edit Product
-          </button>
+          <div className="top-actions">
+
+            <button
+              type="button"
+              className="edit-button"
+              onClick={editProduct}
+            >
+              ← Edit Product
+            </button>
+
+            <button
+              type="button"
+              className="regenerate-button"
+              onClick={regenerate}
+            >
+              Regenerate
+            </button>
+
+          </div>
 
           <div className="preview-brand">
             VIRELLO
           </div>
 
-          <div className="product-layout">
+          <div className="preview-title-row">
 
-            <div className="visual-column">
-
-              <div className="image-main">
-                {imageCount > 0
-                  ? "Product Image"
-                  : "No Image"}
-              </div>
-
-              {Array.from({
-                length: Math.max(
-                  0,
-                  imageCount - 1
-                ),
-              }).map((_, index) => (
-
-                <div
-                  className="image-small"
-                  key={index}
-                >
-                  Additional Product View
-                </div>
-
-              ))}
-
-            </div>
-
-            <div className="product-info">
-
-              <div className="collection">
-                Premium Collection
+            <div>
+              <div className="eyebrow">
+                Optimization Preview
               </div>
 
               <h2>
-                {activeResult?.title}
+                Product Optimization
               </h2>
+            </div>
 
-              <div className="product-price">
-                ${price || "0.00"}
+          </div>
+
+          <div className="score-grid">
+
+            <div className="score-card">
+              <span>SEO</span>
+              <strong>
+                {seoScore}
+              </strong>
+              <small>/ 100</small>
+            </div>
+
+            <div className="score-card">
+              <span>CONTENT</span>
+              <strong>
+                {contentScore}
+              </strong>
+              <small>/ 100</small>
+            </div>
+
+            <div className="score-card">
+              <span>CONVERSION</span>
+              <strong>
+                {conversionScore}
+              </strong>
+              <small>/ 100</small>
+            </div>
+
+          </div>
+
+          <section className="optimization-section">
+
+            <div className="section-heading">
+              <span>01</span>
+              Optimized Product
+            </div>
+
+            <div className="product-layout">
+
+              <div className="visual-column">
+
+                <div className="image-main">
+                  {imageCount > 0
+                    ? "Product Image"
+                    : "No Image"}
+                </div>
+
+                {Array.from({
+                  length: Math.max(
+                    0,
+                    imageCount - 1
+                  ),
+                }).map((_, index) => (
+
+                  <div
+                    className="image-small"
+                    key={index}
+                  >
+                    Product View
+                  </div>
+
+                ))}
+
               </div>
 
-              <p className="description">
-                {activeResult?.description}
-              </p>
+              <div className="product-info">
 
-              <div className="bullets">
+                <div className="collection">
+                  {activeResult?.collection}
+                </div>
 
-                {activeResult?.bullets.map(
-                  (bullet) => (
+                <h3>
+                  {activeResult?.title}
+                </h3>
 
-                    <div key={bullet}>
-                      ✓ {bullet}
-                    </div>
+                <CopyButton
+                  label="Product Title"
+                  value={
+                    activeResult?.title ||
+                    ""
+                  }
+                  copied={copied}
+                  onCopy={copyText}
+                />
+
+                <div className="product-price">
+                  ${price || "0.00"}
+                </div>
+
+                <p className="description">
+                  {activeResult?.description}
+                </p>
+
+                <CopyButton
+                  label="Description"
+                  value={
+                    activeResult?.description ||
+                    ""
+                  }
+                  copied={copied}
+                  onCopy={copyText}
+                />
+
+                <div className="subheading">
+                  Key Benefits
+                </div>
+
+                <div className="benefits">
+
+                  {activeResult?.benefits.map(
+                    (item) => (
+
+                      <div
+                        className="benefit"
+                        key={item}
+                      >
+                        <span>✓</span>
+                        {item}
+                      </div>
+
+                    )
+                  )}
+
+                </div>
+
+                <div className="subheading">
+                  Features
+                </div>
+
+                <div className="features">
+
+                  {activeResult?.features.map(
+                    (item) => (
+
+                      <div
+                        className="feature"
+                        key={item}
+                      >
+                        {item}
+                      </div>
+
+                    )
+                  )}
+
+                </div>
+
+                <button
+                  type="button"
+                  className="cart-button"
+                >
+                  {activeResult?.cta}
+                </button>
+
+              </div>
+
+            </div>
+
+          </section>
+
+          <section className="optimization-section">
+
+            <div className="section-heading">
+              <span>02</span>
+              SEO Optimization
+            </div>
+
+            <div className="seo-grid">
+
+              <OutputCard
+                title="SEO Title"
+                value={
+                  activeResult?.seoTitle ||
+                  ""
+                }
+                counter={
+                  `${activeResult?.seoTitle.length || 0}/60`
+                }
+                good={
+                  (activeResult?.seoTitle.length ||
+                    0) <= 60
+                }
+                copied={copied}
+                onCopy={copyText}
+              />
+
+              <OutputCard
+                title="Meta Description"
+                value={
+                  activeResult?.metaDescription ||
+                  ""
+                }
+                counter={
+                  `${activeResult?.metaDescription.length || 0}/160`
+                }
+                good={
+                  (activeResult?.metaDescription.length ||
+                    0) <= 160
+                }
+                copied={copied}
+                onCopy={copyText}
+              />
+
+            </div>
+
+            <div className="seo-grid">
+
+              <OutputCard
+                title="URL Handle"
+                value={
+                  activeResult?.handle ||
+                  ""
+                }
+                copied={copied}
+                onCopy={copyText}
+              />
+
+              <OutputCard
+                title="Image Alt Text"
+                value={
+                  activeResult?.altText ||
+                  ""
+                }
+                copied={copied}
+                onCopy={copyText}
+              />
+
+            </div>
+
+            <div className="keyword-card">
+
+              <div className="card-title">
+                Suggested Keywords
+              </div>
+
+              <div className="tag-list">
+
+                {activeResult?.keywords.map(
+                  (keyword) => (
+
+                    <span
+                      className="tag"
+                      key={keyword}
+                    >
+                      {keyword}
+                    </span>
 
                   )
                 )}
 
               </div>
 
-              <button
-                type="button"
-                className="cart-button"
-              >
-                ADD TO CART
-              </button>
+            </div>
 
-              <div className="trust">
+          </section>
 
-                <span>
-                  Secure Checkout
-                </span>
+          <section className="optimization-section">
 
-                <span>
-                  Easy Returns
-                </span>
+            <div className="section-heading">
+              <span>03</span>
+              Shopify Product Fields
+            </div>
 
-                <span>
-                  Support
-                </span>
+            <div className="field-grid">
+
+              <OutputCard
+                title="Product Type"
+                value={
+                  activeResult?.productType ||
+                  ""
+                }
+                copied={copied}
+                onCopy={copyText}
+              />
+
+              <OutputCard
+                title="Collection"
+                value={
+                  activeResult?.collection ||
+                  ""
+                }
+                copied={copied}
+                onCopy={copyText}
+              />
+
+            </div>
+
+            <div className="keyword-card">
+
+              <div className="card-title">
+                Product Tags
+              </div>
+
+              <div className="tag-list">
+
+                {activeResult?.tags.map(
+                  (tag) => (
+
+                    <span
+                      className="tag"
+                      key={tag}
+                    >
+                      {tag}
+                    </span>
+
+                  )
+                )}
 
               </div>
 
             </div>
 
-          </div>
-
-          <section className="standout">
-
-            <div className="section-kicker">
-              Virello Product Experience
+            <div className="important-note">
+              Origin / Country of Origin is
+              intentionally excluded from
+              Virello product specifications.
             </div>
-
-            <h3>
-              Make the product easier
-              to understand. Easier to want.
-            </h3>
-
-            <button
-              type="button"
-              className="cart-button"
-            >
-              ADD TO CART
-            </button>
 
           </section>
 
-          <section className="faq">
+          <section className="optimization-section">
 
-            <div className="section-kicker">
+            <div className="section-heading">
+              <span>04</span>
+              Conversion Strategy
+            </div>
+
+            <div className="strategy-card">
+
+              <div className="card-title">
+                Selling Angle
+              </div>
+
+              <p>
+                {activeResult?.sellingAngle}
+              </p>
+
+              <CopyButton
+                label="Selling Angle"
+                value={
+                  activeResult?.sellingAngle ||
+                  ""
+                }
+                copied={copied}
+                onCopy={copyText}
+              />
+
+            </div>
+
+          </section>
+
+          <section className="optimization-section">
+
+            <div className="section-heading">
+              <span>05</span>
               Frequently Asked Questions
             </div>
 
-            <h3>
-              Questions, answered.
-            </h3>
+            <div className="faq">
 
-            <details>
+              {activeResult?.faq.map(
+                (item) => (
 
-              <summary>
-                Is this watch suitable for everyday wear?
-              </summary>
+                  <details key={item.question}>
 
-              <p>
-                Yes. Its versatile styling
-                makes it suitable for everyday
-                outfits and regular use.
-              </p>
+                    <summary>
+                      {item.question}
+                    </summary>
 
-            </details>
+                    <p>
+                      {item.answer}
+                    </p>
 
-            <details>
+                  </details>
 
-              <summary>
-                Can it be worn with formal clothing?
-              </summary>
+                )
+              )}
 
-              <p>
-                Yes. The refined design pairs
-                well with business and formal
-                clothing.
-              </p>
-
-            </details>
-
-            <details>
-
-              <summary>
-                Is it suitable as a gift?
-              </summary>
-
-              <p>
-                Yes. Its versatile and polished
-                design makes it a thoughtful
-                gifting option.
-              </p>
-
-            </details>
+            </div>
 
           </section>
 
-          <section className="seo-section">
+          <section className="final-actions">
 
-            <h3>
-              SEO Information
-            </h3>
-
-            <div className="seo-card">
-
-              <div className="seo-label">
-                SEO Title
+            <div>
+              <div className="section-kicker">
+                Ready for Shopify
               </div>
 
-              <div className="seo-value">
-                {activeResult?.seoTitle}
-              </div>
+              <h3>
+                Review everything before
+                applying the changes.
+              </h3>
+            </div>
 
-              <div
-                className={
-                  (activeResult?.seoTitle
-                    .length || 0) <= 60
-                    ? "counter good"
-                    : "counter bad"
-                }
+            <div className="action-row">
+
+              <button
+                type="button"
+                className="edit-button large"
+                onClick={editProduct}
               >
-                {activeResult?.seoTitle.length ||
-                  0}
-                /60
-              </div>
+                Edit Optimization
+              </button>
+
+              <button
+                type="button"
+                className="generate large"
+              >
+                Apply to Shopify →
+              </button>
 
             </div>
 
-            <div className="seo-card">
-
-              <div className="seo-label">
-                Meta Description
-              </div>
-
-              <div className="seo-value">
-                {activeResult?.metaDescription}
-              </div>
-
-              <div
-                className={
-                  (activeResult?.metaDescription
-                    .length || 0) <= 160
-                    ? "counter good"
-                    : "counter bad"
-                }
-              >
-                {activeResult?.metaDescription
-                  .length || 0}
-                /160
-              </div>
-
-            </div>
+            <p className="connection-note">
+              Shopify connection will be
+              activated through the secure
+              app/API integration in the
+              next step.
+            </p>
 
           </section>
 
@@ -687,7 +1378,7 @@ export default function Home() {
 
         body {
           margin: 0;
-          background: #f7f7f5;
+          background: #f6f6f3;
           color: #171717;
           font-family:
             Inter,
@@ -709,91 +1400,118 @@ export default function Home() {
 
         .page {
           min-height: 100vh;
-          width: 100%;
           overflow-x: hidden;
         }
 
         .header {
-          width: 100%;
-          padding: 28px 5vw 18px;
+          width: min(1280px, 90vw);
+          margin: auto;
+          padding: 28px 0;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          gap: 20px;
         }
 
         .brand-name {
-          font-size: 20px;
-          font-weight: 750;
-          letter-spacing: .08em;
+          font-size: 21px;
+          font-weight: 800;
+          letter-spacing: .09em;
         }
 
         .brand-subtitle {
           margin-top: 4px;
-          font-size: 13px;
-          letter-spacing: .06em;
+          font-size: 11px;
+          letter-spacing: .12em;
+          color: #666;
+        }
+
+        .header-status {
+          font-size: 11px;
+          letter-spacing: .1em;
+          color: #777;
         }
 
         .editor,
         .preview-page {
           width: min(1180px, 90vw);
-          margin: 0 auto;
+          margin: auto;
         }
 
         .editor {
-          padding: 70px 0 110px;
+          padding: 70px 0 120px;
         }
 
         .eyebrow {
-          font-size: 15px;
-          margin-bottom: 28px;
-          color: #666;
+          font-size: 13px;
+          letter-spacing: .08em;
+          text-transform: uppercase;
+          color: #777;
+          margin-bottom: 24px;
         }
 
         h1 {
-          max-width: 900px;
+          max-width: 950px;
           margin: 0;
           font-size: clamp(
-            52px,
-            8vw,
-            92px
+            48px,
+            7vw,
+            88px
           );
-          line-height: .96;
+          line-height: .97;
           letter-spacing: -.055em;
         }
 
         .intro {
-          max-width: 700px;
-          margin: 32px 0 52px;
-          font-size: 20px;
-          line-height: 1.5;
-          color: #4d4d4d;
+          max-width: 720px;
+          margin: 30px 0 50px;
+          color: #555;
+          font-size: 19px;
+          line-height: 1.6;
         }
 
         .panel {
           background: #fff;
-          border: 1px solid #e4e4e0;
+          border: 1px solid #e2e2de;
           border-radius: 24px;
           padding: clamp(
             22px,
             4vw,
-            42px
+            44px
           );
           box-shadow:
-            0 12px 40px
-            rgba(0,0,0,.04);
+            0 18px 60px
+            rgba(0,0,0,.045);
         }
 
-        .section-title {
-          font-size: 21px;
-          font-weight: 700;
+        .section-heading {
+          display: flex;
+          align-items: center;
+          gap: 13px;
+          font-size: 22px;
+          font-weight: 750;
           margin-bottom: 28px;
+        }
+
+        .section-heading span {
+          color: #999;
+          font-size: 12px;
+          letter-spacing: .08em;
+        }
+
+        .section-gap {
+          margin-top: 45px;
         }
 
         label {
           display: block;
-          font-size: 15px;
-          font-weight: 650;
           margin: 22px 0 9px;
+          font-size: 14px;
+          font-weight: 700;
         }
 
         .input,
+        .simple-input,
         .price-input {
           width: 100%;
           border: 1px solid #d8d8d4;
@@ -802,40 +1520,46 @@ export default function Home() {
         }
 
         .input {
-          padding: 15px 16px;
+          padding: 15px;
           outline: none;
           resize: vertical;
-          min-height: 58px;
+          line-height: 1.5;
         }
 
         .input:focus,
+        .simple-input:focus,
         .price-input:focus-within {
           border-color: #171717;
           background: #fff;
         }
 
         .title-input {
-          min-height: 112px;
+          min-height: 120px;
+        }
+
+        .simple-input {
+          min-height: 52px;
+          padding: 0 15px;
+          outline: none;
         }
 
         .form-grid {
           display: grid;
           grid-template-columns:
-            minmax(180px, 260px)
-            1fr;
-          gap: 30px;
-          align-items: start;
+            1fr 1fr;
+          gap: 24px;
         }
 
         .price-input {
+          min-height: 52px;
           display: flex;
           align-items: center;
           padding: 0 14px;
         }
 
         .price-input span {
-          font-weight: 650;
           color: #555;
+          font-weight: 700;
         }
 
         .price-input input {
@@ -843,13 +1567,13 @@ export default function Home() {
           border: 0;
           outline: 0;
           background: transparent;
-          padding: 15px 8px;
+          padding: 0 8px;
         }
 
         .button-row {
           display: flex;
-          gap: 9px;
           flex-wrap: wrap;
+          gap: 9px;
         }
 
         .choice,
@@ -857,8 +1581,8 @@ export default function Home() {
           min-height: 42px;
           padding: 0 15px;
           border: 1px solid #d7d7d3;
-          border-radius: 999px;
           background: #fff;
+          border-radius: 999px;
           color: #222;
         }
 
@@ -869,44 +1593,129 @@ export default function Home() {
 
         .choice.active,
         .image-choice.active {
+          color: #fff;
           background: #171717;
           border-color: #171717;
-          color: #fff;
+        }
+
+        .rules-box {
+          margin-top: 30px;
+          padding: 20px;
+          border-radius: 15px;
+          background: #f5f5f2;
+        }
+
+        .rules-title {
+          font-weight: 750;
+          margin-bottom: 12px;
+        }
+
+        .rule {
+          margin-top: 7px;
+          font-size: 14px;
+          color: #555;
         }
 
         .generate {
-          width: 100%;
-          min-height: 58px;
-          margin-top: 34px;
           border: 0;
-          border-radius: 12px;
           background: #171717;
           color: #fff;
-          font-weight: 700;
+          min-height: 56px;
+          padding: 0 23px;
+          border-radius: 10px;
+          font-weight: 750;
         }
 
-        .generate:hover,
-        .cart-button:hover {
-          opacity: .88;
+        .panel > .generate {
+          width: 100%;
+          margin-top: 30px;
+        }
+
+        .generate span {
+          margin-left: 8px;
+        }
+
+        .top-actions {
+          display: flex;
+          justify-content: space-between;
+          gap: 12px;
+        }
+
+        .edit-button,
+        .regenerate-button {
+          min-height: 43px;
+          padding: 0 15px;
+          border-radius: 9px;
+          border: 1px solid #d5d5d1;
+          background: #fff;
+        }
+
+        .regenerate-button {
+          background: #171717;
+          color: #fff;
+          border-color: #171717;
         }
 
         .preview-page {
-          padding: 20px 0 100px;
-        }
-
-        .edit-button {
-          border: 1px solid #d5d5d1;
-          background: #fff;
-          border-radius: 10px;
-          min-height: 42px;
-          padding: 0 15px;
+          padding: 25px 0 110px;
         }
 
         .preview-brand {
-          margin: 36px 0 24px;
-          font-size: 14px;
-          font-weight: 750;
+          margin-top: 38px;
+          font-weight: 800;
           letter-spacing: .1em;
+          font-size: 14px;
+        }
+
+        .preview-title-row {
+          margin-top: 30px;
+        }
+
+        .preview-title-row h2 {
+          margin: 0;
+          font-size: clamp(
+            42px,
+            6vw,
+            70px
+          );
+          letter-spacing: -.05em;
+        }
+
+        .score-grid {
+          display: grid;
+          grid-template-columns:
+            repeat(3, 1fr);
+          gap: 14px;
+          margin: 35px 0 80px;
+        }
+
+        .score-card {
+          background: #fff;
+          border: 1px solid #e2e2de;
+          border-radius: 17px;
+          padding: 22px;
+        }
+
+        .score-card span {
+          display: block;
+          font-size: 11px;
+          letter-spacing: .08em;
+          color: #777;
+        }
+
+        .score-card strong {
+          font-size: 48px;
+          letter-spacing: -.05em;
+        }
+
+        .score-card small {
+          color: #888;
+        }
+
+        .optimization-section {
+          margin-top: 85px;
+          border-top: 1px solid #d6d6d1;
+          padding-top: 40px;
         }
 
         .product-layout {
@@ -914,19 +1723,14 @@ export default function Home() {
           grid-template-columns:
             minmax(0, .9fr)
             minmax(0, 1.1fr);
-          gap: clamp(
-            35px,
-            6vw,
-            80px
-          );
-          align-items: start;
+          gap: 70px;
         }
 
         .visual-column {
           display: grid;
           grid-template-columns:
             repeat(2, minmax(0, 1fr));
-          gap: 14px;
+          gap: 12px;
         }
 
         .image-main,
@@ -935,22 +1739,21 @@ export default function Home() {
           align-items: center;
           justify-content: center;
           text-align: center;
-          background: #ededed;
+          background: #e9e9e6;
           color: #777;
-          border-radius: 18px;
-          min-height: 180px;
+          border-radius: 17px;
+          min-height: 160px;
           padding: 20px;
         }
 
         .image-main {
           grid-column: 1 / -1;
           aspect-ratio: 1 / 1;
-          font-size: 18px;
         }
 
         .image-small {
           aspect-ratio: 1 / 1;
-          font-size: 14px;
+          font-size: 13px;
         }
 
         .product-info {
@@ -958,13 +1761,14 @@ export default function Home() {
         }
 
         .collection {
+          font-size: 13px;
           color: #777;
-          font-size: 15px;
-          margin-bottom: 20px;
+          margin-bottom: 18px;
+          text-transform: uppercase;
+          letter-spacing: .07em;
         }
 
-        .product-info h2 {
-          max-width: 680px;
+        .product-info h3 {
           margin: 0;
           font-size: clamp(
             38px,
@@ -972,125 +1776,124 @@ export default function Home() {
             68px
           );
           line-height: 1.02;
-          letter-spacing: -.045em;
-          overflow-wrap: normal;
-          word-break: normal;
+          letter-spacing: -.05em;
         }
 
         .product-price {
-          margin-top: 25px;
-          font-size: 24px;
-          font-weight: 600;
+          margin-top: 22px;
+          font-size: 23px;
+          font-weight: 650;
         }
 
         .description {
-          max-width: 650px;
-          margin-top: 28px;
-          font-size: 18px;
-          line-height: 1.6;
-          color: #3f3f3f;
+          margin: 26px 0 0;
+          color: #444;
+          font-size: 17px;
+          line-height: 1.65;
         }
 
-        .bullets {
+        .subheading {
+          margin-top: 30px;
+          margin-bottom: 13px;
+          font-size: 14px;
+          font-weight: 750;
+        }
+
+        .benefits {
           display: grid;
           gap: 9px;
-          margin-top: 25px;
-          font-size: 16px;
+        }
+
+        .benefit {
+          display: flex;
+          gap: 9px;
           line-height: 1.45;
         }
 
-        .cart-button {
-          min-height: 50px;
-          margin-top: 27px;
-          padding: 0 24px;
-          border: 0;
-          border-radius: 9px;
-          background: #171717;
-          color: #fff;
-          font-weight: 700;
+        .benefit span {
+          font-weight: 800;
         }
 
-        .trust {
+        .features {
           display: flex;
           flex-wrap: wrap;
-          gap: 15px 22px;
-          margin-top: 17px;
-          color: #666;
-          font-size: 14px;
+          gap: 8px;
         }
 
-        .standout,
-        .faq,
-        .seo-section {
-          margin-top: 100px;
-          border-top: 1px solid #d5d5d1;
-          padding-top: 44px;
+        .feature {
+          border: 1px solid #d8d8d4;
+          border-radius: 999px;
+          padding: 9px 12px;
+          font-size: 13px;
         }
 
-        .section-kicker {
-          color: #777;
-          font-size: 15px;
+        .cart-button {
+          margin-top: 28px;
+          min-height: 50px;
+          border: 0;
+          border-radius: 9px;
+          padding: 0 22px;
+          background: #171717;
+          color: #fff;
+          font-weight: 750;
         }
 
-        .standout h3,
-        .faq h3,
-        .seo-section > h3 {
-          max-width: 900px;
-          margin: 20px 0 28px;
-          font-size: clamp(
-            38px,
-            5vw,
-            64px
-          );
-          line-height: 1;
-          letter-spacing: -.045em;
+        .copy-row {
+          display: flex;
+          align-items: center;
+          gap: 9px;
+          margin-top: 10px;
         }
 
-        details {
-          border-top: 1px solid #ccc;
-          padding: 20px 0;
+        .copy-button {
+          min-height: 32px;
+          border: 1px solid #d5d5d1;
+          border-radius: 7px;
+          padding: 0 10px;
+          background: #fff;
+          font-size: 12px;
         }
 
-        details:last-child {
-          border-bottom: 1px solid #ccc;
+        .copied {
+          font-size: 12px;
+          color: #26734d;
         }
 
-        summary {
-          cursor: pointer;
-          font-size: 17px;
-          font-weight: 600;
+        .seo-grid,
+        .field-grid {
+          display: grid;
+          grid-template-columns:
+            1fr 1fr;
+          gap: 15px;
+          margin-top: 15px;
         }
 
-        details p {
-          max-width: 700px;
-          margin-bottom: 0;
-          line-height: 1.6;
-          color: #555;
-        }
-
-        .seo-card {
-          margin-top: 22px;
+        .output-card,
+        .keyword-card,
+        .strategy-card {
           background: #fff;
           border: 1px solid #e2e2de;
-          border-radius: 18px;
-          padding: 24px;
+          border-radius: 17px;
+          padding: 22px;
         }
 
-        .seo-label {
-          font-size: 16px;
-          font-weight: 700;
-          margin-bottom: 13px;
+        .output-card {
+          min-width: 0;
         }
 
-        .seo-value {
-          font-size: 17px;
-          line-height: 1.5;
-          overflow-wrap: break-word;
+        .card-title {
+          font-weight: 750;
+          margin-bottom: 12px;
+        }
+
+        .output-value {
+          line-height: 1.55;
+          overflow-wrap: anywhere;
         }
 
         .counter {
-          margin-top: 11px;
-          font-size: 13px;
+          margin-top: 12px;
+          font-size: 12px;
         }
 
         .counter.good {
@@ -1099,55 +1902,138 @@ export default function Home() {
 
         .counter.bad {
           color: #b42318;
+        }
+
+        .keyword-card {
+          margin-top: 15px;
+        }
+
+        .tag-list {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px;
+        }
+
+        .tag {
+          padding: 8px 11px;
+          background: #f0f0ed;
+          border-radius: 999px;
+          font-size: 13px;
+        }
+
+        .important-note {
+          margin-top: 15px;
+          padding: 17px;
+          border-radius: 13px;
+          background: #f5f5f2;
+          color: #555;
+          font-size: 14px;
+        }
+
+        .strategy-card p {
+          max-width: 800px;
+          color: #555;
+          line-height: 1.6;
+        }
+
+        .faq details {
+          border-top: 1px solid #d4d4d0;
+          padding: 20px 0;
+        }
+
+        .faq details:last-child {
+          border-bottom: 1px solid #d4d4d0;
+        }
+
+        .faq summary {
+          cursor: pointer;
           font-weight: 700;
         }
 
-        @media (max-width: 800px) {
+        .faq p {
+          max-width: 800px;
+          color: #555;
+          line-height: 1.6;
+        }
 
-          .header {
-            padding: 20px 5vw 10px;
-          }
+        .final-actions {
+          margin-top: 100px;
+          padding: 45px;
+          border-radius: 24px;
+          background: #171717;
+          color: #fff;
+        }
 
-          .editor {
-            padding-top: 45px;
-          }
+        .section-kicker {
+          font-size: 12px;
+          text-transform: uppercase;
+          letter-spacing: .1em;
+          opacity: .65;
+        }
 
-          .intro {
-            font-size: 18px;
-          }
+        .final-actions h3 {
+          max-width: 700px;
+          margin: 15px 0 30px;
+          font-size: clamp(
+            34px,
+            5vw,
+            58px
+          );
+          line-height: 1;
+          letter-spacing: -.045em;
+        }
 
-          .form-grid {
-            grid-template-columns: 1fr;
-            gap: 0;
-          }
+        .action-row {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 10px;
+        }
+
+        .large {
+          min-height: 52px;
+        }
+
+        .final-actions .edit-button {
+          color: #171717;
+        }
+
+        .connection-note {
+          margin: 22px 0 0;
+          color: #aaa;
+          font-size: 13px;
+          line-height: 1.5;
+        }
+
+        @media (max-width: 850px) {
 
           .product-layout {
             grid-template-columns: 1fr;
-            gap: 42px;
+            gap: 40px;
           }
 
-          .visual-column {
-            order: 1;
+          .form-grid,
+          .seo-grid,
+          .field-grid {
+            grid-template-columns: 1fr;
           }
 
-          .product-info {
-            order: 2;
+          .score-grid {
+            grid-template-columns: 1fr;
+            margin-bottom: 55px;
           }
 
-          .product-info h2 {
-            font-size: clamp(
-              38px,
-              10vw,
-              56px
-            );
-          }
-
-          .description {
-            font-size: 17px;
-          }
         }
 
-        @media (max-width: 520px) {
+        @media (max-width: 560px) {
+
+          .header {
+            width: 92vw;
+            padding: 20px 0;
+          }
+
+          .header-status {
+            display: none;
+          }
 
           .editor,
           .preview-page {
@@ -1155,11 +2041,15 @@ export default function Home() {
           }
 
           .editor {
-            padding-top: 35px;
+            padding-top: 40px;
           }
 
           h1 {
-            font-size: 48px;
+            font-size: 47px;
+          }
+
+          .intro {
+            font-size: 17px;
           }
 
           .panel {
@@ -1167,48 +2057,132 @@ export default function Home() {
             padding: 20px;
           }
 
-          .visual-column {
-            grid-template-columns:
-              1fr 1fr;
+          .product-info h3 {
+            font-size: 42px;
           }
 
-          .image-main {
-            grid-column: 1 / -1;
+          .preview-title-row h2 {
+            font-size: 45px;
           }
 
-          .product-info h2 {
-            font-size: 40px;
-            line-height: 1.04;
+          .final-actions {
+            padding: 25px;
+            border-radius: 18px;
           }
 
-          .product-price {
-            font-size: 22px;
+          .final-actions h3 {
+            font-size: 38px;
           }
 
-          .standout,
-          .faq,
-          .seo-section {
-            margin-top: 70px;
-            padding-top: 34px;
+          .action-row {
+            flex-direction: column;
           }
 
-          .standout h3,
-          .faq h3,
-          .seo-section > h3 {
-            font-size: 40px;
+          .action-row button {
+            width: 100%;
           }
 
-          .seo-card {
-            padding: 18px;
+          .top-actions {
+            flex-wrap: wrap;
           }
 
-          .seo-value {
-            font-size: 16px;
+          .top-actions button {
+            flex: 1;
           }
+
         }
 
       `}</style>
 
     </main>
+  );
+}
+
+function CopyButton({
+  label,
+  value,
+  copied,
+  onCopy,
+}: {
+  label: string;
+  value: string;
+  copied: string;
+  onCopy: (
+    label: string,
+    value: string
+  ) => void;
+}) {
+  return (
+    <div className="copy-row">
+
+      <button
+        type="button"
+        className="copy-button"
+        onClick={() =>
+          onCopy(label, value)
+        }
+      >
+        Copy {label}
+      </button>
+
+      {copied === label && (
+        <span className="copied">
+          Copied
+        </span>
+      )}
+
+    </div>
+  );
+}
+
+function OutputCard({
+  title,
+  value,
+  counter,
+  good = true,
+  copied,
+  onCopy,
+}: {
+  title: string;
+  value: string;
+  counter?: string;
+  good?: boolean;
+  copied: string;
+  onCopy: (
+    label: string,
+    value: string
+  ) => void;
+}) {
+  return (
+    <div className="output-card">
+
+      <div className="card-title">
+        {title}
+      </div>
+
+      <div className="output-value">
+        {value}
+      </div>
+
+      {counter && (
+        <div
+          className={
+            good
+              ? "counter good"
+              : "counter bad"
+          }
+        >
+          {counter}
+        </div>
+      )}
+
+      <CopyButton
+        label={title}
+        value={value}
+        copied={copied}
+        onCopy={onCopy}
+      />
+
+    </div>
   );
 }
