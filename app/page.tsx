@@ -1,540 +1,398 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 
-type FieldProps = {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  placeholder?: string;
-  textarea?: boolean;
+type Result = {
+  title: string;
+  description: string;
+  seoTitle: string;
+  metaDescription: string;
+  keywords: string;
+  tags: string;
+  altText: string;
+  handle: string;
+  productType: string;
 };
 
-function Field({
-  label,
-  value,
-  onChange,
-  placeholder,
-  textarea = false,
-}: FieldProps) {
-  return (
-    <div className="field">
-      <label>{label}</label>
-
-      {textarea ? (
-        <textarea
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          placeholder={placeholder}
-          rows={6}
-        />
-      ) : (
-        <input
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          placeholder={placeholder}
-        />
-      )}
-    </div>
-  );
-}
-
-function CopyButton({ value }: { value: string }) {
-  const [copied, setCopied] = useState(false);
-
-  async function copyText() {
-    if (!value) return;
-
-    try {
-      await navigator.clipboard.writeText(value);
-      setCopied(true);
-
-      setTimeout(() => {
-        setCopied(false);
-      }, 1500);
-    } catch {
-      setCopied(false);
-    }
-  }
-
-  return (
-    <button type="button" className="copyButton" onClick={copyText}>
-      {copied ? "Copied" : "Copy"}
-    </button>
-  );
+function cleanText(text: string) {
+  return text
+    .replace(/\r/g, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .replace(/\b(2026|2025|2024)\b/gi, "")
+    .replace(/\b(top luxury|best quality|hot sale|new arrival|free shipping)\b/gi, "")
+    .replace(/\b(dear customer|welcome to our store)\b/gi, "")
+    .replace(/\b(no reason to return)\b/gi, "")
+    .replace(/\b(guaranteed for \d+ years?)\b/gi, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
 }
 
 function limit(text: string, max: number) {
   return text.trim().slice(0, max).trim();
 }
 
-function cleanText(text: string) {
-  return text
-    .replace(/\b(19|20)\d{2}\b/gi, "")
-    .replace(/\bnew\b/gi, "")
-    .replace(/\bnewest\b/gi, "")
-    .replace(/\blatest\b/gi, "")
-    .replace(/\bhot\b/gi, "")
-    .replace(/\btop\b/gi, "")
-    .replace(/\bbest seller\b/gi, "")
-    .replace(/\bbest selling\b/gi, "")
-    .replace(/\btop selling\b/gi, "")
-    .replace(/\bhigh quality\b/gi, "")
-    .replace(/\bpremium quality\b/gi, "")
-    .replace(/\bpremium\b/gi, "")
-    .replace(/\bluxury\b/gi, "")
-    .replace(/\bcheap\b/gi, "")
-    .replace(/\bwholesale\b/gi, "")
-    .replace(/\bfree shipping\b/gi, "")
-    .replace(/\bfor men\b/gi, "Men's")
-    .replace(/\bfor women\b/gi, "Women's")
-    .replace(/\bmen's watches\b/gi, "Men's Watch")
-    .replace(/\bwomen's watches\b/gi, "Women's Watch")
-    .replace(/\bwatches\b/gi, "Watch")
-    .replace(/\s+/g, " ")
-    .replace(/\s*[-|–—:]+\s*/g, " ")
-    .replace(/[|]+/g, " ")
-    .trim();
-}
-
-function makeCleanTitle(
-  name: string,
-  productType: string,
-  brand: string
-) {
-  let title = cleanText(name);
-
-  const lower = title.toLowerCase();
-
-  const genericWords = [
-    "product",
-    "item",
-    "fashion",
-    "style",
-    "design",
-  ];
-
-  genericWords.forEach((word) => {
-    const regex = new RegExp(`\\b${word}\\b`, "gi");
-    title = title.replace(regex, "");
-  });
-
-  title = title.replace(/\s+/g, " ").trim();
-
-  /*
-   * Keep the meaningful supplier title.
-   * The brand field is intentionally NOT automatically
-   * added to the title so the optimizer stays generic.
-   */
-  if (!title) {
-    title = productType.trim() || "Product";
-  }
-
-  /*
-   * Remove obvious duplicated words.
-   */
-  const words = title.split(" ");
-  const seen = new Set<string>();
-
-  const uniqueWords = words.filter((word) => {
-    const key = word.toLowerCase().replace(/[^\w']/g, "");
-
-    if (!key) return false;
-
-    if (seen.has(key)) return false;
-
-    seen.add(key);
-    return true;
-  });
-
-  title = uniqueWords.join(" ").trim();
-
-  /*
-   * If the title is still empty, use the product type.
-   */
-  if (!title) {
-    title = productType.trim() || "Product";
-  }
-
-  /*
-   * Keep product titles readable and under 65 characters.
-   */
-  if (title.length > 65) {
-    title = title
-      .slice(0, 65)
-      .replace(/\s+\S*$/, "")
-      .trim();
-  }
-
-  return title;
-}
-
-function makeSeoTitle(title: string, productType: string) {
-  let seo = cleanText(title);
-
-  /*
-   * Do not add Virello or Horizon to the SEO title.
-   * Keep it focused on the actual product.
-   */
-  if (!seo) {
-    seo = productType.trim() || "Product";
-  }
-
-  return limit(seo, 50);
-}
-
-function makeMetaDescription(
-  title: string,
-  productType: string
-) {
-  const base =
-    title ||
-    productType ||
-    "quality products";
-
-  const description =
-    `Shop ${base} with a clean design, practical features, and everyday appeal.`;
-
-  return limit(description, 160);
-}
-
-function makeKeywords(
-  title: string,
-  productType: string,
-  brand: string
-) {
-  const source = `${title} ${productType} ${brand}`;
-
-  const words = source
-    .toLowerCase()
-    .replace(/[^\w\s'-]/g, " ")
-    .split(/\s+/)
-    .filter(Boolean);
-
-  const stopWords = new Set([
-    "the",
-    "and",
-    "for",
-    "with",
-    "from",
-    "new",
-    "top",
-    "best",
-    "product",
-    "item",
-    "of",
-    "to",
-    "a",
-    "an",
-  ]);
-
-  const unique: string[] = [];
-
-  for (const word of words) {
-    if (stopWords.has(word)) continue;
-    if (word.length < 3) continue;
-
-    if (!unique.includes(word)) {
-      unique.push(word);
-    }
-  }
-
-  return unique.slice(0, 12).join(", ");
-}
-
-function makeTags(
-  title: string,
-  productType: string,
-  collection: string
-) {
-  const source = `${title}, ${productType}, ${collection}`;
-
-  const tags = source
-    .split(",")
-    .map((item) => item.trim())
-    .filter(Boolean);
-
-  const unique = Array.from(
-    new Set(
-      tags.map((item) =>
-        item
-          .replace(/\s+/g, " ")
-          .trim()
-      )
-    )
-  );
-
-  return unique.slice(0, 10).join(", ");
-}
-
-function makeAltText(title: string) {
-  return limit(
-    `Product image of ${title || "product"}`,
-    125
-  );
-}
-
-function makeHandle(title: string) {
-  return cleanText(title)
+function makeHandle(text: string) {
+  return cleanText(text)
     .toLowerCase()
     .replace(/[^a-z0-9\s-]/g, "")
     .replace(/\s+/g, "-")
     .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "")
-    .slice(0, 70);
+    .slice(0, 70)
+    .replace(/-$/, "");
+}
+
+function detectProductType(title: string, description: string) {
+  const text = `${title} ${description}`.toLowerCase();
+
+  if (
+    text.includes("watch") ||
+    text.includes("wristwatch") ||
+    text.includes("chronograph")
+  ) {
+    return "Watches";
+  }
+
+  if (
+    text.includes("shirt") ||
+    text.includes("dress") ||
+    text.includes("jacket") ||
+    text.includes("pants") ||
+    text.includes("jeans") ||
+    text.includes("hoodie")
+  ) {
+    return "Apparel";
+  }
+
+  if (
+    text.includes("shoe") ||
+    text.includes("sneaker") ||
+    text.includes("sandals")
+  ) {
+    return "Footwear";
+  }
+
+  if (
+    text.includes("faucet") ||
+    text.includes("shower") ||
+    text.includes("bathroom") ||
+    text.includes("mirror")
+  ) {
+    return "Bathroom";
+  }
+
+  if (
+    text.includes("organizer") ||
+    text.includes("storage") ||
+    text.includes("box")
+  ) {
+    return "Home Organization";
+  }
+
+  if (
+    text.includes("phone") ||
+    text.includes("charger") ||
+    text.includes("usb") ||
+    text.includes("electronic")
+  ) {
+    return "Electronics";
+  }
+
+  return "General";
+}
+
+function buildTitle(
+  originalTitle: string,
+  description: string,
+  productType: string
+) {
+  const text = cleanText(`${originalTitle} ${description}`);
+
+  if (productType === "Watches") {
+    const gender =
+      /\bmen'?s?\b/i.test(text) ? "Men's" :
+      /\bwomen'?s?\b|\bladies\b/i.test(text) ? "Women's" :
+      "";
+
+    const style =
+      /\bchronograph\b/i.test(text)
+        ? "Chronograph"
+        : /\bautomatic\b/i.test(text)
+        ? "Automatic"
+        : /\bquartz\b/i.test(text)
+        ? "Quartz"
+        : "Classic";
+
+    return limit(
+      `${gender} ${style} Watch`.replace(/\s+/g, " ").trim(),
+      65
+    );
+  }
+
+  if (productType === "Apparel") {
+    if (/\bdress\b/i.test(text)) return "Women's Everyday Dress";
+    if (/\bshirt\b/i.test(text)) return "Classic Everyday Shirt";
+    if (/\bjacket\b/i.test(text)) return "Classic Casual Jacket";
+    if (/\bjeans\b/i.test(text)) return "Classic Everyday Jeans";
+    if (/\bpants\b/i.test(text)) return "Modern Everyday Pants";
+    return "Modern Everyday Apparel";
+  }
+
+  if (productType === "Footwear") {
+    if (/\bsneaker\b/i.test(text)) return "Classic Everyday Sneakers";
+    if (/\bsandal\b/i.test(text)) return "Comfort Casual Sandals";
+    return "Classic Everyday Footwear";
+  }
+
+  if (productType === "Bathroom") {
+    if (/\bfaucet\b/i.test(text)) return "Modern Bathroom Faucet";
+    if (/\bshower\b/i.test(text)) return "Modern Shower Fixture";
+    if (/\bmirror\b/i.test(text)) return "Modern Bathroom Mirror";
+    return "Modern Bathroom Fixture";
+  }
+
+  if (productType === "Home Organization") {
+    if (/\bstorage\b/i.test(text)) return "Practical Storage Organizer";
+    return "Practical Home Organizer";
+  }
+
+  if (productType === "Electronics") {
+    if (/\bcharger\b/i.test(text)) return "Portable Charging Device";
+    return "Smart Everyday Device";
+  }
+
+  return "Modern Everyday Product";
+}
+
+function buildDescription(
+  title: string,
+  description: string,
+  features: string
+) {
+  const source = cleanText(`${description}\n${features}`);
+
+  const usefulLines = source
+    .split(/\n|•|;/)
+    .map((x) => x.trim())
+    .filter(Boolean)
+    .filter(
+      (x) =>
+        !/mainland china|china|supplier|wholesale|dropship|pagani design/i.test(
+          x
+        )
+    )
+    .slice(0, 6);
+
+  const featureText =
+    usefulLines.length > 0
+      ? usefulLines.map((x) => `• ${limit(x, 120)}`).join("\n")
+      : "• Practical design\n• Everyday functionality\n• Clean, versatile style";
+
+  return [
+    `${title} is designed for customers who value practical function, clean style, and dependable everyday use.`,
+    "",
+    "Key features:",
+    featureText,
+    "",
+    "A versatile choice for everyday use with a polished, professional look."
+  ].join("\n");
+}
+
+function buildSeoTitle(title: string) {
+  return limit(title, 50);
+}
+
+function buildMeta(title: string, productType: string) {
+  return limit(
+    `Shop ${title} with a clean design and practical features. A versatile ${productType.toLowerCase()} choice for everyday use.`,
+    160
+  );
+}
+
+function buildKeywords(title: string, productType: string) {
+  return Array.from(
+    new Set([
+      title.toLowerCase(),
+      productType.toLowerCase(),
+      "quality design",
+      "everyday use",
+      "modern style",
+    ])
+  ).join(", ");
+}
+
+function buildTags(productType: string) {
+  return Array.from(
+    new Set([
+      productType,
+      "New Arrival",
+      "Everyday",
+      "Modern Style",
+      "Featured",
+    ])
+  ).join(", ");
+}
+
+function buildAltText(title: string) {
+  return limit(`${title} product image`, 125);
 }
 
 export default function ProductOptimizer() {
-  const [name, setName] = useState("");
+  const [originalTitle, setOriginalTitle] = useState("");
   const [description, setDescription] = useState("");
   const [features, setFeatures] = useState("");
   const [productType, setProductType] = useState("");
-  const [brand, setBrand] = useState("");
   const [collection, setCollection] = useState("");
   const [price, setPrice] = useState("");
-
-  const [optimized, setOptimized] = useState(false);
-
-  const result = useMemo(() => {
-    const title = makeCleanTitle(
-      name,
-      productType,
-      brand
-    );
-
-    const seoTitle = makeSeoTitle(
-      title,
-      productType
-    );
-
-    const metaDescription = makeMetaDescription(
-      title,
-      productType
-    );
-
-    const keywords = makeKeywords(
-      title,
-      productType,
-      brand
-    );
-
-    const tags = makeTags(
-      title,
-      productType,
-      collection
-    );
-
-    const altText = makeAltText(title);
-
-    const handle = makeHandle(title);
-
-    const cleanedDescription =
-      description.trim() ||
-      `Designed for customers who value quality, practical features, and a polished everyday experience.`;
-
-    const featureLines = features
-      .split(/\n|,/)
-      .map((item) => item.trim())
-      .filter(Boolean)
-      .slice(0, 8);
-
-    const finalDescription = [
-      cleanedDescription,
-      "",
-      featureLines.length
-        ? "Key features:"
-        : "",
-      ...featureLines.map(
-        (feature) => `• ${feature}`
-      ),
-      "",
-      `A practical choice for customers looking for ${title || "this product"}.`,
-    ]
-      .filter((line) => line !== "")
-      .join("\n");
-
-    return {
-      title,
-      description: finalDescription,
-      seoTitle,
-      metaDescription,
-      keywords,
-      tags,
-      altText,
-      handle,
-    };
-  }, [
-    name,
-    description,
-    features,
-    productType,
-    brand,
-    collection,
-    price,
-  ]);
+  const [result, setResult] = useState<Result | null>(null);
 
   function optimizeProduct() {
-    if (!name.trim()) {
-      setOptimized(false);
-      return;
-    }
+    if (!originalTitle.trim()) return;
 
-    setOptimized(true);
+    const detectedType =
+      productType.trim() ||
+      detectProductType(originalTitle, `${description} ${features}`);
 
-    setTimeout(() => {
-      document
-        .getElementById("results")
-        ?.scrollIntoView({
-          behavior: "smooth",
-          block: "start",
-        });
-    }, 50);
+    const title = buildTitle(
+      originalTitle,
+      `${description} ${features}`,
+      detectedType
+    );
+
+    const optimizedDescription = buildDescription(
+      title,
+      description,
+      features
+    );
+
+    const seoTitle = buildSeoTitle(title);
+    const metaDescription = buildMeta(title, detectedType);
+
+    setResult({
+      title,
+      description: optimizedDescription,
+      seoTitle,
+      metaDescription,
+      keywords: buildKeywords(title, detectedType),
+      tags: buildTags(detectedType),
+      altText: buildAltText(title),
+      handle: makeHandle(title),
+      productType: detectedType,
+    });
   }
 
   function clearAll() {
-    setName("");
+    setOriginalTitle("");
     setDescription("");
     setFeatures("");
     setProductType("");
-    setBrand("");
     setCollection("");
     setPrice("");
-    setOptimized(false);
+    setResult(null);
   }
 
   return (
-    <>
-      <main className="page">
-        <header className="header">
-          <div className="brandMark">V</div>
-
+    <main className="page">
+      <header className="header">
+        <div className="brand">
+          <div className="logo">V</div>
           <div>
-            <div className="brandName">Virello</div>
-            <div className="brandSub">AI OPTIMIZER</div>
+            <strong>Virello</strong>
+            <span>AI OPTIMIZER</span>
           </div>
-        </header>
+        </div>
+      </header>
 
-        <section className="hero">
-          <div className="eyebrow">
-            VIRELLO AI OPTIMIZER
+      <section className="hero">
+        <div className="badge">VIRELLO AI OPTIMIZER</div>
+        <h1>
+          Optimize every
+          <br />
+          <span>product listing.</span>
+        </h1>
+        <p>
+          Create polished, professional product content without
+          supplier-style wording.
+        </p>
+      </section>
+
+      <section className="card">
+        <div className="sectionNumber">01</div>
+        <h2>Product information</h2>
+
+        <label>ORIGINAL PRODUCT TITLE *</label>
+        <input
+          value={originalTitle}
+          onChange={(e) => setOriginalTitle(e.target.value)}
+          placeholder="Paste the original supplier product title"
+        />
+
+        <label>PRODUCT DESCRIPTION</label>
+        <textarea
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          placeholder="Paste original product description"
+          rows={7}
+        />
+
+        <label>FEATURES</label>
+        <textarea
+          value={features}
+          onChange={(e) => setFeatures(e.target.value)}
+          placeholder="Materials, movement, size, functions, style, etc."
+          rows={6}
+        />
+
+        <label>PRODUCT TYPE</label>
+        <input
+          value={productType}
+          onChange={(e) => setProductType(e.target.value)}
+          placeholder="Leave blank for automatic detection"
+        />
+
+        <label>COLLECTION</label>
+        <input
+          value={collection}
+          onChange={(e) => setCollection(e.target.value)}
+          placeholder="Optional"
+        />
+
+        <label>PRICE</label>
+        <input
+          value={price}
+          onChange={(e) => setPrice(e.target.value)}
+          placeholder="Optional"
+        />
+
+        <button className="primary" onClick={optimizeProduct}>
+          Optimize Product
+        </button>
+
+        <button className="secondary" onClick={clearAll}>
+          Clear
+        </button>
+      </section>
+
+      <section className="card">
+        <div className="sectionNumber">02</div>
+        <div className="ready">READY</div>
+        <h2>Optimized listing</h2>
+
+        {!result ? (
+          <div className="empty">
+            <h3>Your optimized listing will appear here</h3>
+            <p>
+              Add your product information above, then select Optimize
+              Product.
+            </p>
           </div>
-
-          <h1>
-            Optimize every
-            <br />
-            <span>product listing.</span>
-          </h1>
-
-          <p>
-            Create polished, professional product
-            content without supplier-style wording.
-          </p>
-        </section>
-
-        <section className="card">
-          <div className="step">01</div>
-
-          <h2>Product information</h2>
-
-          <div className="divider" />
-
-          <Field
-            label="ORIGINAL PRODUCT TITLE *"
-            value={name}
-            onChange={setName}
-            placeholder="Paste the original supplier product title"
-          />
-
-          <Field
-            label="PRODUCT DESCRIPTION"
-            value={description}
-            onChange={setDescription}
-            placeholder="Paste original product description"
-            textarea
-          />
-
-          <Field
-            label="FEATURES"
-            value={features}
-            onChange={setFeatures}
-            placeholder="Materials, functions, size, style, etc."
-            textarea
-          />
-
-          <div className="twoColumns">
-            <Field
-              label="PRODUCT TYPE"
-              value={productType}
-              onChange={setProductType}
-              placeholder="e.g. Men's Watch"
-            />
-
-            <Field
-              label="BRAND"
-              value={brand}
-              onChange={setBrand}
-              placeholder="e.g. Pagani Design"
-            />
-
-            <Field
-              label="COLLECTION"
-              value={collection}
-              onChange={setCollection}
-              placeholder="Optional"
-            />
-
-            <Field
-              label="PRICE"
-              value={price}
-              onChange={setPrice}
-              placeholder="Optional"
-            />
-          </div>
-
-          <div className="actions">
-            <button
-              type="button"
-              className="primaryButton"
-              onClick={optimizeProduct}
-            >
-              Optimize Product
-            </button>
-
-            <button
-              type="button"
-              className="secondaryButton"
-              onClick={clearAll}
-            >
-              Clear
-            </button>
-          </div>
-        </section>
-
-        {optimized && (
-          <section
-            id="results"
-            className="card resultsCard"
-          >
-            <div className="step">02</div>
-
-            <div className="resultHeading">
-              <div>
-                <div className="status">READY</div>
-                <h2>Optimized listing</h2>
-              </div>
-            </div>
-
-            <div className="divider" />
-
-            <OutputBox
-              label="PRODUCT TITLE"
-              value={result.title}
-              max={65}
-            />
+        ) : (
+          <>
+            <OutputBox label="PRODUCT TITLE" value={result.title} />
 
             <OutputBox
               label="DESCRIPTION"
               value={result.description}
+              textarea
             />
 
             <OutputBox
@@ -572,127 +430,97 @@ export default function ProductOptimizer() {
             />
 
             <div className="preview">
-              <span className="previewLabel">
-                STORE PREVIEW
-              </span>
-
+              <span>STORE PREVIEW</span>
               <h3>{result.title}</h3>
-
               <p>{result.description}</p>
-
               <div className="checks">
-                <div>
-                  ✓ <span>TITLE</span>
-                </div>
-                <div>
-                  ✓ <span>SEO</span>
-                </div>
-                <div>
-                  ✓ <span>META</span>
-                </div>
-                <div>
-                  ✓ <span>CLEANED</span>
-                </div>
+                <div>✓ TITLE</div>
+                <div>✓ SEO</div>
+                <div>✓ META</div>
+                <div>✓ CLEANED</div>
               </div>
             </div>
-          </section>
+          </>
         )}
+      </section>
 
-        <footer>
-          Virello AI Optimizer · Built for cleaner,
-          more professional ecommerce listings.
-        </footer>
-      </main>
+      <footer>Virello AI Optimizer · Product content workflow</footer>
 
-      <style jsx global>{`
+      <style jsx>{`
         * {
           box-sizing: border-box;
-        }
-
-        html {
-          scroll-behavior: smooth;
         }
 
         body {
           margin: 0;
           background: #f5f5f3;
-          color: #101522;
-          font-family:
-            Inter,
-            -apple-system,
-            BlinkMacSystemFont,
-            "Segoe UI",
-            sans-serif;
-        }
-
-        button,
-        input,
-        textarea {
-          font: inherit;
+          color: #101010;
+          font-family: Arial, Helvetica, sans-serif;
         }
 
         .page {
           min-height: 100vh;
-          padding-bottom: 70px;
+          background: #f5f5f3;
         }
 
         .header {
-          min-height: 86px;
-          background: #0d0d0d;
+          background: #101010;
           color: white;
+          padding: 28px 6%;
+        }
+
+        .brand {
           display: flex;
           align-items: center;
           gap: 14px;
-          padding: 18px 28px;
         }
 
-        .brandMark {
-          width: 48px;
-          height: 48px;
-          border: 1px solid #666;
-          border-radius: 14px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-size: 27px;
+        .logo {
+          width: 52px;
+          height: 52px;
+          border: 1px solid #777;
+          border-radius: 15px;
+          display: grid;
+          place-items: center;
+          font-size: 28px;
           font-weight: 800;
         }
 
-        .brandName {
-          font-size: 20px;
-          font-weight: 800;
+        .brand strong {
+          display: block;
+          font-size: 22px;
           letter-spacing: 1px;
         }
 
-        .brandSub {
-          margin-top: 2px;
-          font-size: 10px;
-          letter-spacing: 5px;
+        .brand span {
+          display: block;
+          font-size: 11px;
+          letter-spacing: 4px;
           color: #aaa;
+          margin-top: 4px;
         }
 
         .hero {
-          max-width: 760px;
-          margin: 0 auto;
-          padding: 90px 24px 55px;
+          max-width: 900px;
+          margin: auto;
+          padding: 90px 6% 55px;
         }
 
-        .eyebrow {
+        .badge {
           display: inline-block;
+          padding: 12px 18px;
           border: 1px solid #ddd;
-          border-radius: 999px;
-          padding: 10px 18px;
-          background: white;
-          color: #59616d;
-          font-size: 12px;
-          font-weight: 800;
+          border-radius: 30px;
           letter-spacing: 3px;
+          font-size: 12px;
+          font-weight: 700;
+          background: white;
         }
 
         .hero h1 {
-          margin: 34px 0 28px;
-          font-size: clamp(48px, 8vw, 82px);
-          line-height: 0.94;
+          font-size: clamp(48px, 8vw, 88px);
+          line-height: 0.98;
+          margin: 35px 0 30px;
           letter-spacing: -4px;
         }
 
@@ -701,277 +529,222 @@ export default function ProductOptimizer() {
         }
 
         .hero p {
-          max-width: 650px;
-          margin: 0;
-          color: #62666d;
-          font-size: 21px;
-          line-height: 1.6;
+          font-size: 22px;
+          line-height: 1.55;
+          color: #666;
+          max-width: 720px;
         }
 
         .card {
-          width: min(760px, calc(100% - 32px));
-          margin: 0 auto 28px;
-          padding: 32px;
+          max-width: 900px;
+          margin: 25px auto;
+          padding: 45px;
           background: white;
           border: 1px solid #ddd;
           border-radius: 28px;
-          box-shadow: 0 12px 40px rgba(0, 0, 0, 0.04);
+          position: relative;
         }
 
-        .step {
-          color: #8a9098;
-          font-size: 12px;
-          letter-spacing: 3px;
-          margin-bottom: 12px;
-        }
-
-        .card h2 {
-          margin: 0;
-          font-size: 30px;
-          letter-spacing: -1px;
-        }
-
-        .divider {
-          height: 1px;
-          background: #e6e6e6;
-          margin: 30px 0;
-        }
-
-        .field {
-          margin-bottom: 22px;
-        }
-
-        .field label {
-          display: block;
-          margin-bottom: 9px;
-          color: #5e646c;
-          font-size: 12px;
-          font-weight: 800;
-          letter-spacing: 2px;
-        }
-
-        .field input,
-        .field textarea {
-          width: 100%;
-          border: 1px solid #d7d7d7;
-          border-radius: 14px;
-          background: #fafafa;
-          color: #111;
-          padding: 15px 16px;
-          outline: none;
-          transition: 0.2s ease;
-        }
-
-        .field textarea {
-          min-height: 145px;
-          resize: vertical;
-          line-height: 1.5;
-        }
-
-        .field input:focus,
-        .field textarea:focus {
-          background: white;
-          border-color: #222;
-          box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.06);
-        }
-
-        .twoColumns {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 0 18px;
-        }
-
-        .actions {
-          display: flex;
-          gap: 12px;
-          margin-top: 8px;
-        }
-
-        .primaryButton,
-        .secondaryButton {
-          border-radius: 14px;
-          padding: 15px 20px;
-          cursor: pointer;
-          font-weight: 800;
-        }
-
-        .primaryButton {
-          flex: 1;
-          border: 1px solid #111;
-          background: #111;
-          color: white;
-        }
-
-        .secondaryButton {
-          border: 1px solid #d2d2d2;
-          background: white;
-          color: #111;
-        }
-
-        .primaryButton:active,
-        .secondaryButton:active,
-        .copyButton:active {
-          transform: scale(0.98);
-        }
-
-        .resultHeading {
-          display: flex;
-          justify-content: space-between;
-          align-items: flex-start;
-        }
-
-        .status {
-          color: #555;
-          font-size: 11px;
-          font-weight: 800;
-          letter-spacing: 2px;
-          margin-bottom: 8px;
-        }
-
-        .outputBox {
-          margin-bottom: 22px;
-          border: 1px solid #ddd;
-          border-radius: 18px;
-          overflow: hidden;
-          background: #fff;
-        }
-
-        .outputHeader {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          gap: 10px;
-          padding: 14px 16px;
-          background: #fafafa;
-          border-bottom: 1px solid #e3e3e3;
-        }
-
-        .outputLabel {
-          color: #5d6269;
-          font-size: 11px;
-          font-weight: 900;
-          letter-spacing: 2px;
-        }
-
-        .counter {
-          margin-top: 5px;
-          color: #8a8f96;
-          font-size: 11px;
-        }
-
-        .copyButton {
-          flex-shrink: 0;
-          border: 1px solid #ccc;
-          background: white;
-          color: #111;
-          border-radius: 10px;
-          padding: 9px 15px;
-          cursor: pointer;
-          font-weight: 800;
-        }
-
-        .outputValue {
-          min-height: 70px;
-          padding: 20px 16px;
-          white-space: pre-wrap;
-          word-break: break-word;
-          line-height: 1.55;
-        }
-
-        .preview {
-          margin-top: 30px;
-          padding: 22px;
-          border-radius: 18px;
-          background: #f7f7f5;
-          border: 1px solid #e1e1df;
-        }
-
-        .previewLabel {
+        .sectionNumber {
           color: #777;
-          font-size: 11px;
-          font-weight: 900;
+          font-size: 13px;
+          letter-spacing: 3px;
+          margin-bottom: 15px;
+        }
+
+        .ready {
+          position: absolute;
+          top: 45px;
+          right: 45px;
+          color: #555;
+          font-size: 13px;
+          font-weight: 700;
           letter-spacing: 2px;
         }
 
-        .preview h3 {
-          margin: 15px 0 10px;
-          font-size: 23px;
+        h2 {
+          font-size: 36px;
+          margin: 0 0 35px;
         }
 
-        .preview p {
-          margin: 0;
-          color: #60656c;
+        label {
+          display: block;
+          margin: 25px 0 9px;
+          font-size: 12px;
+          font-weight: 800;
+          letter-spacing: 2px;
+          color: #666;
+        }
+
+        input,
+        textarea {
+          width: 100%;
+          border: 1px solid #d5d5d5;
+          border-radius: 14px;
+          padding: 17px;
+          font-size: 17px;
+          font-family: inherit;
+          background: #fff;
+          color: #111;
+        }
+
+        textarea {
+          resize: vertical;
           line-height: 1.55;
-          white-space: pre-wrap;
         }
 
-        .checks {
-          display: grid;
-          grid-template-columns: repeat(4, 1fr);
-          gap: 8px;
+        button {
+          width: 100%;
+          padding: 18px;
+          border-radius: 14px;
+          font-size: 17px;
+          font-weight: 700;
+          cursor: pointer;
           margin-top: 22px;
         }
 
-        .checks div {
-          padding: 10px;
-          border-radius: 10px;
-          background: white;
-          border: 1px solid #ddd;
-          color: #333;
-          font-size: 12px;
+        .primary {
+          background: #101010;
+          color: white;
+          border: 1px solid #101010;
         }
 
-        .checks span {
-          margin-left: 5px;
+        .secondary {
+          background: white;
+          color: #111;
+          border: 1px solid #ccc;
+        }
+
+        .empty {
+          padding: 50px 20px;
+          text-align: center;
+          border: 1px dashed #ccc;
+          border-radius: 18px;
+        }
+
+        .empty p {
+          color: #777;
+        }
+
+        .ready + h2 {
+          padding-right: 100px;
+        }
+
+        .output {
+          margin-top: 28px;
+          border: 1px solid #ddd;
+          border-radius: 18px;
+          overflow: hidden;
+        }
+
+        .outputHead {
+          padding: 17px 20px;
+          background: #fafafa;
+          border-bottom: 1px solid #ddd;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+        }
+
+        .outputLabel {
+          font-size: 12px;
           font-weight: 800;
+          letter-spacing: 2px;
+          color: #666;
+        }
+
+        .counter {
+          font-size: 12px;
+          color: #888;
+          margin-left: 10px;
+        }
+
+        .copy {
+          width: auto;
+          margin: 0;
+          padding: 8px 16px;
+          border: 1px solid #ccc;
+          background: white;
+          color: #111;
+          font-size: 14px;
+        }
+
+        .outputValue {
+          padding: 22px;
+          white-space: pre-wrap;
+          line-height: 1.6;
+          font-size: 18px;
+        }
+
+        .preview {
+          margin-top: 35px;
+          padding: 25px;
+          border: 1px solid #ddd;
+          border-radius: 18px;
+        }
+
+        .preview > span {
+          font-size: 11px;
+          letter-spacing: 2px;
+          color: #777;
+        }
+
+        .preview h3 {
+          font-size: 25px;
+          margin-bottom: 10px;
+        }
+
+        .preview p {
+          color: #555;
+          white-space: pre-wrap;
+          line-height: 1.55;
+        }
+
+        .checks {
+          display: flex;
+          gap: 12px;
+          flex-wrap: wrap;
+          margin-top: 20px;
+          font-size: 12px;
+          letter-spacing: 1px;
         }
 
         footer {
-          width: min(760px, calc(100% - 32px));
-          margin: 45px auto 0;
+          max-width: 900px;
+          margin: 40px auto;
+          padding: 30px 6%;
           text-align: center;
           color: #777;
           font-size: 13px;
         }
 
         @media (max-width: 600px) {
-          .header {
-            padding: 16px 20px;
+          .card {
+            margin: 18px;
+            padding: 25px;
+            border-radius: 22px;
           }
 
           .hero {
-            padding: 65px 20px 40px;
+            padding: 60px 25px 35px;
           }
 
           .hero h1 {
             font-size: 52px;
-            letter-spacing: -2.5px;
+            letter-spacing: -3px;
           }
 
           .hero p {
             font-size: 18px;
           }
 
-          .card {
-            padding: 22px;
-            border-radius: 22px;
-          }
-
-          .twoColumns {
-            grid-template-columns: 1fr;
-            gap: 0;
-          }
-
-          .actions {
-            flex-direction: column;
-          }
-
-          .checks {
-            grid-template-columns: 1fr 1fr;
+          .ready {
+            top: 30px;
+            right: 25px;
           }
         }
       `}</style>
-    </>
+    </main>
   );
 }
 
@@ -979,32 +752,39 @@ function OutputBox({
   label,
   value,
   max,
+  textarea = false,
 }: {
   label: string;
   value: string;
   max?: number;
+  textarea?: boolean;
 }) {
-  const count = value.length;
+  const [copied, setCopied] = useState(false);
+
+  async function copy() {
+    await navigator.clipboard.writeText(value);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1200);
+  }
 
   return (
-    <div className="outputBox">
-      <div className="outputHeader">
+    <div className="output">
+      <div className="outputHead">
         <div>
-          <div className="outputLabel">{label}</div>
-
-          {typeof max === "number" && (
-            <div className="counter">
-              {count}/{max}
-            </div>
-          )}
+          <span className="outputLabel">{label}</span>
+          {max ? (
+            <span className="counter">
+              {value.length}/{max}
+            </span>
+          ) : null}
         </div>
 
-        <CopyButton value={value} />
+        <button className="copy" onClick={copy}>
+          {copied ? "Copied" : "Copy"}
+        </button>
       </div>
 
-      <div className="outputValue">
-        {value || "—"}
-      </div>
+      <div className="outputValue">{value}</div>
     </div>
   );
 }
