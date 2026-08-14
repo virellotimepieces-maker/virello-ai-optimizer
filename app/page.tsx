@@ -994,6 +994,10 @@ export default function Home() {
           }
         }
       `}</style>
+      .announcement-bar {
+  background: #111 !important;
+  color: #fff !important;
+      }
     </main>
   );
           }
