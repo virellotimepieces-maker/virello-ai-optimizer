@@ -1,788 +1,498 @@
 "use client";
 
-import { useState } from "react";
-
-type ProductData = {
-  title: string;
-  price: string;
-  audience: string;
-  style: string;
-  imageCount: number;
-};
+import { useMemo, useState } from "react";
 
 type ProductResult = {
-  productTitle: string;
-  seoTitle: string;
+  title: string;
   description: string;
+  seoTitle: string;
   metaDescription: string;
-  highlights: string[];
-  faqs: { q: string; a: string }[];
+  bullets: string[];
 };
 
-const STOP_WORDS = new Set([
-  "2026",
-  "2025",
-  "new",
-  "design",
-  "top",
-  "best",
-  "original",
-  "fashion",
-  "luxury",
-  "men",
-  "mens",
-  "men's",
-  "women",
-  "womens",
-  "women's",
-  "unisex",
-  "watch",
-  "watches",
-  "clock",
-  "for",
-  "the",
-  "and",
-  "with",
-  "stainless",
-  "steel",
-  "waterproof",
-  "sport",
-  "quartz",
-  "chronograph",
-]);
+const cleanText = (value: string) =>
+  value.replace(/\s+/g, " ").trim();
 
-function cleanText(value: string) {
-  return value
-    .replace(/[|,;]+/g, " ")
-    .replace(/\s+/g, " ")
+const limitText = (value: string, max: number) => {
+  const clean = cleanText(value);
+
+  if (clean.length <= max) return clean;
+
+  const shortened = clean.slice(0, max + 1);
+  const lastSpace = shortened.lastIndexOf(" ");
+
+  return shortened
+    .slice(0, lastSpace > 0 ? lastSpace : max)
+    .replace(/[.,;:!?|-]+$/, "")
     .trim();
-}
+};
 
-function titleCase(value: string) {
-  return value
-    .toLowerCase()
-    .replace(/\b\w/g, (letter) => letter.toUpperCase());
-}
+function createProductTitle(original: string) {
+  const text = cleanText(original);
 
-function buildShortProductTitle(
-  sourceTitle: string,
-  audience: string
-) {
-  const source = cleanText(sourceTitle);
-  const lower = source.toLowerCase();
-  const parts: string[] = [];
+  const lower = text.toLowerCase();
 
-  if (/\bpagani\b/i.test(source)) {
+  let model = "";
+
+  const modelMatch = text.match(/\b(?:v\d+|v\s?\d+)\b/i);
+  if (modelMatch) model = modelMatch[0].replace(/\s+/g, "").toUpperCase();
+
+  let year = "";
+  const yearMatch = text.match(/\b20\d{2}\b/);
+  if (yearMatch) year = yearMatch[0];
+
+  const isWatch =
+    lower.includes("watch") ||
+    lower.includes("timepiece") ||
+    lower.includes("chronograph");
+
+  if (isWatch) {
+    const parts = [];
+
+    if (year) parts.push(year);
     parts.push("Pagani");
-  }
 
-  const model = source.match(
-    /\bV\d+(?:\s+[A-Za-z]+)?\b/i
-  );
+    if (model) parts.push(model);
 
-  if (model) {
-    parts.push(titleCase(model[0]));
-  }
-
-  if (/\bmoon\b/i.test(source)) {
-    parts.push("Moon");
-  }
-
-  for (const feature of [
-    "Chronograph",
-    "Automatic",
-    "Mechanical",
-    "Solar",
-    "GMT",
-  ]) {
-    if (lower.includes(feature.toLowerCase())) {
-      parts.push(feature);
-      break;
+    if (lower.includes("moon")) {
+      parts.push("Moon");
     }
+
+    parts.push("Men's Watch");
+
+    return parts.join(" ");
   }
 
-  const audienceLabel =
-    audience === "Women"
-      ? "Women's"
-      : audience === "Unisex"
-      ? "Unisex"
-      : "Men's";
+  const words = text
+    .replace(/[|,:;()[\]{}]/g, " ")
+    .split(/\s+/)
+    .filter(Boolean);
 
-  if (
-    !parts.some((part) =>
-      /men's|women's|unisex/i.test(part)
-    )
-  ) {
-    parts.push(audienceLabel);
-  }
-
-  if (!parts.some((part) => /watch/i.test(part))) {
-    parts.push("Watch");
-  }
-
-  if (parts.length >= 3) {
-    return Array.from(new Set(parts))
-      .slice(0, 6)
-      .join(" ");
-  }
-
-  const fallback = source
-    .split(" ")
-    .map((word) =>
-      word.replace(/[^a-zA-Z0-9'’/-]/g, "")
-    )
-    .filter(Boolean)
-    .filter(
-      (word) =>
-        !STOP_WORDS.has(word.toLowerCase())
-    )
-    .slice(0, 4)
-    .map(titleCase);
-
-  return Array.from(
-    new Set([
-      ...fallback,
-      audienceLabel,
-      "Watch",
-    ])
-  )
-    .slice(0, 6)
-    .join(" ");
+  return words.slice(0, 7).join(" ");
 }
 
-function makeSeoTitle(
-  productTitle: string,
-  audience: string
-) {
-  const gender =
+function createDescription(title: string, audience: string, style: string) {
+  const audienceText =
     audience === "Women"
-      ? "for Women"
-      : audience === "Unisex"
-      ? "for Everyone"
-      : "for Men";
+      ? "women"
+      : audience === "Men"
+      ? "men"
+      : "everyday wear";
 
-  const base = productTitle
-    .replace(
-      /\bMen's\b|\bWomen's\b|\bUnisex\b/gi,
-      ""
-    )
-    .replace(/\s+/g, " ")
-    .trim();
-
-  const candidates = [
-    `${base} ${gender} | Virello`,
-    `${base} ${gender}`,
-    `Shop ${base} ${gender}`,
-  ];
-
-  return (
-    candidates.find(
-      (text) => text.length <= 60
-    ) ??
-    candidates[1]
-      .slice(0, 60)
-      .trim()
-  );
-}
-
-function makeMetaDescription(
-  productTitle: string,
-  audience: string,
-  style: string
-) {
-  const stylePhrase =
+  const styleText =
     style === "Premium / Luxury"
       ? "a refined, premium look"
       : style === "Professional"
       ? "a polished professional look"
       : style === "Sport"
-      ? "a versatile sport-ready look"
+      ? "an active, versatile look"
       : style === "Gift"
-      ? "a thoughtful gift option"
+      ? "a thoughtful gifting option"
       : "an easy everyday style";
 
-  const audiencePhrase =
-    audience === "Women"
-      ? "women"
-      : audience === "Unisex"
-      ? "any wearer"
-      : "men";
-
-  const text =
-    `Shop the ${productTitle.toLowerCase()} for ${audiencePhrase}, ` +
-    `featuring ${stylePhrase}. ` +
-    `A versatile timepiece for business, everyday wear ` +
-    `and special occasions. Discover the collection today.`;
-
-  if (text.length <= 160) {
-    return text;
-  }
-
-  return `${text
-    .slice(0, 157)
-    .replace(/\s+\S*$/, "")}...`;
+  return `${title} is designed for ${styleText}, offering a clean and versatile look for ${audienceText}. Its balanced design makes it easy to pair with business attire, casual outfits, and special occasions.`;
 }
 
-function buildProduct(
-  data: ProductData
-): ProductResult {
-  const productTitle =
-    buildShortProductTitle(
-      data.title,
-      data.audience
-    );
+function createSeoTitle(title: string) {
+  const candidates = [
+    `${title} | Men's Luxury Watch`,
+    `${title} | Men's Premium Watch`,
+    `${title} | Luxury Men's Timepiece`,
+    `${title} | Premium Men's Timepiece`,
+  ];
 
-  const seoTitle =
-    makeSeoTitle(
-      productTitle,
-      data.audience
-    );
+  for (const candidate of candidates) {
+    if (candidate.length <= 60) {
+      return candidate;
+    }
+  }
 
-  const metaDescription =
-    makeMetaDescription(
-      productTitle,
-      data.audience,
-      data.style
-    );
+  return limitText(title, 60);
+}
 
-  const audienceText =
-    data.audience === "Women"
-      ? "women who appreciate understated style"
-      : data.audience === "Unisex"
-      ? "anyone who values a polished accessory"
-      : "men who appreciate a refined timepiece";
+function createMetaDescription(title: string, style: string) {
+  const styleText =
+    style === "Premium / Luxury"
+      ? "refined luxury styling"
+      : style === "Professional"
+      ? "a polished professional look"
+      : style === "Sport"
+      ? "versatile sport-inspired styling"
+      : style === "Gift"
+      ? "an elegant gifting option"
+      : "versatile everyday styling";
 
-  const description =
-    `Designed for ${audienceText}, this timepiece ` +
-    `brings a polished finish to your wardrobe ` +
-    `without feeling overdone. The balanced dial ` +
-    `and versatile profile make it easy to pair with ` +
-    `tailored business looks, smart-casual outfits ` +
-    `and evening wear.\n\n` +
-    `Wear it as a dependable everyday accessory ` +
-    `or choose it for a special occasion when you ` +
-    `want a clean, sophisticated finishing touch.`;
+  const candidates = [
+    `Discover the ${title}, designed with ${styleText}. A versatile timepiece for business, everyday wear and special occasions.`,
+    `Shop the ${title}, featuring ${styleText} for business, everyday wear and special occasions. Discover a polished timepiece today.`,
+    `Explore the ${title}, created for ${styleText}. An easy choice for everyday outfits, business looks and special occasions.`,
+  ];
 
-  return {
-    productTitle,
-    seoTitle,
-    description,
-    metaDescription,
+  for (const candidate of candidates) {
+    if (candidate.length <= 160) {
+      return candidate;
+    }
+  }
 
-    highlights: [
-      "Refined styling for a polished appearance",
-      "Versatile design for business and casual outfits",
-      "Comfort-focused profile for everyday wear",
-      "A sophisticated option for personal wear or gifting",
-    ],
+  return limitText(candidates[0], 160);
+}
 
-    faqs: [
-      {
-        q: "Is this watch suitable for everyday wear?",
-        a:
-          "Yes. The versatile profile works well " +
-          "with everyday outfits as well as more " +
-          "polished occasions.",
-      },
-      {
-        q: "Can it be worn with formal clothing?",
-        a:
-          "Yes. Its refined styling pairs naturally " +
-          "with business attire, dress shirts and " +
-          "formal looks.",
-      },
-      {
-        q: "Is it suitable as a gift?",
-        a:
-          "Yes. The clean, versatile styling makes " +
-          "it a thoughtful choice for birthdays, " +
-          "anniversaries and other occasions.",
-      },
-    ],
-  };
+function createBullets(style: string) {
+  if (style === "Sport") {
+    return [
+      "Versatile design for active everyday styling",
+      "Easy to pair with casual and sport-inspired outfits",
+      "Comfort-focused design for regular wear",
+      "A practical choice for personal use or gifting",
+    ];
+  }
+
+  if (style === "Professional") {
+    return [
+      "Polished design suited to professional settings",
+      "Easy to pair with business and formal attire",
+      "Versatile enough for everyday wear",
+      "A refined option for personal use or gifting",
+    ];
+  }
+
+  if (style === "Gift") {
+    return [
+      "Refined design suitable for gifting",
+      "Versatile style for different occasions",
+      "Easy to pair with casual or formal outfits",
+      "A timeless choice for someone special",
+    ];
+  }
+
+  return [
+    "Refined design for a polished appearance",
+    "Versatile styling for business and casual wear",
+    "Comfort-focused design for everyday use",
+    "A timeless option for personal wear or gifting",
+  ];
 }
 
 export default function Home() {
-  const [mode, setMode] =
-    useState<"edit" | "preview">("edit");
+  const [productTitle, setProductTitle] = useState("");
+  const [price, setPrice] = useState("129.99");
+  const [audience, setAudience] = useState("Men");
+  const [style, setStyle] = useState("Premium / Luxury");
+  const [imageCount, setImageCount] = useState(4);
 
-  const [title, setTitle] =
-    useState("");
+  const [result, setResult] = useState<ProductResult | null>(null);
+  const [generated, setGenerated] = useState(false);
 
-  const [price, setPrice] =
-    useState("129.99");
+  const generatedResult = useMemo(() => {
+    if (!productTitle.trim()) return null;
 
-  const [audience, setAudience] =
-    useState("Men");
+    const title = createProductTitle(productTitle);
+    const description = createDescription(title, audience, style);
+    const seoTitle = createSeoTitle(title);
+    const metaDescription = createMetaDescription(title, style);
+    const bullets = createBullets(style);
 
-  const [style, setStyle] =
-    useState("Premium / Luxury");
+    return {
+      title,
+      description,
+      seoTitle,
+      metaDescription,
+      bullets,
+    };
+  }, [productTitle, audience, style]);
 
-  const [imageCount, setImageCount] =
-    useState(4);
-
-  const [product, setProduct] =
-    useState<ProductResult | null>(null);
-
-  function generateProduct() {
-    if (!title.trim()) {
-      alert(
-        "Please enter a product title."
-      );
+  function generateProductPage() {
+    if (!productTitle.trim()) {
+      alert("Please enter your original product title.");
       return;
     }
 
-    setProduct(
-      buildProduct({
-        title,
-        price,
-        audience,
-        style,
-        imageCount,
-      })
-    );
+    if (!generatedResult) return;
 
-    setMode("preview");
+    setResult(generatedResult);
+    setGenerated(true);
+
+    setTimeout(() => {
+      document
+        .getElementById("preview")
+        ?.scrollIntoView({ behavior: "smooth" });
+    }, 100);
   }
 
+  function editProduct() {
+    setGenerated(false);
+    setResult(null);
+
+    window.scrollTo({
+      top: 0,
+      behavior: "smooth",
+    });
+  }
+
+  const activeResult = result || generatedResult;
+
   return (
-    <main className="app">
-
-      <header className="siteHeader">
-        <div className="container headerInner">
-          <div className="brand">
-            VIRELLO
-          </div>
-
-          <div className="brandSub">
-            AI PRODUCT OPTIMIZER
-          </div>
+    <main className="page">
+      <header className="header">
+        <div className="brand">
+          <div className="brand-name">VIRELLO</div>
+          <div className="brand-subtitle">AI PRODUCT OPTIMIZER</div>
         </div>
       </header>
 
-      {mode === "edit" && (
-        <section className="container editorPage">
+      {!generated ? (
+        <section className="editor">
+          <div className="eyebrow">Virello AI</div>
 
-          <div className="heroCopy">
-            <div className="eyebrow">
-              Virello AI
-            </div>
+          <h1>
+            Create a better
+            <br />
+            product page.
+          </h1>
 
-            <h1>
-              Create a better product page.
-            </h1>
+          <p className="intro">
+            Enter your product information and generate a complete,
+            product-specific ecommerce page.
+          </p>
 
-            <p>
-              Enter your product information
-              and generate a complete,
-              product-specific ecommerce page.
-            </p>
-          </div>
+          <div className="section-title">Product Information</div>
 
-          <div className="editorCard">
+          <label>Product Title</label>
+          <input
+            className="input"
+            value={productTitle}
+            onChange={(e) => setProductTitle(e.target.value)}
+            placeholder="Paste your original product title"
+          />
 
-            <h2>
-              Product Information
-            </h2>
-
-            <label className="label">
-              Product Title
-            </label>
-
+          <label>Product Price</label>
+          <div className="price-input">
+            <span>$</span>
             <input
-              className="input"
-              value={title}
-              onChange={(e) =>
-                setTitle(e.target.value)
-              }
-              placeholder="Paste your original product title"
+              value={price}
+              onChange={(e) => setPrice(e.target.value)}
+              inputMode="decimal"
             />
-
-            <label className="label">
-              Product Price
-            </label>
-
-            <div className="priceWrap">
-
-              <span>$</span>
-
-              <input
-                className="input priceInput"
-                value={price}
-                onChange={(e) =>
-                  setPrice(e.target.value)
-                }
-                inputMode="decimal"
-              />
-
-            </div>
-
-            <label className="label">
-              Target Audience
-            </label>
-
-            <div className="choiceGroup">
-
-              {[
-                "Women",
-                "Men",
-                "Unisex",
-              ].map((item) => (
-
-                <button
-                  key={item}
-                  onClick={() =>
-                    setAudience(item)
-                  }
-                  className={
-                    `choice${
-                      audience === item
-                        ? " active"
-                        : ""
-                    }`
-                  }
-                >
-                  {item}
-                </button>
-
-              ))}
-
-            </div>
-
-            <label className="label">
-              Copywriting
-            </label>
-
-            <div className="choiceGroup">
-
-              {[
-                "Premium / Luxury",
-                "Professional",
-                "Everyday",
-                "Casual",
-                "Sport",
-                "Gift",
-              ].map((item) => (
-
-                <button
-                  key={item}
-                  onClick={() =>
-                    setStyle(item)
-                  }
-                  className={
-                    `choice${
-                      style === item
-                        ? " active"
-                        : ""
-                    }`
-                  }
-                >
-                  {item}
-                </button>
-
-              ))}
-
-            </div>
-
-            <label className="label">
-              Visuals
-            </label>
-
-            <div className="muted">
-              Number of Product Images
-            </div>
-
-            <div className="choiceGroup">
-
-              {[0, 1, 2, 3, 4, 5, 6].map(
-                (number) => (
-
-                  <button
-                    key={number}
-                    onClick={() =>
-                      setImageCount(number)
-                    }
-                    className={
-                      `choice${
-                        imageCount === number
-                          ? " active"
-                          : ""
-                      }`
-                    }
-                  >
-                    {number}
-                  </button>
-
-                )
-              )}
-
-            </div>
-
-            <button
-              className="primaryButton"
-              onClick={generateProduct}
-            >
-              Generate AI Product Page →
-            </button>
-
           </div>
+
+          <label>Target Audience</label>
+          <div className="button-row">
+            {["Women", "Men", "Unisex"].map((item) => (
+              <button
+                key={item}
+                className={audience === item ? "choice active" : "choice"}
+                onClick={() => setAudience(item)}
+              >
+                {item}
+              </button>
+            ))}
+          </div>
+
+          <label>Copywriting</label>
+          <div className="button-row wrap">
+            {[
+              "Premium / Luxury",
+              "Professional",
+              "Everyday",
+              "Casual",
+              "Sport",
+              "Gift",
+            ].map((item) => (
+              <button
+                key={item}
+                className={style === item ? "choice active" : "choice"}
+                onClick={() => setStyle(item)}
+              >
+                {item}
+              </button>
+            ))}
+          </div>
+
+          <label>Visuals</label>
+
+          <div className="visual-label">
+            Number of Product Images
+          </div>
+
+          <div className="button-row">
+            {[0, 1, 2, 3, 4, 5, 6].map((number) => (
+              <button
+                key={number}
+                className={
+                  imageCount === number
+                    ? "image-choice active"
+                    : "image-choice"
+                }
+                onClick={() => setImageCount(number)}
+              >
+                {number}
+              </button>
+            ))}
+          </div>
+
+          <button className="generate" onClick={generateProductPage}>
+            Generate AI Product Page →
+          </button>
         </section>
-      )}
-
-      {mode === "preview" &&
-        product && (
-
-        <section className="container previewPage">
-
-          <button
-            className="backButton"
-            onClick={() =>
-              setMode("edit")
-            }
-          >
+      ) : (
+        <section id="preview" className="preview-page">
+          <button className="edit-button" onClick={editProduct}>
             ← Edit Product
           </button>
 
-          <div className="previewHeader">
-            VIRELLO
-          </div>
+          <div className="preview-brand">VIRELLO</div>
 
-          <div className="productGrid">
+          <div className="product-layout">
+            <div className="visual-column">
+              <div className="image-main">
+                {imageCount > 0 ? "Product Image" : "No Image"}
+              </div>
 
-            <div className="visualColumn">
-
-              {imageCount > 0 ? (
-                <div className="mainImage">
-                  Product Image
-                </div>
-              ) : (
-                <div className="mainImage noImage">
-                  No product images selected
-                </div>
-              )}
-
-              {Array.from({
-                length:
-                  Math.max(
-                    0,
-                    imageCount - 1
-                  ),
-              }).map(
+              {Array.from({ length: Math.max(0, imageCount - 1) }).map(
                 (_, index) => (
-
-                  <div
-                    className="additionalImage"
-                    key={index}
-                  >
+                  <div className="image-small" key={index}>
                     Additional Product View
                   </div>
-
                 )
               )}
-
             </div>
 
-            <div className="productInfo">
+            <div className="product-info">
+              <div className="collection">Premium Collection</div>
 
-              <div className="collectionLabel">
-                Premium Collection
-              </div>
+              <h2>{activeResult?.title}</h2>
 
-              <h1 className="productTitle">
-                {product.productTitle}
-              </h1>
-
-              <div className="price">
-                ${price}
-              </div>
+              <div className="product-price">${price}</div>
 
               <p className="description">
-                {product.description}
+                {activeResult?.description}
               </p>
 
-              <div className="highlights">
-
-                {product.highlights.map(
-                  (item) => (
-
-                    <div key={item}>
-                      ✓ {item}
-                    </div>
-
-                  )
-                )}
-
+              <div className="bullets">
+                {activeResult?.bullets.map((bullet) => (
+                  <div key={bullet}>✓ {bullet}</div>
+                ))}
               </div>
 
-              <button className="addButton">
-                ADD TO CART
-              </button>
+              <button className="cart-button">ADD TO CART</button>
 
-              <div className="trustRow">
-
-                <span>
-                  Secure Checkout
-                </span>
-
-                <span>
-                  Easy Returns
-                </span>
-
-                <span>
-                  Support
-                </span>
-
+              <div className="trust">
+                <span>Secure Checkout</span>
+                <span>Easy Returns</span>
+                <span>Support</span>
               </div>
-
             </div>
           </div>
 
-          <section className="contentSection">
+          <section className="standout">
+            <div className="section-kicker">Virello Product Experience</div>
 
-            <h2>
-              Why it stands out
-            </h2>
+            <h3>
+              Make the product easier to
+              <br className="desktop-break" />
+              understand. Easier to want.
+            </h3>
 
-            <p>
-              A versatile timepiece designed
-              to complement your wardrobe
-              with a polished and confident finish.
-            </p>
-
+            <button className="cart-button">ADD TO CART</button>
           </section>
 
-          <section className="contentSection">
-
-            <h2>
+          <section className="faq">
+            <div className="section-kicker">
               Frequently Asked Questions
-            </h2>
+            </div>
 
-            {product.faqs.map(
-              (faq) => (
+            <h3>Questions, answered.</h3>
 
-                <details
-                  key={faq.q}
-                  className="faqItem"
-                >
+            <details>
+              <summary>
+                Is this watch suitable for everyday wear?
+              </summary>
+              <p>
+                Yes. Its versatile styling makes it suitable for
+                everyday outfits and regular use.
+              </p>
+            </details>
 
-                  <summary>
-                    {faq.q}
-                  </summary>
+            <details>
+              <summary>
+                Can it be worn with formal clothing?
+              </summary>
+              <p>
+                Yes. The refined design pairs well with business
+                and formal clothing.
+              </p>
+            </details>
 
-                  <p>
-                    {faq.a}
-                  </p>
-
-                </details>
-
-              )
-            )}
-
+            <details>
+              <summary>Is it suitable as a gift?</summary>
+              <p>
+                Yes. Its versatile and polished design makes it a
+                thoughtful gifting option.
+              </p>
+            </details>
           </section>
 
-          <section className="seoSection">
+          <section className="seo-section">
+            <h3>SEO Information</h3>
 
-            <h2>
-              SEO Information
-            </h2>
+            <div className="seo-card">
+              <div className="seo-label">SEO Title</div>
 
-            <div className="seoBlock">
-
-              <h3>
-                SEO Title
-              </h3>
-
-              <div className="seoBox">
-                {product.seoTitle}
+              <div className="seo-value">
+                {activeResult?.seoTitle}
               </div>
 
               <div
                 className={
-                  `counter${
-                    product.seoTitle.length > 60
-                      ? " over"
-                      : ""
-                  }`
+                  (activeResult?.seoTitle.length || 0) <= 60
+                    ? "counter good"
+                    : "counter bad"
                 }
               >
-                {product.seoTitle.length}/60
+                {activeResult?.seoTitle.length || 0}/60
               </div>
-
-              <div className="helper">
-                Short search-focused title.
-                Kept separate from the
-                product description.
-              </div>
-
             </div>
 
-            <div className="seoBlock">
+            <div className="seo-card">
+              <div className="seo-label">Meta Description</div>
 
-              <h3>
-                Meta Description
-              </h3>
-
-              <div className="seoBox">
-                {product.metaDescription}
+              <div className="seo-value">
+                {activeResult?.metaDescription}
               </div>
 
               <div
                 className={
-                  `counter${
-                    product.metaDescription.length > 160
-                      ? " over"
-                      : ""
-                  }`
+                  (activeResult?.metaDescription.length || 0) <= 160
+                    ? "counter good"
+                    : "counter bad"
                 }
               >
-                {product.metaDescription.length}/160
+                {activeResult?.metaDescription.length || 0}/160
               </div>
-
-              <div className="helper">
-                Unique search snippet with
-                different wording and clear
-                shopping intent.
-              </div>
-
             </div>
-
           </section>
-
-          <section className="finalCta">
-
-            <div className="eyebrow">
-              VIRELLO PRODUCT EXPERIENCE
-            </div>
-
-            <h2>
-              Make the product easier
-              to understand. Easier to want.
-            </h2>
-
-            <button className="addButton">
-              ADD TO CART
-            </button>
-
-          </section>
-
         </section>
       )}
 
       <style jsx global>{`
-
         * {
           box-sizing: border-box;
         }
 
-        html,
-        body {
-          margin: 0;
-          padding: 0;
+        html {
+          scroll-behavior: smooth;
         }
 
         body {
-          background: #ffffff;
-          color: #18181b;
+          margin: 0;
+          background: #f7f7f5;
+          color: #171717;
+          font-family:
+            Inter,
+            -apple-system,
+            BlinkMacSystemFont,
+            "Segoe UI",
+            sans-serif;
         }
 
         button,
@@ -790,515 +500,414 @@ export default function Home() {
           font: inherit;
         }
 
-        .app {
+        button {
+          cursor: pointer;
+        }
+
+        .page {
           min-height: 100vh;
-          background: #fff;
-          color: #18181b;
-          font-family:
-            Inter,
-            ui-sans-serif,
-            system-ui,
-            -apple-system,
-            BlinkMacSystemFont,
-            "Segoe UI",
-            sans-serif;
+          width: 100%;
+          overflow-x: hidden;
         }
 
-        .container {
-          width: min(
-            1100px,
-            calc(100% - 48px)
-          );
-          margin: 0 auto;
+        .header {
+          width: 100%;
+          padding: 28px 5vw 18px;
         }
 
-        .siteHeader {
-          border-bottom:
-            1px solid #e5e7eb;
+        .brand-name {
+          font-size: 20px;
+          font-weight: 700;
+          letter-spacing: 0.08em;
         }
 
-        .headerInner {
-          padding: 22px 0;
-        }
-
-        .brand {
-          font-size: 12px;
-          font-weight: 800;
-          letter-spacing: .16em;
-        }
-
-        .brandSub {
+        .brand-subtitle {
           margin-top: 4px;
-          font-size: 12px;
-          color: #71717a;
-          letter-spacing: .08em;
+          font-size: 13px;
+          letter-spacing: 0.06em;
         }
 
-        .editorPage {
-          padding: 70px 0;
-          max-width: 900px;
-        }
-
-        .heroCopy {
-          margin-bottom: 45px;
+        .editor {
+          width: min(900px, 90vw);
+          margin: 60px auto 100px;
         }
 
         .eyebrow {
-          font-size: 14px;
-          font-weight: 700;
-          color: #71717a;
+          font-size: 17px;
+          margin-bottom: 36px;
         }
 
-        .heroCopy h1 {
-          margin: 18px 0 0;
-          max-width: 760px;
-          font-size:
-            clamp(42px, 7vw, 76px);
-          line-height: .98;
-          letter-spacing: -.055em;
-        }
-
-        .heroCopy p {
-          max-width: 650px;
-          margin: 28px 0 0;
-          color: #52525b;
-          font-size: 18px;
-          line-height: 1.6;
-        }
-
-        .editorCard {
-          padding: 28px;
-          border:
-            1px solid #e4e4e7;
-          border-radius: 20px;
-          background: #fafafa;
-        }
-
-        .editorCard h2 {
+        h1 {
           margin: 0;
-          font-size: 22px;
+          font-size: clamp(48px, 8vw, 92px);
+          line-height: 0.98;
+          letter-spacing: -0.055em;
         }
 
-        .label {
+        .intro {
+          max-width: 720px;
+          margin: 38px 0 55px;
+          font-size: 21px;
+          line-height: 1.45;
+        }
+
+        .section-title {
+          font-size: 21px;
+          font-weight: 600;
+          margin-bottom: 28px;
+        }
+
+        label,
+        .visual-label {
           display: block;
-          margin: 24px 0 9px;
-          font-size: 14px;
-          font-weight: 700;
+          font-size: 17px;
+          margin: 22px 0 9px;
         }
 
-        .input {
+        .input,
+        .price-input {
           width: 100%;
-          min-width: 0;
-          padding: 14px 15px;
-          border:
-            1px solid #d4d4d8;
-          border-radius: 10px;
-          background: #fff;
-          color: #18181b;
-          font-size: 16px;
+          min-height: 54px;
+          border: 1px solid #bdbdbd;
+          background: white;
+          border-radius: 8px;
+          padding: 0 16px;
+          font-size: 17px;
+          outline: none;
         }
 
-        .input:focus {
-          outline:
-            2px solid #18181b;
-          outline-offset: 1px;
+        .input:focus,
+        .price-input:focus-within {
+          border-color: #111;
         }
 
-        .priceWrap {
-          position: relative;
-        }
-
-        .priceWrap > span {
-          position: absolute;
-          left: 15px;
-          top: 14px;
-          color: #71717a;
-        }
-
-        .priceInput {
-          padding-left: 30px;
-        }
-
-        .choiceGroup {
+        .price-input {
           display: flex;
-          flex-wrap: wrap;
-          gap: 8px;
+          align-items: center;
+          gap: 4px;
         }
 
-        .choice {
-          padding: 10px 15px;
-          border-radius: 9px;
-          border:
-            1px solid #d4d4d8;
-          background: #fff;
-          color: #18181b;
-          cursor: pointer;
-          font-size: 14px;
-        }
-
-        .choice.active {
-          border-color: #18181b;
-          background: #18181b;
-          color: #fff;
-          font-weight: 700;
-        }
-
-        .muted {
-          margin-bottom: 10px;
-          color: #71717a;
-          font-size: 14px;
-        }
-
-        .primaryButton,
-        .addButton {
+        .price-input input {
           border: 0;
-          border-radius: 10px;
-          background: #18181b;
-          color: #fff;
-          font-weight: 700;
-          cursor: pointer;
-        }
-
-        .primaryButton {
+          outline: 0;
           width: 100%;
-          margin-top: 32px;
-          padding: 17px 22px;
-          font-size: 16px;
+          font-size: 17px;
         }
 
-        .previewPage {
-          padding: 24px 0 80px;
+        .button-row {
+          display: flex;
+          gap: 8px;
+          flex-wrap: wrap;
         }
 
-        .backButton {
-          margin-bottom: 35px;
-          padding: 10px 16px;
-          border:
-            1px solid #d4d4d8;
-          border-radius: 10px;
-          background: #fff;
-          color: #18181b;
-          cursor: pointer;
+        .choice,
+        .image-choice {
+          min-height: 44px;
+          padding: 7px 15px;
+          border: 1px solid #999;
+          border-radius: 7px;
+          background: white;
         }
 
-        .previewHeader {
-          padding-top: 30px;
-          border-top:
-            1px solid #e4e4e7;
-          font-size: 12px;
-          font-weight: 800;
-          letter-spacing: .14em;
+        .choice.active,
+        .image-choice.active {
+          background: #171717;
+          color: white;
+          border-color: #171717;
         }
 
-        .productGrid {
+        .generate {
+          margin-top: 45px;
+          min-height: 56px;
+          padding: 0 24px;
+          border: 0;
+          border-radius: 8px;
+          background: #171717;
+          color: white;
+          font-weight: 600;
+          font-size: 17px;
+        }
+
+        .generate:hover {
+          opacity: 0.9;
+        }
+
+        .preview-page {
+          width: min(1200px, 92vw);
+          margin: 25px auto 100px;
+        }
+
+        .edit-button {
+          background: white;
+          border: 1px solid #999;
+          border-radius: 7px;
+          padding: 10px 17px;
+        }
+
+        .preview-brand {
+          margin: 35px 0 25px;
+          font-size: 13px;
+          letter-spacing: 0.08em;
+          font-weight: 700;
+        }
+
+        .product-layout {
           display: grid;
-          grid-template-columns:
-            minmax(0, 1fr)
-            minmax(0, 1fr);
-          gap:
-            clamp(32px, 5vw, 55px);
-          margin-top: 35px;
+          grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+          gap: clamp(30px, 6vw, 90px);
           align-items: start;
         }
 
-        .visualColumn,
-        .productInfo {
+        .visual-column {
           min-width: 0;
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 14px;
         }
 
-        .mainImage,
-        .additionalImage {
+        .image-main {
+          grid-column: 1 / -1;
+          aspect-ratio: 1 / 1;
+          background: #e9e9e9;
+          border-radius: 22px;
           display: flex;
           align-items: center;
           justify-content: center;
-          overflow: hidden;
+          color: #777;
+          font-size: 18px;
+        }
+
+        .image-small {
+          aspect-ratio: 1 / 1;
+          background: #ededed;
           border-radius: 18px;
-          background:
-            linear-gradient(
-              135deg,
-              #f4f4f5,
-              #e4e4e7
-            );
-          color: #71717a;
-          text-align: center;
-        }
-
-        .mainImage {
-          aspect-ratio: 1 / 1;
-        }
-
-        .mainImage.noImage {
-          background: #fafafa;
-          border:
-            1px dashed #d4d4d8;
-        }
-
-        .additionalImage {
-          aspect-ratio: 1 / 1;
-          margin-top: 12px;
-          border-radius: 14px;
-          background: #f4f4f5;
-          font-size: 13px;
-        }
-
-        .collectionLabel {
-          margin-bottom: 18px;
-          color: #71717a;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: #777;
           font-size: 14px;
+          text-align: center;
+          padding: 10px;
         }
 
-        .productTitle {
-          margin: 0 0 25px;
-          max-width: 680px;
-          font-size:
-            clamp(36px, 5vw, 62px);
-          line-height: 1.02;
-          letter-spacing: -.045em;
+        .product-info {
+          min-width: 0;
+        }
+
+        .collection {
+          font-size: 18px;
+          color: #777;
+          margin-bottom: 20px;
+        }
+
+        .product-info h2 {
+          margin: 0;
+          max-width: 650px;
+          font-size: clamp(40px, 5vw, 76px);
+          line-height: 0.98;
+          letter-spacing: -0.05em;
           overflow-wrap: anywhere;
         }
 
-        .price {
-          margin-bottom: 28px;
-          font-size: 25px;
-          font-weight: 600;
+        .product-price {
+          margin-top: 28px;
+          font-size: 24px;
         }
 
         .description {
-          margin: 0;
-          color: #52525b;
-          font-size: 18px;
-          line-height: 1.7;
-          white-space: pre-line;
-        }
-
-        .highlights {
           margin-top: 30px;
-        }
-
-        .highlights div {
-          margin-bottom: 12px;
-          font-size: 16px;
-        }
-
-        .addButton {
-          margin-top: 25px;
-          padding: 16px 28px;
-          font-size: 16px;
-        }
-
-        .trustRow {
-          display: grid;
-          grid-template-columns:
-            repeat(
-              3,
-              minmax(0, 1fr)
-            );
-          gap: 12px;
-          margin-top: 25px;
-          padding-top: 20px;
-          border-top:
-            1px solid #e4e4e7;
-          color: #52525b;
-          font-size: 13px;
-        }
-
-        .contentSection,
-        .seoSection {
-          margin-top: 65px;
-          padding-top: 45px;
-          border-top:
-            1px solid #e4e4e7;
-        }
-
-        .contentSection h2,
-        .seoSection h2 {
-          margin: 0 0 15px;
-          font-size:
-            clamp(30px, 4vw, 36px);
-          letter-spacing: -.03em;
-        }
-
-        .contentSection > p {
-          max-width: 720px;
-          margin: 0;
-          color: #52525b;
-          font-size: 17px;
-          line-height: 1.7;
-        }
-
-        .faqItem {
-          padding: 20px 0;
-          border-bottom:
-            1px solid #e4e4e7;
-        }
-
-        .faqItem summary {
-          cursor: pointer;
-          font-size: 17px;
-          font-weight: 600;
-        }
-
-        .faqItem p {
-          margin: 12px 0 0;
-          color: #52525b;
+          max-width: 650px;
+          font-size: 19px;
           line-height: 1.6;
         }
 
-        .seoBlock {
-          margin-top: 30px;
+        .bullets {
+          margin-top: 28px;
+          display: grid;
+          gap: 9px;
+          font-size: 17px;
+          line-height: 1.45;
         }
 
-        .seoBlock h3 {
-          margin: 0 0 8px;
-          font-size: 20px;
+        .cart-button {
+          margin-top: 28px;
+          min-height: 48px;
+          padding: 0 22px;
+          background: #171717;
+          color: white;
+          border: 0;
+          border-radius: 7px;
+          font-weight: 600;
         }
 
-        .seoBox {
-          padding: 18px;
-          border-radius: 10px;
-          background: #f4f4f5;
-          line-height: 1.5;
+        .trust {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 18px;
+          margin-top: 20px;
+          color: #555;
+          font-size: 14px;
+        }
+
+        .standout,
+        .faq,
+        .seo-section {
+          margin-top: 100px;
+          border-top: 1px solid #d5d5d5;
+          padding-top: 45px;
+        }
+
+        .section-kicker {
+          color: #666;
+          font-size: 17px;
+        }
+
+        .standout h3,
+        .faq h3,
+        .seo-section > h3 {
+          margin: 25px 0;
+          font-size: clamp(38px, 5vw, 68px);
+          line-height: 1;
+          letter-spacing: -0.045em;
+        }
+
+        details {
+          border-top: 1px solid #ccc;
+          padding: 20px 0;
+        }
+
+        details:last-child {
+          border-bottom: 1px solid #ccc;
+        }
+
+        summary {
+          cursor: pointer;
+          font-size: 18px;
+          font-weight: 500;
+        }
+
+        details p {
+          max-width: 700px;
+          line-height: 1.6;
+          color: #555;
+        }
+
+        .seo-card {
+          margin-top: 28px;
+          background: white;
+          border-radius: 18px;
+          padding: 28px;
+        }
+
+        .seo-label {
+          font-size: 18px;
+          font-weight: 700;
+          margin-bottom: 18px;
+        }
+
+        .seo-value {
+          font-size: 18px;
+          line-height: 1.55;
           overflow-wrap: anywhere;
         }
 
         .counter {
-          margin-top: 7px;
-          color: #71717a;
-          font-size: 13px;
+          margin-top: 14px;
+          font-size: 14px;
         }
 
-        .counter.over {
-          color: #b91c1c;
+        .counter.good {
+          color: #26734d;
+        }
+
+        .counter.bad {
+          color: #b42318;
           font-weight: 700;
         }
 
-        .helper {
-          margin-top: 6px;
-          color: #71717a;
-          font-size: 12px;
-          line-height: 1.5;
-        }
-
-        .finalCta {
-          margin-top: 30px;
-          padding: 50px 0 0;
-          border-top:
-            1px solid #e4e4e7;
-          text-align: center;
-        }
-
-        .finalCta h2 {
-          max-width: 700px;
-          margin: 20px auto;
-          font-size:
-            clamp(34px, 5vw, 56px);
-          line-height: 1.02;
-          letter-spacing: -.04em;
-        }
-
-        @media (max-width: 760px) {
-
-          .container {
-            width:
-              min(
-                100% - 28px,
-                1100px
-              );
+        @media (max-width: 800px) {
+          .header {
+            padding: 20px 5vw 10px;
           }
 
-          .headerInner {
-            padding: 18px 0;
+          .editor {
+            width: 90vw;
+            margin-top: 45px;
           }
 
-          .editorPage {
-            padding: 42px 0;
+          .intro {
+            font-size: 18px;
           }
 
-          .heroCopy {
-            margin-bottom: 30px;
-          }
-
-          .heroCopy h1 {
-            font-size:
-              clamp(
-                42px,
-                13vw,
-                58px
-              );
-          }
-
-          .heroCopy p {
-            font-size: 16px;
-          }
-
-          .editorCard {
-            padding: 20px;
-            border-radius: 16px;
-          }
-
-          .productGrid {
+          .product-layout {
             grid-template-columns: 1fr;
-            gap: 34px;
+            gap: 45px;
           }
 
-          .productTitle {
-            font-size:
-              clamp(
-                38px,
-                12vw,
-                54px
-              );
+          .visual-column {
+            order: 1;
+          }
+
+          .product-info {
+            order: 2;
+          }
+
+          .product-info h2 {
+            font-size: clamp(42px, 12vw, 64px);
           }
 
           .description {
             font-size: 17px;
           }
 
-          .trustRow {
+          .standout,
+          .faq,
+          .seo-section {
+            margin-top: 70px;
+          }
+        }
+
+        @media (max-width: 480px) {
+          h1 {
+            font-size: 48px;
+          }
+
+          .preview-page {
+            width: 92vw;
+          }
+
+          .visual-column {
             grid-template-columns: 1fr;
-            gap: 8px;
           }
 
-          .trustRow span {
-            padding: 5px 0;
+          .image-main {
+            grid-column: auto;
           }
 
-          .seoBox {
-            font-size: 15px;
+          .image-small {
+            aspect-ratio: 1.2 / 1;
           }
 
-          .finalCta h2 {
-            font-size: 40px;
-          }
-        }
-
-        @media (max-width: 420px) {
-
-          .container {
-            width:
-              calc(100% - 22px);
+          .product-info h2 {
+            font-size: 43px;
+            line-height: 1.02;
           }
 
-          .editorCard {
-            padding: 16px;
+          .standout h3,
+          .faq h3,
+          .seo-section > h3 {
+            font-size: 42px;
           }
 
-          .choice {
-            padding: 9px 12px;
+          .desktop-break {
+            display: none;
           }
 
-          .primaryButton,
-          .addButton {
-            width: 100%;
-          }
-
-          .productTitle {
-            font-size: 40px;
+          .seo-card {
+            padding: 20px;
           }
         }
-
       `}</style>
-
     </main>
   );
 }
