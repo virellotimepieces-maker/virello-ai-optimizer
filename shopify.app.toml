@@ -1,7 +1,7 @@
 name = "virello-ai-optimizer"
 client_id = ""
 application_url = "https://virello-ai-optimizer.vercel.app"
-embedded = false
+embedded = true
 
 [access_scopes]
 scopes = "read_products,write_products"
