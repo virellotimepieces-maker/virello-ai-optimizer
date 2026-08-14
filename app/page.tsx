@@ -1,24 +1,281 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
-function clean(value: string) {
-  return value.replace(/\s+/g, " ").trim();
+type FieldProps = {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  textarea?: boolean;
+};
+
+function Field({
+  label,
+  value,
+  onChange,
+  placeholder,
+  textarea = false,
+}: FieldProps) {
+  return (
+    <div className="field">
+      <label>{label}</label>
+
+      {textarea ? (
+        <textarea
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder}
+          rows={6}
+        />
+      ) : (
+        <input
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder}
+        />
+      )}
+    </div>
+  );
 }
 
-function limit(value: string, max: number) {
-  const text = clean(value);
+function CopyButton({ value }: { value: string }) {
+  const [copied, setCopied] = useState(false);
 
-  if (text.length <= max) return text;
+  async function copyText() {
+    if (!value) return;
 
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(true);
+
+      setTimeout(() => {
+        setCopied(false);
+      }, 1500);
+    } catch {
+      setCopied(false);
+    }
+  }
+
+  return (
+    <button type="button" className="copyButton" onClick={copyText}>
+      {copied ? "Copied" : "Copy"}
+    </button>
+  );
+}
+
+function limit(text: string, max: number) {
+  return text.trim().slice(0, max).trim();
+}
+
+function cleanText(text: string) {
   return text
-    .slice(0, max)
-    .replace(/\s+\S*$/, "")
+    .replace(/\b(19|20)\d{2}\b/gi, "")
+    .replace(/\bnew\b/gi, "")
+    .replace(/\bnewest\b/gi, "")
+    .replace(/\blatest\b/gi, "")
+    .replace(/\bhot\b/gi, "")
+    .replace(/\btop\b/gi, "")
+    .replace(/\bbest seller\b/gi, "")
+    .replace(/\bbest selling\b/gi, "")
+    .replace(/\btop selling\b/gi, "")
+    .replace(/\bhigh quality\b/gi, "")
+    .replace(/\bpremium quality\b/gi, "")
+    .replace(/\bpremium\b/gi, "")
+    .replace(/\bluxury\b/gi, "")
+    .replace(/\bcheap\b/gi, "")
+    .replace(/\bwholesale\b/gi, "")
+    .replace(/\bfree shipping\b/gi, "")
+    .replace(/\bfor men\b/gi, "Men's")
+    .replace(/\bfor women\b/gi, "Women's")
+    .replace(/\bmen's watches\b/gi, "Men's Watch")
+    .replace(/\bwomen's watches\b/gi, "Women's Watch")
+    .replace(/\bwatches\b/gi, "Watch")
+    .replace(/\s+/g, " ")
+    .replace(/\s*[-|–—:]+\s*/g, " ")
+    .replace(/[|]+/g, " ")
     .trim();
 }
 
-function slugify(value: string) {
-  return clean(value)
+function makeCleanTitle(
+  name: string,
+  productType: string,
+  brand: string
+) {
+  let title = cleanText(name);
+
+  const lower = title.toLowerCase();
+
+  const genericWords = [
+    "product",
+    "item",
+    "fashion",
+    "style",
+    "design",
+  ];
+
+  genericWords.forEach((word) => {
+    const regex = new RegExp(`\\b${word}\\b`, "gi");
+    title = title.replace(regex, "");
+  });
+
+  title = title.replace(/\s+/g, " ").trim();
+
+  /*
+   * Keep the meaningful supplier title.
+   * The brand field is intentionally NOT automatically
+   * added to the title so the optimizer stays generic.
+   */
+  if (!title) {
+    title = productType.trim() || "Product";
+  }
+
+  /*
+   * Remove obvious duplicated words.
+   */
+  const words = title.split(" ");
+  const seen = new Set<string>();
+
+  const uniqueWords = words.filter((word) => {
+    const key = word.toLowerCase().replace(/[^\w']/g, "");
+
+    if (!key) return false;
+
+    if (seen.has(key)) return false;
+
+    seen.add(key);
+    return true;
+  });
+
+  title = uniqueWords.join(" ").trim();
+
+  /*
+   * If the title is still empty, use the product type.
+   */
+  if (!title) {
+    title = productType.trim() || "Product";
+  }
+
+  /*
+   * Keep product titles readable and under 65 characters.
+   */
+  if (title.length > 65) {
+    title = title
+      .slice(0, 65)
+      .replace(/\s+\S*$/, "")
+      .trim();
+  }
+
+  return title;
+}
+
+function makeSeoTitle(title: string, productType: string) {
+  let seo = cleanText(title);
+
+  /*
+   * Do not add Virello or Horizon to the SEO title.
+   * Keep it focused on the actual product.
+   */
+  if (!seo) {
+    seo = productType.trim() || "Product";
+  }
+
+  return limit(seo, 50);
+}
+
+function makeMetaDescription(
+  title: string,
+  productType: string
+) {
+  const base =
+    title ||
+    productType ||
+    "quality products";
+
+  const description =
+    `Shop ${base} with a clean design, practical features, and everyday appeal.`;
+
+  return limit(description, 160);
+}
+
+function makeKeywords(
+  title: string,
+  productType: string,
+  brand: string
+) {
+  const source = `${title} ${productType} ${brand}`;
+
+  const words = source
+    .toLowerCase()
+    .replace(/[^\w\s'-]/g, " ")
+    .split(/\s+/)
+    .filter(Boolean);
+
+  const stopWords = new Set([
+    "the",
+    "and",
+    "for",
+    "with",
+    "from",
+    "new",
+    "top",
+    "best",
+    "product",
+    "item",
+    "of",
+    "to",
+    "a",
+    "an",
+  ]);
+
+  const unique: string[] = [];
+
+  for (const word of words) {
+    if (stopWords.has(word)) continue;
+    if (word.length < 3) continue;
+
+    if (!unique.includes(word)) {
+      unique.push(word);
+    }
+  }
+
+  return unique.slice(0, 12).join(", ");
+}
+
+function makeTags(
+  title: string,
+  productType: string,
+  collection: string
+) {
+  const source = `${title}, ${productType}, ${collection}`;
+
+  const tags = source
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+  const unique = Array.from(
+    new Set(
+      tags.map((item) =>
+        item
+          .replace(/\s+/g, " ")
+          .trim()
+      )
+    )
+  );
+
+  return unique.slice(0, 10).join(", ");
+}
+
+function makeAltText(title: string) {
+  return limit(
+    `Product image of ${title || "product"}`,
+    125
+  );
+}
+
+function makeHandle(title: string) {
+  return cleanText(title)
     .toLowerCase()
     .replace(/[^a-z0-9\s-]/g, "")
     .replace(/\s+/g, "-")
@@ -27,421 +284,341 @@ function slugify(value: string) {
     .slice(0, 70);
 }
 
-function unique(values: string[]) {
-  return Array.from(
-    new Set(values.map(clean).filter(Boolean))
-  );
-}
-
-export default function Home() {
-  const [title, setTitle] = useState("");
+export default function ProductOptimizer() {
+  const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [features, setFeatures] = useState("");
   const [productType, setProductType] = useState("");
   const [brand, setBrand] = useState("");
   const [collection, setCollection] = useState("");
-  const [audience, setAudience] = useState("");
+  const [price, setPrice] = useState("");
 
-  const [result, setResult] = useState({
-    title: "",
-    description: "",
-    seoTitle: "",
-    meta: "",
-    type: "",
-    tags: "",
-    keywords: "",
-    alt: "",
-    handle: "",
-  });
+  const [optimized, setOptimized] = useState(false);
 
-  function optimize() {
-    const originalTitle =
-      clean(title) || "New Product";
+  const result = useMemo(() => {
+    const title = makeCleanTitle(
+      name,
+      productType,
+      brand
+    );
 
-    const originalDescription =
-      clean(description);
+    const seoTitle = makeSeoTitle(
+      title,
+      productType
+    );
 
-    const type =
-      clean(productType) || "Product";
+    const metaDescription = makeMetaDescription(
+      title,
+      productType
+    );
 
-    const brandName =
-      clean(brand);
+    const keywords = makeKeywords(
+      title,
+      productType,
+      brand
+    );
 
-    const featureList = features
-      .split(/[\n,;•]+/)
-      .map(clean)
+    const tags = makeTags(
+      title,
+      productType,
+      collection
+    );
+
+    const altText = makeAltText(title);
+
+    const handle = makeHandle(title);
+
+    const cleanedDescription =
+      description.trim() ||
+      `Designed for customers who value quality, practical features, and a polished everyday experience.`;
+
+    const featureLines = features
+      .split(/\n|,/)
+      .map((item) => item.trim())
       .filter(Boolean)
       .slice(0, 8);
 
-    let newTitle = originalTitle
-      .replace(/[|•·]/g, " ")
-      .replace(/\s+/g, " ")
-      .trim();
-
-    if (brandName) {
-      const pattern = new RegExp(
-        brandName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
-        "gi"
-      );
-
-      newTitle = newTitle.replace(pattern, "").trim();
-    }
-
-    newTitle = limit(newTitle, 65);
-
-    if (!newTitle) {
-      newTitle = `${brandName || "Premium"} ${type}`;
-    }
-
-    const descriptionText =
-      originalDescription ||
-      `Discover a thoughtfully designed ${type.toLowerCase()} made for everyday use.`;
-
-    const audienceText = audience
-      ? `Designed with ${clean(audience).toLowerCase()} in mind.`
-      : "Designed for customers who value quality, style, and everyday practicality.";
-
-    const featuresText =
-      featureList.length > 0
-        ? featureList.map((item) => `• ${item}`).join("\n")
-        : [
-            "• Thoughtful design",
-            "• Practical everyday use",
-            "• Versatile styling",
-            "• Easy to use",
-          ].join("\n");
-
     const finalDescription = [
-      descriptionText,
+      cleanedDescription,
       "",
-      audienceText,
+      featureLines.length
+        ? "Key features:"
+        : "",
+      ...featureLines.map(
+        (feature) => `• ${feature}`
+      ),
       "",
-      "Key features:",
-      featuresText,
-      "",
-      "A polished choice for customers looking for quality, useful features, and dependable everyday appeal.",
-    ].join("\n");
+      `A practical choice for customers looking for ${title || "this product"}.`,
+    ]
+      .filter((line) => line !== "")
+      .join("\n");
 
-    const seoBase = brandName
-      ? `${newTitle} | ${brandName}`
-      : newTitle;
-
-    const seoTitle = limit(seoBase, 50);
-
-    const meta = limit(
-      `Shop ${newTitle.toLowerCase()} with thoughtful design, useful features, and everyday appeal. Explore this product and discover quality made for your needs.`,
-      160
-    );
-
-    const keywordValues = unique([
-      newTitle,
-      type,
-      brandName,
-      collection,
-      ...featureList,
-    ]);
-
-    const tagValues = unique([
-      type,
-      brandName,
-      collection,
-      ...featureList,
-      "new arrival",
-      "featured",
-    ]);
-
-    const alt = limit(
-      `${newTitle}${brandName ? ` by ${brandName}` : ""}`,
-      125
-    );
-
-    setResult({
-      title: newTitle,
+    return {
+      title,
       description: finalDescription,
       seoTitle,
-      meta,
-      type,
-      tags: tagValues.slice(0, 12).join(", "),
-      keywords: keywordValues.slice(0, 15).join(", "),
-      alt,
-      handle: slugify(newTitle),
-    });
+      metaDescription,
+      keywords,
+      tags,
+      altText,
+      handle,
+    };
+  }, [
+    name,
+    description,
+    features,
+    productType,
+    brand,
+    collection,
+    price,
+  ]);
+
+  function optimizeProduct() {
+    if (!name.trim()) {
+      setOptimized(false);
+      return;
+    }
+
+    setOptimized(true);
+
+    setTimeout(() => {
+      document
+        .getElementById("results")
+        ?.scrollIntoView({
+          behavior: "smooth",
+          block: "start",
+        });
+    }, 50);
   }
 
   function clearAll() {
-    setTitle("");
+    setName("");
     setDescription("");
     setFeatures("");
     setProductType("");
     setBrand("");
     setCollection("");
-    setAudience("");
-
-    setResult({
-      title: "",
-      description: "",
-      seoTitle: "",
-      meta: "",
-      type: "",
-      tags: "",
-      keywords: "",
-      alt: "",
-      handle: "",
-    });
-  }
-
-  async function copy(value: string) {
-    if (!value) return;
-    await navigator.clipboard.writeText(value);
+    setPrice("");
+    setOptimized(false);
   }
 
   return (
-    <main className="app">
-      <header className="header">
-        <div className="logo">V</div>
+    <>
+      <main className="page">
+        <header className="header">
+          <div className="brandMark">V</div>
 
-        <div>
-          <div className="brand">Virello</div>
-          <div className="sub">AI OPTIMIZER</div>
-        </div>
+          <div>
+            <div className="brandName">Virello</div>
+            <div className="brandSub">AI OPTIMIZER</div>
+          </div>
+        </header>
 
-        <div className="badge">
-          ALL PRODUCT TYPES
-        </div>
-      </header>
-
-      <section className="hero">
-        <div className="eyebrow">
-          VIRELLO AI OPTIMIZER
-        </div>
-
-        <h1>
-          Optimize every
-          <span> product listing.</span>
-        </h1>
-
-        <p>
-          Create polished, professional product content
-          without supplier-style wording.
-        </p>
-      </section>
-
-      <section className="workspace">
-
-        <div className="card">
-          <div className="heading">
-            <small>01</small>
-            <h2>Product information</h2>
+        <section className="hero">
+          <div className="eyebrow">
+            VIRELLO AI OPTIMIZER
           </div>
 
-          <label>ORIGINAL PRODUCT TITLE *</label>
-          <input
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            placeholder="Paste original product title"
+          <h1>
+            Optimize every
+            <br />
+            <span>product listing.</span>
+          </h1>
+
+          <p>
+            Create polished, professional product
+            content without supplier-style wording.
+          </p>
+        </section>
+
+        <section className="card">
+          <div className="step">01</div>
+
+          <h2>Product information</h2>
+
+          <div className="divider" />
+
+          <Field
+            label="ORIGINAL PRODUCT TITLE *"
+            value={name}
+            onChange={setName}
+            placeholder="Paste the original supplier product title"
           />
 
-          <label>PRODUCT DESCRIPTION</label>
-          <textarea
+          <Field
+            label="PRODUCT DESCRIPTION"
             value={description}
-            onChange={(e) => setDescription(e.target.value)}
+            onChange={setDescription}
             placeholder="Paste original product description"
-            rows={7}
+            textarea
           />
 
-          <label>FEATURES</label>
-          <textarea
+          <Field
+            label="FEATURES"
             value={features}
-            onChange={(e) => setFeatures(e.target.value)}
-            placeholder="Materials, size, functions, specifications, etc."
-            rows={6}
+            onChange={setFeatures}
+            placeholder="Materials, functions, size, style, etc."
+            textarea
           />
 
-          <div className="grid">
-            <div>
-              <label>PRODUCT TYPE</label>
-              <input
-                value={productType}
-                onChange={(e) =>
-                  setProductType(e.target.value)
-                }
-                placeholder="Any product type"
-              />
-            </div>
+          <div className="twoColumns">
+            <Field
+              label="PRODUCT TYPE"
+              value={productType}
+              onChange={setProductType}
+              placeholder="e.g. Men's Watch"
+            />
 
-            <div>
-              <label>BRAND</label>
-              <input
-                value={brand}
-                onChange={(e) =>
-                  setBrand(e.target.value)
-                }
-                placeholder="Optional"
-              />
-            </div>
+            <Field
+              label="BRAND"
+              value={brand}
+              onChange={setBrand}
+              placeholder="e.g. Pagani Design"
+            />
+
+            <Field
+              label="COLLECTION"
+              value={collection}
+              onChange={setCollection}
+              placeholder="Optional"
+            />
+
+            <Field
+              label="PRICE"
+              value={price}
+              onChange={setPrice}
+              placeholder="Optional"
+            />
           </div>
 
-          <div className="grid">
-            <div>
-              <label>COLLECTION</label>
-              <input
-                value={collection}
-                onChange={(e) =>
-                  setCollection(e.target.value)
-                }
-                placeholder="Optional"
-              />
-            </div>
-
-            <div>
-              <label>TARGET CUSTOMER</label>
-              <input
-                value={audience}
-                onChange={(e) =>
-                  setAudience(e.target.value)
-                }
-                placeholder="Optional"
-              />
-            </div>
-          </div>
-
-          <div className="buttons">
+          <div className="actions">
             <button
-              className="primary"
-              onClick={optimize}
               type="button"
+              className="primaryButton"
+              onClick={optimizeProduct}
             >
               Optimize Product
             </button>
 
             <button
-              className="secondary"
-              onClick={clearAll}
               type="button"
+              className="secondaryButton"
+              onClick={clearAll}
             >
               Clear
             </button>
           </div>
-        </div>
+        </section>
 
-        <div className="card">
-          <div className="heading resultHeading">
-            <div>
-              <small>02</small>
-              <h2>Optimized listing</h2>
-            </div>
+        {optimized && (
+          <section
+            id="results"
+            className="card resultsCard"
+          >
+            <div className="step">02</div>
 
-            {result.title && (
-              <span className="ready">
-                READY
-              </span>
-            )}
-          </div>
-
-          {!result.title ? (
-            <div className="empty">
-              <div className="emptyLogo">
-                V
+            <div className="resultHeading">
+              <div>
+                <div className="status">READY</div>
+                <h2>Optimized listing</h2>
               </div>
-
-              <h3>
-                Your optimized listing will appear here
-              </h3>
-
-              <p>
-                Add your product information and select
-                Optimize Product.
-              </p>
             </div>
-          ) : (
-            <div>
 
-              <Output
-                label="PRODUCT TITLE"
-                value={result.title}
-                max={65}
-                copy={copy}
-              />
+            <div className="divider" />
 
-              <Output
-                label="DESCRIPTION"
-                value={result.description}
-                copy={copy}
-                large
-              />
+            <OutputBox
+              label="PRODUCT TITLE"
+              value={result.title}
+              max={65}
+            />
 
-              <Output
-                label="SEO TITLE"
-                value={result.seoTitle}
-                max={50}
-                copy={copy}
-              />
+            <OutputBox
+              label="DESCRIPTION"
+              value={result.description}
+            />
 
-              <Output
-                label="META DESCRIPTION"
-                value={result.meta}
-                max={160}
-                copy={copy}
-              />
+            <OutputBox
+              label="SEO TITLE"
+              value={result.seoTitle}
+              max={50}
+            />
 
-              <Output
-                label="PRODUCT TYPE"
-                value={result.type}
-                copy={copy}
-              />
+            <OutputBox
+              label="META DESCRIPTION"
+              value={result.metaDescription}
+              max={160}
+            />
 
-              <Output
-                label="SEO KEYWORDS"
-                value={result.keywords}
-                copy={copy}
-              />
+            <OutputBox
+              label="SEO KEYWORDS"
+              value={result.keywords}
+            />
 
-              <Output
-                label="PRODUCT TAGS"
-                value={result.tags}
-                copy={copy}
-              />
+            <OutputBox
+              label="PRODUCT TAGS"
+              value={result.tags}
+            />
 
-              <Output
-                label="IMAGE ALT TEXT"
-                value={result.alt}
-                max={125}
-                copy={copy}
-              />
+            <OutputBox
+              label="IMAGE ALT TEXT"
+              value={result.altText}
+              max={125}
+            />
 
-              <Output
-                label="URL HANDLE"
-                value={result.handle}
-                max={70}
-                copy={copy}
-              />
+            <OutputBox
+              label="URL HANDLE"
+              value={result.handle}
+              max={70}
+            />
 
+            <div className="preview">
+              <span className="previewLabel">
+                STORE PREVIEW
+              </span>
+
+              <h3>{result.title}</h3>
+
+              <p>{result.description}</p>
+
+              <div className="checks">
+                <div>
+                  ✓ <span>TITLE</span>
+                </div>
+                <div>
+                  ✓ <span>SEO</span>
+                </div>
+                <div>
+                  ✓ <span>META</span>
+                </div>
+                <div>
+                  ✓ <span>CLEANED</span>
+                </div>
+              </div>
             </div>
-          )}
-        </div>
+          </section>
+        )}
 
-      </section>
-
-      <footer>
-        <strong>Virello AI Optimizer</strong>
-        <span>
-          Universal product content optimization
-        </span>
-      </footer>
+        <footer>
+          Virello AI Optimizer · Built for cleaner,
+          more professional ecommerce listings.
+        </footer>
+      </main>
 
       <style jsx global>{`
         * {
           box-sizing: border-box;
         }
 
+        html {
+          scroll-behavior: smooth;
+        }
+
         body {
           margin: 0;
           background: #f5f5f3;
-          color: #171717;
+          color: #101522;
           font-family:
             Inter,
-            ui-sans-serif,
-            system-ui,
             -apple-system,
             BlinkMacSystemFont,
             "Segoe UI",
@@ -454,382 +631,380 @@ export default function Home() {
           font: inherit;
         }
 
-        .app {
+        .page {
           min-height: 100vh;
+          padding-bottom: 70px;
         }
 
         .header {
-          height: 72px;
-          padding: 0 32px;
-          background: #111;
+          min-height: 86px;
+          background: #0d0d0d;
           color: white;
           display: flex;
           align-items: center;
-          gap: 12px;
+          gap: 14px;
+          padding: 18px 28px;
         }
 
-        .logo {
-          width: 38px;
-          height: 38px;
-          border: 1px solid #555;
-          border-radius: 10px;
-          display: grid;
-          place-items: center;
+        .brandMark {
+          width: 48px;
+          height: 48px;
+          border: 1px solid #666;
+          border-radius: 14px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 27px;
           font-weight: 800;
-          font-size: 19px;
         }
 
-        .brand {
+        .brandName {
+          font-size: 20px;
           font-weight: 800;
-          font-size: 18px;
-        }
-
-        .sub {
-          color: #999;
-          font-size: 9px;
-          letter-spacing: 2px;
-          margin-top: 2px;
-        }
-
-        .badge {
-          margin-left: auto;
-          border: 1px solid #444;
-          border-radius: 999px;
-          padding: 7px 11px;
-          font-size: 9px;
           letter-spacing: 1px;
-          color: #bbb;
+        }
+
+        .brandSub {
+          margin-top: 2px;
+          font-size: 10px;
+          letter-spacing: 5px;
+          color: #aaa;
         }
 
         .hero {
-          max-width: 1180px;
-          margin: auto;
-          padding: 65px 28px 45px;
+          max-width: 760px;
+          margin: 0 auto;
+          padding: 90px 24px 55px;
         }
 
         .eyebrow {
-          font-size: 10px;
+          display: inline-block;
+          border: 1px solid #ddd;
+          border-radius: 999px;
+          padding: 10px 18px;
+          background: white;
+          color: #59616d;
+          font-size: 12px;
           font-weight: 800;
-          letter-spacing: 2px;
-          margin-bottom: 16px;
+          letter-spacing: 3px;
         }
 
         .hero h1 {
-          max-width: 800px;
-          margin: 0;
-          font-size: clamp(42px, 7vw, 76px);
-          line-height: .98;
+          margin: 34px 0 28px;
+          font-size: clamp(48px, 8vw, 82px);
+          line-height: 0.94;
           letter-spacing: -4px;
         }
 
         .hero h1 span {
-          display: block;
           color: #777;
         }
 
         .hero p {
           max-width: 650px;
-          color: #666;
-          font-size: 17px;
+          margin: 0;
+          color: #62666d;
+          font-size: 21px;
           line-height: 1.6;
-          margin-top: 25px;
-        }
-
-        .workspace {
-          max-width: 1180px;
-          margin: auto;
-          padding: 0 28px 60px;
-          display: grid;
-          grid-template-columns: .9fr 1.1fr;
-          gap: 22px;
         }
 
         .card {
+          width: min(760px, calc(100% - 32px));
+          margin: 0 auto 28px;
+          padding: 32px;
           background: white;
-          border: 1px solid #deded9;
-          border-radius: 17px;
-          padding: 25px;
-          box-shadow:
-            0 8px 30px rgba(0,0,0,.04);
+          border: 1px solid #ddd;
+          border-radius: 28px;
+          box-shadow: 0 12px 40px rgba(0, 0, 0, 0.04);
         }
 
-        .heading {
-          border-bottom: 1px solid #ededeb;
-          padding-bottom: 20px;
+        .step {
+          color: #8a9098;
+          font-size: 12px;
+          letter-spacing: 3px;
+          margin-bottom: 12px;
+        }
+
+        .card h2 {
+          margin: 0;
+          font-size: 30px;
+          letter-spacing: -1px;
+        }
+
+        .divider {
+          height: 1px;
+          background: #e6e6e6;
+          margin: 30px 0;
+        }
+
+        .field {
           margin-bottom: 22px;
         }
 
-        .heading small {
-          font-size: 9px;
-          color: #888;
+        .field label {
+          display: block;
+          margin-bottom: 9px;
+          color: #5e646c;
+          font-size: 12px;
+          font-weight: 800;
           letter-spacing: 2px;
         }
 
-        .heading h2 {
-          margin: 5px 0 0;
-          font-size: 22px;
-          letter-spacing: -.5px;
+        .field input,
+        .field textarea {
+          width: 100%;
+          border: 1px solid #d7d7d7;
+          border-radius: 14px;
+          background: #fafafa;
+          color: #111;
+          padding: 15px 16px;
+          outline: none;
+          transition: 0.2s ease;
+        }
+
+        .field textarea {
+          min-height: 145px;
+          resize: vertical;
+          line-height: 1.5;
+        }
+
+        .field input:focus,
+        .field textarea:focus {
+          background: white;
+          border-color: #222;
+          box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.06);
+        }
+
+        .twoColumns {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 0 18px;
+        }
+
+        .actions {
+          display: flex;
+          gap: 12px;
+          margin-top: 8px;
+        }
+
+        .primaryButton,
+        .secondaryButton {
+          border-radius: 14px;
+          padding: 15px 20px;
+          cursor: pointer;
+          font-weight: 800;
+        }
+
+        .primaryButton {
+          flex: 1;
+          border: 1px solid #111;
+          background: #111;
+          color: white;
+        }
+
+        .secondaryButton {
+          border: 1px solid #d2d2d2;
+          background: white;
+          color: #111;
+        }
+
+        .primaryButton:active,
+        .secondaryButton:active,
+        .copyButton:active {
+          transform: scale(0.98);
         }
 
         .resultHeading {
           display: flex;
           justify-content: space-between;
+          align-items: flex-start;
         }
 
-        .ready {
-          font-size: 9px;
-          letter-spacing: 1px;
-          font-weight: 800;
+        .status {
           color: #555;
-        }
-
-        label {
-          display: block;
-          margin: 0 0 7px;
-          font-size: 9px;
-          letter-spacing: 1.3px;
+          font-size: 11px;
           font-weight: 800;
-          color: #555;
+          letter-spacing: 2px;
+          margin-bottom: 8px;
         }
 
-        input,
-        textarea {
-          width: 100%;
-          border: 1px solid #d6d6d2;
-          border-radius: 9px;
-          background: #fafaf9;
-          padding: 12px;
-          margin-bottom: 17px;
-          outline: none;
-          color: #171717;
-        }
-
-        input {
-          min-height: 45px;
-        }
-
-        textarea {
-          resize: vertical;
-          line-height: 1.5;
-        }
-
-        input:focus,
-        textarea:focus {
-          border-color: #111;
-          background: white;
-        }
-
-        .grid {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 12px;
-        }
-
-        .buttons {
-          display: grid;
-          grid-template-columns: 1fr auto;
-          gap: 9px;
-          margin-top: 8px;
-        }
-
-        .primary,
-        .secondary {
-          min-height: 47px;
-          border-radius: 9px;
-          cursor: pointer;
-          font-weight: 800;
-          padding: 0 17px;
-        }
-
-        .primary {
-          background: #111;
-          color: white;
-          border: 1px solid #111;
-        }
-
-        .secondary {
-          background: white;
-          color: #222;
-          border: 1px solid #ccc;
-        }
-
-        .empty {
-          min-height: 500px;
-          border: 1px dashed #d7d7d2;
-          border-radius: 13px;
-          display: grid;
-          place-items: center;
-          align-content: center;
-          text-align: center;
-          padding: 30px;
-        }
-
-        .emptyLogo {
-          width: 55px;
-          height: 55px;
-          border-radius: 14px;
-          background: #111;
-          color: white;
-          display: grid;
-          place-items: center;
-          font-size: 23px;
-          font-weight: 800;
-          margin-bottom: 17px;
-        }
-
-        .empty h3 {
-          margin: 0;
-          font-size: 18px;
-        }
-
-        .empty p {
-          max-width: 370px;
-          color: #777;
-          line-height: 1.6;
-        }
-
-        .output {
-          border: 1px solid #deded9;
-          border-radius: 11px;
+        .outputBox {
+          margin-bottom: 22px;
+          border: 1px solid #ddd;
+          border-radius: 18px;
           overflow: hidden;
-          margin-bottom: 13px;
+          background: #fff;
         }
 
-        .outputTop {
-          min-height: 45px;
-          padding: 8px 10px 8px 13px;
-          background: #fafaf9;
-          border-bottom: 1px solid #e8e8e5;
+        .outputHeader {
           display: flex;
-          align-items: center;
           justify-content: space-between;
+          align-items: center;
+          gap: 10px;
+          padding: 14px 16px;
+          background: #fafafa;
+          border-bottom: 1px solid #e3e3e3;
         }
 
-        .outputTop label {
-          margin: 0;
+        .outputLabel {
+          color: #5d6269;
+          font-size: 11px;
+          font-weight: 900;
+          letter-spacing: 2px;
         }
 
         .counter {
-          font-size: 9px;
-          color: #888;
-          margin-left: 7px;
-        }
-
-        .copy {
-          border: 1px solid #ccc;
-          background: white;
-          border-radius: 7px;
-          padding: 6px 10px;
-          cursor: pointer;
-          font-size: 10px;
-          font-weight: 700;
-        }
-
-        .output textarea {
-          border: 0;
-          border-radius: 0;
-          background: white;
-          margin: 0;
-          resize: vertical;
-        }
-
-        footer {
-          max-width: 1180px;
-          margin: auto;
-          padding: 25px 28px 45px;
-          border-top: 1px solid #ddd;
-          display: flex;
-          justify-content: space-between;
-          color: #888;
+          margin-top: 5px;
+          color: #8a8f96;
           font-size: 11px;
         }
 
-        @media (max-width: 850px) {
-          .workspace {
-            grid-template-columns: 1fr;
-          }
+        .copyButton {
+          flex-shrink: 0;
+          border: 1px solid #ccc;
+          background: white;
+          color: #111;
+          border-radius: 10px;
+          padding: 9px 15px;
+          cursor: pointer;
+          font-weight: 800;
         }
 
-        @media (max-width: 560px) {
+        .outputValue {
+          min-height: 70px;
+          padding: 20px 16px;
+          white-space: pre-wrap;
+          word-break: break-word;
+          line-height: 1.55;
+        }
+
+        .preview {
+          margin-top: 30px;
+          padding: 22px;
+          border-radius: 18px;
+          background: #f7f7f5;
+          border: 1px solid #e1e1df;
+        }
+
+        .previewLabel {
+          color: #777;
+          font-size: 11px;
+          font-weight: 900;
+          letter-spacing: 2px;
+        }
+
+        .preview h3 {
+          margin: 15px 0 10px;
+          font-size: 23px;
+        }
+
+        .preview p {
+          margin: 0;
+          color: #60656c;
+          line-height: 1.55;
+          white-space: pre-wrap;
+        }
+
+        .checks {
+          display: grid;
+          grid-template-columns: repeat(4, 1fr);
+          gap: 8px;
+          margin-top: 22px;
+        }
+
+        .checks div {
+          padding: 10px;
+          border-radius: 10px;
+          background: white;
+          border: 1px solid #ddd;
+          color: #333;
+          font-size: 12px;
+        }
+
+        .checks span {
+          margin-left: 5px;
+          font-weight: 800;
+        }
+
+        footer {
+          width: min(760px, calc(100% - 32px));
+          margin: 45px auto 0;
+          text-align: center;
+          color: #777;
+          font-size: 13px;
+        }
+
+        @media (max-width: 600px) {
           .header {
-            padding: 0 16px;
+            padding: 16px 20px;
           }
 
-          .badge {
-            display: none;
-          }
-
-          .hero,
-          .workspace {
-            padding-left: 15px;
-            padding-right: 15px;
+          .hero {
+            padding: 65px 20px 40px;
           }
 
           .hero h1 {
-            letter-spacing: -2px;
+            font-size: 52px;
+            letter-spacing: -2.5px;
           }
 
-          .grid,
-          .buttons {
-            grid-template-columns: 1fr;
+          .hero p {
+            font-size: 18px;
           }
 
           .card {
-            padding: 18px;
+            padding: 22px;
+            border-radius: 22px;
           }
 
-          footer {
-            padding-left: 15px;
-            padding-right: 15px;
+          .twoColumns {
+            grid-template-columns: 1fr;
+            gap: 0;
+          }
+
+          .actions {
             flex-direction: column;
-            gap: 8px;
+          }
+
+          .checks {
+            grid-template-columns: 1fr 1fr;
           }
         }
       `}</style>
-    </main>
+    </>
   );
 }
 
-function Output({
+function OutputBox({
   label,
   value,
   max,
-  copy,
-  large,
 }: {
   label: string;
   value: string;
   max?: number;
-  copy: (value: string) => void;
-  large?: boolean;
 }) {
-  return (
-    <div className="output">
-      <div className="outputTop">
-        <div>
-          <label>{label}</label>
+  const count = value.length;
 
-          {max !== undefined && (
-            <span className="counter">
-              {value.length}/{max}
-            </span>
+  return (
+    <div className="outputBox">
+      <div className="outputHeader">
+        <div>
+          <div className="outputLabel">{label}</div>
+
+          {typeof max === "number" && (
+            <div className="counter">
+              {count}/{max}
+            </div>
           )}
         </div>
 
-        <button
-          type="button"
-          className="copy"
-          onClick={() => copy(value)}
-        >
-          Copy
-        </button>
+        <CopyButton value={value} />
       </div>
 
-      <textarea
-        value={value}
-        readOnly
-        rows={large ? 9 : 4}
-      />
+      <div className="outputValue">
+        {value || "—"}
+      </div>
     </div>
   );
 }
