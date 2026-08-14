@@ -827,7 +827,7 @@ A simple choice for customers who value quality, functionality, and a polished s
       </div>
     </main>
   );
-}}
+}
 
 function limit(text: string, max: number) {
   return text.trim().slice(0, max).trim();
