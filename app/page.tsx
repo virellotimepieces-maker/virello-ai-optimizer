@@ -1,66 +1,232 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
-const product = {
-  brand: "VIRELLO",
-  category: "Premium Collection",
-  title: "2026 New PAGANI DESIGN 1701 V5 Men's Watch",
+type ProductData = {
+  title: string;
+  price: string;
+  description: string;
+  benefits: string[];
+  features: string[];
+  faq: { question: string; answer: string }[];
+};
+
+const defaultProduct: ProductData = {
+  title: "Premium Automatic Watch",
   price: "$129.99",
-  comparePrice: "$159.99",
-  discount: "19% OFF",
   description:
-    "A refined timepiece designed for men who appreciate a polished look, dependable everyday wear, and timeless style.",
-  images: [
-    "https://images.unsplash.com/photo-1523170335258-f5ed11844a49?auto=format&fit=crop&w=1000&q=85",
-    "https://images.unsplash.com/photo-1524805444758-089113d48a6d?auto=format&fit=crop&w=1000&q=85",
-    "https://images.unsplash.com/photo-1522312346375-d1a52e2b99b3?auto=format&fit=crop&w=1000&q=85",
-    "https://images.unsplash.com/photo-1508057198894-247b23fe5ade?auto=format&fit=crop&w=1000&q=85",
-  ],
+    "A refined timepiece designed for a polished everyday look, combining versatile styling with details made to complement business, casual, and special-occasion outfits.",
   benefits: [
-    "Refined premium-looking design",
-    "Comfortable for everyday wear",
-    "Easy to style with business or casual outfits",
-    "Designed for work and special occasions",
+    "Refined design for a polished appearance",
+    "Versatile style for everyday and business wear",
+    "Comfort-focused design for extended wear",
+    "A timeless choice for personal use or gifting",
   ],
   features: [
-    "Classic refined watch design",
-    "Comfort-focused construction",
-    "Easy-to-read dial",
-    "Versatile everyday styling",
-    "Gift-ready presentation",
+    "Premium-inspired watch design",
+    "Classic and versatile styling",
+    "Easy-to-read dial presentation",
+    "Designed for everyday versatility",
+    "Suitable for business and occasion wear",
+  ],
+  faq: [
+    {
+      question: "Is this watch suitable for everyday wear?",
+      answer:
+        "Its versatile design is intended to complement everyday, business, and occasion-ready outfits.",
+    },
+    {
+      question: "Can I wear it with formal clothing?",
+      answer:
+        "Yes. The refined styling makes it easy to pair with business and more formal outfits.",
+    },
+    {
+      question: "Is it suitable as a gift?",
+      answer:
+        "Its classic and versatile appearance makes it a thoughtful option for birthdays, anniversaries, holidays, and other occasions.",
+    },
   ],
 };
 
-export default function Home() {
+function cleanTitle(title: string) {
+  return title
+    .replace(/\s+/g, " ")
+    .replace(/[|]+/g, " ")
+    .trim();
+}
+
+function createProductTitle(title: string) {
+  const cleaned = cleanTitle(title);
+
+  if (!cleaned) return "Premium Automatic Watch";
+
+  if (cleaned.length <= 50) return cleaned;
+
+  const words = cleaned.split(" ");
+  let result = "";
+
+  for (const word of words) {
+    const next = result ? `${result} ${word}` : word;
+
+    if (next.length > 50) break;
+
+    result = next;
+  }
+
+  return result || cleaned.substring(0, 50).trim();
+}
+
+function createSeoTitle(title: string) {
+  const base = createProductTitle(title);
+
+  if (base.length <= 50) return base;
+
+  return base.substring(0, 50).trim();
+}
+
+function createMetaDescription(product: ProductData) {
+  const text =
+    `${product.title}. ${product.description} ` +
+    "Shop with confidence and discover a refined style for everyday wear.";
+
+  if (text.length <= 160) return text;
+
+  return text.substring(0, 157).trimEnd() + "...";
+}
+
+function generateContent(title: string, price: string): ProductData {
+  const optimizedTitle = createProductTitle(title);
+
+  const lower = optimizedTitle.toLowerCase();
+
+  const isWatch =
+    lower.includes("watch") ||
+    lower.includes("automatic") ||
+    lower.includes("quartz") ||
+    lower.includes("chronograph");
+
+  if (isWatch) {
+    return {
+      title: optimizedTitle,
+      price: price || "$129.99",
+      description:
+        `A refined ${optimizedTitle.toLowerCase()} designed for a polished everyday look. Its versatile styling makes it easy to pair with business attire, casual outfits, and special-occasion looks.`,
+      benefits: [
+        "Refined design for a polished appearance",
+        "Versatile styling for business and casual wear",
+        "Comfort-focused design for everyday use",
+        "A timeless option for personal wear or gifting",
+      ],
+      features: [
+        "Refined watch presentation",
+        "Classic versatile styling",
+        "Easy-to-read dial",
+        "Designed for everyday versatility",
+        "Suitable for business and occasions",
+      ],
+      faq: [
+        {
+          question: "Is this watch suitable for everyday wear?",
+          answer:
+            "The versatile styling makes it suitable for everyday outfits, business looks, and special occasions.",
+        },
+        {
+          question: "Can it be worn with formal clothing?",
+          answer:
+            "Yes. The refined appearance pairs naturally with business and formal clothing.",
+        },
+        {
+          question: "Is it suitable as a gift?",
+          answer:
+            "Its classic styling makes it a versatile gift option for birthdays, anniversaries, holidays, and other occasions.",
+        },
+      ],
+    };
+  }
+
+  return {
+    title: optimizedTitle,
+    price: price || "$49.99",
+    description:
+      `Discover the ${optimizedTitle.toLowerCase()} designed to combine practical everyday use with a clean, polished presentation.`,
+    benefits: [
+      "Designed for practical everyday use",
+      "Clean and versatile presentation",
+      "Easy to incorporate into daily routines",
+      "A thoughtful option for personal use or gifting",
+    ],
+    features: [
+      "Practical everyday design",
+      "Clean modern presentation",
+      "Versatile styling",
+      "Designed for convenient use",
+      "Suitable for everyday needs",
+    ],
+    faq: [
+      {
+        question: "Is this suitable for everyday use?",
+        answer:
+          "Yes. The product is presented as a practical option for everyday use.",
+      },
+      {
+        question: "Who is this product for?",
+        answer:
+          "Its versatile design makes it suitable for customers looking for a practical and polished everyday option.",
+      },
+      {
+        question: "Is it suitable as a gift?",
+        answer:
+          "Its versatile presentation makes it suitable for a variety of gifting occasions.",
+      },
+    ],
+  };
+}
+
+export default function Page() {
+  const [productTitle, setProductTitle] = useState("");
+  const [price, setPrice] = useState("");
+  const [audience, setAudience] = useState("Men");
+  const [angle, setAngle] = useState("Premium / Luxury");
+  const [images, setImages] = useState(4);
+  const [generated, setGenerated] = useState<ProductData | null>(null);
   const [activeImage, setActiveImage] = useState(0);
   const [openFaq, setOpenFaq] = useState<number | null>(null);
 
-  const faqs = [
-    {
-      q: "Is this watch suitable for everyday wear?",
-      a: "Yes. Its versatile design makes it suitable for everyday outfits, business looks, and special occasions.",
-    },
-    {
-      q: "How does the watch fit?",
-      a: "The watch is designed with everyday comfort and an adjustable fit in mind.",
-    },
-    {
-      q: "Is it suitable as a gift?",
-      a: "Yes. Its classic appearance makes it a thoughtful choice for birthdays, anniversaries, holidays, and other occasions.",
-    },
-    {
-      q: "How will my order arrive?",
-      a: "Your order will be carefully prepared and shipped according to the available fulfillment option for the product.",
-    },
-    {
-      q: "What if I need help with my order?",
-      a: "Virello provides customer support to help with product and order-related questions.",
-    },
+  const product = generated || defaultProduct;
+
+  const seoTitle = useMemo(
+    () => createSeoTitle(product.title),
+    [product.title]
+  );
+
+  const metaDescription = useMemo(
+    () => createMetaDescription(product),
+    [product]
+  );
+
+  const imagePlaceholders = [
+    "Product Image",
+    "Detail View",
+    "Lifestyle View",
+    "Close-up View",
+    "Alternate View",
+    "Packaging",
+    "Product Detail",
   ];
 
+  function generate() {
+    const result = generateContent(
+      productTitle || "Premium Automatic Watch",
+      price
+    );
+
+    setGenerated(result);
+    setActiveImage(0);
+    setOpenFaq(null);
+  }
+
   return (
-    <main className="page">
+    <main className="min-h-screen bg-[#f6f6f3] text-[#171717]">
       <style jsx global>{`
         * {
           box-sizing: border-box;
@@ -68,639 +234,436 @@ export default function Home() {
 
         body {
           margin: 0;
-          background: #f7f7f5;
-          color: #171717;
           font-family:
-            Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
-            "Segoe UI", sans-serif;
-        }
-
-        button {
-          font: inherit;
-        }
-
-        .page {
-          min-height: 100vh;
-          background: #f7f7f5;
-        }
-
-        .topbar {
-          width: 100%;
-          padding: 16px 24px;
-          border-bottom: 1px solid #deded9;
-          background: rgba(255, 255, 255, 0.96);
-          position: sticky;
-          top: 0;
-          z-index: 20;
-          backdrop-filter: blur(12px);
-        }
-
-        .topbar-inner {
-          max-width: 1180px;
-          margin: auto;
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          gap: 20px;
-        }
-
-        .logo {
-          font-size: 18px;
-          font-weight: 800;
-          letter-spacing: 3px;
-        }
-
-        .preview-label {
-          font-size: 12px;
-          color: #777;
-          letter-spacing: 1px;
-          text-transform: uppercase;
-        }
-
-        .hero {
-          max-width: 1180px;
-          margin: 0 auto;
-          padding: 54px 24px 70px;
-          display: grid;
-          grid-template-columns: 1.08fr 0.92fr;
-          gap: 64px;
-          align-items: start;
-        }
-
-        .gallery {
-          position: sticky;
-          top: 90px;
-        }
-
-        .main-image {
-          width: 100%;
-          aspect-ratio: 1 / 1;
-          object-fit: cover;
-          display: block;
-          background: #ecece8;
-          border-radius: 4px;
-        }
-
-        .thumbs {
-          display: grid;
-          grid-template-columns: repeat(4, 1fr);
-          gap: 10px;
-          margin-top: 12px;
-        }
-
-        .thumb {
-          border: 1px solid #ddd;
-          padding: 0;
-          background: #fff;
-          cursor: pointer;
-        }
-
-        .thumb.active {
-          border: 2px solid #171717;
-        }
-
-        .thumb img {
-          width: 100%;
-          aspect-ratio: 1;
-          object-fit: cover;
-          display: block;
-        }
-
-        .product-info {
-          padding-top: 8px;
-        }
-
-        .eyebrow {
-          font-size: 12px;
-          text-transform: uppercase;
-          letter-spacing: 2px;
-          color: #777;
-          margin-bottom: 18px;
-        }
-
-        h1 {
-          font-size: clamp(36px, 5vw, 62px);
-          line-height: 0.98;
-          letter-spacing: -2.5px;
-          margin: 0 0 24px;
-          font-weight: 700;
-        }
-
-        .price-row {
-          display: flex;
-          align-items: center;
-          gap: 12px;
-          margin-bottom: 22px;
-        }
-
-        .price {
-          font-size: 27px;
-          font-weight: 700;
-        }
-
-        .compare {
-          color: #999;
-          text-decoration: line-through;
-          font-size: 17px;
-        }
-
-        .discount {
-          background: #171717;
-          color: #fff;
-          font-size: 11px;
-          padding: 6px 9px;
-          letter-spacing: 0.5px;
-        }
-
-        .description {
-          font-size: 17px;
-          line-height: 1.75;
-          color: #555;
-          margin: 0 0 30px;
-        }
-
-        .benefits {
-          border-top: 1px solid #ddd;
-          border-bottom: 1px solid #ddd;
-          margin-bottom: 28px;
-        }
-
-        .benefit {
-          display: flex;
-          align-items: center;
-          gap: 13px;
-          padding: 15px 0;
-          font-size: 15px;
-          border-bottom: 1px solid #e5e5e5;
-        }
-
-        .benefit:last-child {
-          border-bottom: none;
-        }
-
-        .check {
-          width: 21px;
-          height: 21px;
-          border: 1px solid #222;
-          border-radius: 50%;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-size: 11px;
-          flex-shrink: 0;
-        }
-
-        .cart {
-          width: 100%;
-          border: 0;
-          background: #171717;
-          color: #fff;
-          padding: 19px 24px;
-          cursor: pointer;
-          font-weight: 700;
-          letter-spacing: 1px;
-          transition: 0.2s;
-        }
-
-        .cart:hover {
-          background: #333;
-        }
-
-        .trust {
-          display: grid;
-          grid-template-columns: repeat(3, 1fr);
-          gap: 8px;
-          margin-top: 16px;
-        }
-
-        .trust-item {
-          text-align: center;
-          padding: 14px 5px;
-          font-size: 11px;
-          color: #666;
-          border: 1px solid #e0e0dc;
-          background: #fff;
-        }
-
-        .section {
-          padding: 90px 24px;
-          border-top: 1px solid #ddd;
-        }
-
-        .section-inner {
-          max-width: 1180px;
-          margin: auto;
-        }
-
-        .section-heading {
-          max-width: 700px;
-          margin-bottom: 45px;
-        }
-
-        .section-heading h2 {
-          font-size: clamp(32px, 5vw, 54px);
-          line-height: 1.02;
-          letter-spacing: -2px;
-          margin: 0 0 15px;
-        }
-
-        .section-heading p {
-          color: #666;
-          font-size: 17px;
-          line-height: 1.7;
-          margin: 0;
-        }
-
-        .benefit-grid {
-          display: grid;
-          grid-template-columns: repeat(4, 1fr);
-          gap: 14px;
-        }
-
-        .benefit-card {
-          background: #fff;
-          border: 1px solid #ddd;
-          padding: 28px 22px;
-          min-height: 170px;
-        }
-
-        .number {
-          font-size: 12px;
-          color: #999;
-          margin-bottom: 30px;
-        }
-
-        .benefit-card h3 {
-          font-size: 19px;
-          margin: 0;
-          line-height: 1.25;
-        }
-
-        .feature-layout {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 70px;
-          align-items: center;
-        }
-
-        .feature-image {
-          width: 100%;
-          aspect-ratio: 1 / 1;
-          object-fit: cover;
-        }
-
-        .feature-list {
-          margin: 25px 0 0;
-          padding: 0;
-          list-style: none;
-        }
-
-        .feature-list li {
-          padding: 16px 0;
-          border-bottom: 1px solid #ddd;
-          display: flex;
-          gap: 12px;
-          font-size: 16px;
-        }
-
-        .feature-list li span {
-          font-weight: 700;
-        }
-
-        .faq {
-          max-width: 850px;
-          margin: auto;
-        }
-
-        .faq-item {
-          border-top: 1px solid #d5d5d0;
-        }
-
-        .faq-item:last-child {
-          border-bottom: 1px solid #d5d5d0;
-        }
-
-        .faq-question {
-          width: 100%;
-          padding: 22px 0;
-          border: 0;
-          background: transparent;
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          cursor: pointer;
-          text-align: left;
-          font-weight: 600;
-          font-size: 16px;
-        }
-
-        .faq-answer {
-          color: #666;
-          line-height: 1.7;
-          padding: 0 40px 22px 0;
-        }
-
-        .cta-section {
-          background: #171717;
-          color: #fff;
-          text-align: center;
-          padding: 100px 24px;
-        }
-
-        .cta-section h2 {
-          max-width: 700px;
-          margin: 0 auto 18px;
-          font-size: clamp(36px, 6vw, 62px);
-          line-height: 1;
-          letter-spacing: -2px;
-        }
-
-        .cta-section p {
-          max-width: 560px;
-          margin: 0 auto 30px;
-          color: #bbb;
-          line-height: 1.7;
-        }
-
-        .cta-button {
-          display: inline-block;
-          background: #fff;
-          color: #171717;
-          border: none;
-          padding: 17px 35px;
-          font-weight: 700;
-          cursor: pointer;
-        }
-
-        .seo {
-          background: #fff;
-          border-top: 1px solid #ddd;
-          padding: 60px 24px;
-        }
-
-        .seo-inner {
-          max-width: 900px;
-          margin: auto;
-        }
-
-        .seo h3 {
-          font-size: 22px;
-          margin: 0 0 10px;
-        }
-
-        .seo-box {
-          background: #f7f7f5;
-          border: 1px solid #ddd;
-          padding: 20px;
-          margin-bottom: 25px;
-          line-height: 1.6;
-        }
-
-        .footer {
-          padding: 35px 24px;
-          text-align: center;
-          color: #888;
-          font-size: 12px;
-          letter-spacing: 1px;
-          background: #fff;
-        }
-
-        @media (max-width: 850px) {
-          .hero {
-            grid-template-columns: 1fr;
-            gap: 35px;
-            padding-top: 30px;
-          }
-
-          .gallery {
-            position: static;
-          }
-
-          h1 {
-            font-size: 42px;
-          }
-
-          .benefit-grid {
-            grid-template-columns: repeat(2, 1fr);
-          }
-
-          .feature-layout {
-            grid-template-columns: 1fr;
-            gap: 35px;
-          }
-        }
-
-        @media (max-width: 520px) {
-          .topbar {
-            padding: 14px 16px;
-          }
-
-          .preview-label {
-            font-size: 9px;
-          }
-
-          .hero {
-            padding: 25px 16px 55px;
-          }
-
-          h1 {
-            font-size: 38px;
-            letter-spacing: -1.5px;
-          }
-
-          .price {
-            font-size: 24px;
-          }
-
-          .benefit-grid {
-            grid-template-columns: 1fr;
-          }
-
-          .section {
-            padding: 65px 16px;
-          }
-
-          .section-heading h2 {
-            font-size: 38px;
-          }
-
-          .trust {
-            grid-template-columns: 1fr;
-          }
+            Inter,
+            ui-sans-serif,
+            system-ui,
+            -apple-system,
+            BlinkMacSystemFont,
+            "Segoe UI",
+            sans-serif;
         }
       `}</style>
 
-      <header className="topbar">
-        <div className="topbar-inner">
-          <div className="logo">{product.brand}</div>
-          <div className="preview-label">AI Product Page Preview</div>
+      {/* HEADER */}
+      <header className="sticky top-0 z-50 border-b border-black/10 bg-white/95 backdrop-blur">
+        <div className="mx-auto flex max-w-7xl items-center justify-between px-5 py-4">
+          <div>
+            <div className="text-xl font-black tracking-[0.25em]">
+              VIRELLO
+            </div>
+            <div className="mt-1 text-[9px] font-bold tracking-[0.28em] text-gray-400">
+              AI PRODUCT OPTIMIZER
+            </div>
+          </div>
+
+          {generated && (
+            <button
+              onClick={() => setGenerated(null)}
+              className="rounded-xl border border-gray-300 bg-white px-4 py-2 text-sm font-semibold"
+            >
+              ← Edit Product
+            </button>
+          )}
         </div>
       </header>
 
-      <section className="hero">
-        <div className="gallery">
-          <img
-            className="main-image"
-            src={product.images[activeImage]}
-            alt={product.title}
-          />
+      {!generated ? (
+        /* GENERATOR */
+        <section className="mx-auto max-w-5xl px-5 py-12">
+          <div className="mb-10">
+            <p className="text-xs font-bold uppercase tracking-[0.25em] text-gray-500">
+              Virello AI
+            </p>
 
-          <div className="thumbs">
-            {product.images.map((image, index) => (
-              <button
-                key={image}
-                className={`thumb ${activeImage === index ? "active" : ""}`}
-                onClick={() => setActiveImage(index)}
-              >
-                <img src={image} alt={`Product view ${index + 1}`} />
-              </button>
-            ))}
-          </div>
-        </div>
+            <h1 className="mt-3 text-4xl font-black tracking-tight md:text-6xl">
+              Create a better
+              <br />
+              product page.
+            </h1>
 
-        <div className="product-info">
-          <div className="eyebrow">{product.category}</div>
-
-          <h1>{product.title}</h1>
-
-          <div className="price-row">
-            <span className="price">{product.price}</span>
-            <span className="compare">{product.comparePrice}</span>
-            <span className="discount">{product.discount}</span>
-          </div>
-
-          <p className="description">{product.description}</p>
-
-          <div className="benefits">
-            {product.benefits.map((benefit) => (
-              <div className="benefit" key={benefit}>
-                <span className="check">✓</span>
-                <span>{benefit}</span>
-              </div>
-            ))}
-          </div>
-
-          <button className="cart">ADD TO CART</button>
-
-          <div className="trust">
-            <div className="trust-item">SECURE CHECKOUT</div>
-            <div className="trust-item">EASY RETURNS</div>
-            <div className="trust-item">CUSTOMER SUPPORT</div>
-          </div>
-        </div>
-      </section>
-
-      <section className="section">
-        <div className="section-inner">
-          <div className="section-heading">
-            <h2>Designed to make an impression.</h2>
-            <p>
-              A refined timepiece created to complement modern wardrobes,
-              professional settings, everyday outfits, and special occasions.
+            <p className="mt-5 max-w-2xl leading-7 text-gray-600">
+              Enter your product information and generate a complete,
+              product-specific ecommerce page.
             </p>
           </div>
 
-          <div className="benefit-grid">
-            {product.benefits.map((benefit, index) => (
-              <div className="benefit-card" key={benefit}>
-                <div className="number">0{index + 1}</div>
-                <h3>{benefit}</h3>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      <section className="section">
-        <div className="section-inner feature-layout">
-          <img
-            className="feature-image"
-            src={product.images[1]}
-            alt="Watch lifestyle"
-          />
-
-          <div>
-            <div className="eyebrow">Product Details</div>
-
-            <div className="section-heading">
-              <h2>Made for everyday confidence.</h2>
-              <p>
-                A balanced design created to bring a polished finishing touch
-                to your daily wardrobe while maintaining a timeless appearance.
+          <div className="space-y-5">
+            {/* PRODUCT */}
+            <div className="rounded-3xl border border-black/10 bg-white p-7 shadow-sm">
+              <p className="text-xs font-bold uppercase tracking-[0.2em] text-gray-400">
+                Product Information
               </p>
+
+              <label className="mt-5 block text-sm font-bold">
+                Product Title
+              </label>
+
+              <input
+                value={productTitle}
+                onChange={(e) => setProductTitle(e.target.value)}
+                placeholder="Paste your original product title"
+                className="mt-2 w-full rounded-2xl border border-gray-300 px-5 py-4 outline-none focus:border-black"
+              />
+
+              <label className="mt-5 block text-sm font-bold">
+                Product Price
+              </label>
+
+              <input
+                value={price}
+                onChange={(e) => setPrice(e.target.value)}
+                placeholder="$129.99"
+                className="mt-2 w-full rounded-2xl border border-gray-300 px-5 py-4 outline-none focus:border-black"
+              />
             </div>
 
-            <ul className="feature-list">
-              {product.features.map((feature) => (
-                <li key={feature}>
-                  <span>✓</span>
-                  {feature}
-                </li>
-              ))}
-            </ul>
+            {/* AUDIENCE */}
+            <div className="rounded-3xl border border-black/10 bg-white p-7 shadow-sm">
+              <p className="text-xs font-bold uppercase tracking-[0.2em] text-gray-400">
+                Target Audience
+              </p>
+
+              <div className="mt-5 grid grid-cols-3 gap-3">
+                {["Women", "Men", "Unisex"].map((item) => (
+                  <button
+                    key={item}
+                    onClick={() => setAudience(item)}
+                    className={`rounded-2xl border px-4 py-4 font-semibold ${
+                      audience === item
+                        ? "border-black bg-black text-white"
+                        : "border-gray-200 bg-white"
+                    }`}
+                  >
+                    {item}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* ANGLE */}
+            <div className="rounded-3xl border border-black/10 bg-white p-7 shadow-sm">
+              <p className="text-xs font-bold uppercase tracking-[0.2em] text-gray-400">
+                Copywriting
+              </p>
+
+              <div className="mt-5 grid gap-3 sm:grid-cols-2 md:grid-cols-3">
+                {[
+                  "Premium / Luxury",
+                  "Professional",
+                  "Everyday",
+                  "Casual",
+                  "Sport",
+                  "Gift",
+                ].map((item) => (
+                  <button
+                    key={item}
+                    onClick={() => setAngle(item)}
+                    className={`rounded-2xl border px-4 py-4 text-sm font-semibold ${
+                      angle === item
+                        ? "border-black bg-black text-white"
+                        : "border-gray-200 bg-white"
+                    }`}
+                  >
+                    {item}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* IMAGES */}
+            <div className="rounded-3xl border border-black/10 bg-white p-7 shadow-sm">
+              <p className="text-xs font-bold uppercase tracking-[0.2em] text-gray-400">
+                Visuals
+              </p>
+
+              <label className="mt-4 block text-sm font-bold">
+                Number of Product Images
+              </label>
+
+              <div className="mt-4 grid grid-cols-7 gap-2">
+                {[0, 1, 2, 3, 4, 5, 6].map((number) => (
+                  <button
+                    key={number}
+                    onClick={() => setImages(number)}
+                    className={`rounded-xl border py-3 text-sm font-bold ${
+                      images === number
+                        ? "border-black bg-black text-white"
+                        : "border-gray-200 bg-white"
+                    }`}
+                  >
+                    {number}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* GENERATE */}
+            <button
+              onClick={generate}
+              className="w-full rounded-2xl bg-black px-6 py-5 text-lg font-bold text-white transition hover:bg-gray-800"
+            >
+              Generate AI Product Page →
+            </button>
           </div>
-        </div>
-      </section>
+        </section>
+      ) : (
+        /* GENERATED PAGE */
+        <>
+          {/* HERO */}
+          <section className="mx-auto grid max-w-7xl gap-12 px-5 py-10 md:grid-cols-2 md:py-16">
+            <div>
+              <div className="overflow-hidden rounded-3xl bg-[#ecece8]">
+                <div className="flex aspect-square items-center justify-center p-10">
+                  <div className="flex h-64 w-64 items-center justify-center rounded-full border-[18px] border-gray-800 bg-white shadow-2xl md:h-80 md:w-80">
+                    <div className="text-center">
+                      <div className="text-3xl font-black">V</div>
+                      <div className="mt-2 text-[9px] font-bold tracking-[0.3em]">
+                        VIRELLO
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
 
-      <section className="section">
-        <div className="section-inner">
-          <div className="section-heading">
-            <h2>Questions, answered.</h2>
-            <p>
-              Clear information that helps customers shop with confidence.
-            </p>
-          </div>
-
-          <div className="faq">
-            {faqs.map((faq, index) => (
-              <div className="faq-item" key={faq.q}>
-                <button
-                  className="faq-question"
-                  onClick={() =>
-                    setOpenFaq(openFaq === index ? null : index)
-                  }
-                >
-                  <span>{faq.q}</span>
-                  <span>{openFaq === index ? "−" : "+"}</span>
-                </button>
-
-                {openFaq === index && (
-                  <div className="faq-answer">{faq.a}</div>
+              <div className="mt-3 grid grid-cols-4 gap-3">
+                {Array.from({ length: Math.max(1, images) }).map(
+                  (_, index) => (
+                    <button
+                      key={index}
+                      onClick={() => setActiveImage(index)}
+                      className={`aspect-square rounded-xl border bg-white text-xs font-semibold ${
+                        activeImage === index
+                          ? "border-2 border-black"
+                          : "border-gray-200"
+                      }`}
+                    >
+                      {imagePlaceholders[index] || "Product View"}
+                    </button>
+                  )
                 )}
               </div>
-            ))}
-          </div>
-        </div>
-      </section>
+            </div>
 
-      <section className="cta-section">
-        <h2>Make it part of your everyday style.</h2>
-        <p>
-          A versatile timepiece designed to complete your look from the
-          workday to the weekend.
-        </p>
-        <button className="cta-button">ADD TO CART</button>
-      </section>
+            <div className="flex flex-col justify-center">
+              <p className="text-xs font-bold uppercase tracking-[0.25em] text-gray-400">
+                Premium Collection
+              </p>
 
-      <section className="seo">
-        <div className="seo-inner">
-          <h3>SEO Title</h3>
-          <div className="seo-box">
-            PAGANI DESIGN 1701 V5 Men's Watch | Virello
-          </div>
+              <h1 className="mt-4 text-4xl font-black leading-[0.98] tracking-tight md:text-6xl">
+                {product.title}
+              </h1>
 
-          <h3>Meta Description</h3>
-          <div className="seo-box">
-            Discover the PAGANI DESIGN 1701 V5 men's watch with a refined,
-            versatile design made for everyday wear, business looks and
-            special occasions.
-          </div>
-        </div>
-      </section>
+              <div className="mt-6 flex items-center gap-3">
+                <span className="text-2xl font-bold">{product.price}</span>
+              </div>
 
-      <footer className="footer">
-        VIRELLO AI PRODUCT OPTIMIZER · GENERATED PRODUCT PREVIEW
-      </footer>
+              <p className="mt-6 text-lg leading-8 text-gray-600">
+                {product.description}
+              </p>
+
+              <div className="mt-7 divide-y border-y">
+                {product.benefits.map((benefit) => (
+                  <div
+                    key={benefit}
+                    className="flex items-center gap-3 py-4 text-sm font-semibold"
+                  >
+                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-black text-xs text-white">
+                      ✓
+                    </span>
+                    {benefit}
+                  </div>
+                ))}
+              </div>
+
+              <button className="mt-7 rounded-2xl bg-black px-6 py-5 font-bold tracking-wide text-white">
+                ADD TO CART
+              </button>
+
+              <div className="mt-4 grid grid-cols-3 gap-2">
+                {["Secure Checkout", "Easy Returns", "Support"].map((item) => (
+                  <div
+                    key={item}
+                    className="rounded-xl border bg-white p-3 text-center text-[10px] font-bold uppercase text-gray-500"
+                  >
+                    {item}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </section>
+
+          {/* BENEFITS */}
+          <section className="border-y bg-white px-5 py-20">
+            <div className="mx-auto max-w-7xl">
+              <p className="text-xs font-bold uppercase tracking-[0.25em] text-gray-400">
+                Why it stands out
+              </p>
+
+              <h2 className="mt-3 max-w-3xl text-4xl font-black tracking-tight md:text-5xl">
+                Designed around what customers actually want.
+              </h2>
+
+              <div className="mt-10 grid gap-4 md:grid-cols-4">
+                {product.benefits.map((benefit, index) => (
+                  <div
+                    key={benefit}
+                    className="rounded-2xl border bg-[#fafaf8] p-6"
+                  >
+                    <div className="text-xs font-bold text-gray-400">
+                      0{index + 1}
+                    </div>
+
+                    <h3 className="mt-12 text-lg font-bold leading-tight">
+                      {benefit}
+                    </h3>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </section>
+
+          {/* FEATURES */}
+          <section className="px-5 py-20">
+            <div className="mx-auto grid max-w-7xl gap-12 md:grid-cols-2 md:items-center">
+              <div className="flex aspect-square items-center justify-center rounded-3xl bg-[#e9e9e5]">
+                <div className="flex h-56 w-56 items-center justify-center rounded-full border-[15px] border-gray-800 bg-white shadow-xl md:h-72 md:w-72">
+                  <span className="text-2xl font-black">V</span>
+                </div>
+              </div>
+
+              <div>
+                <p className="text-xs font-bold uppercase tracking-[0.25em] text-gray-400">
+                  Product Details
+                </p>
+
+                <h2 className="mt-3 text-4xl font-black tracking-tight md:text-5xl">
+                  Details that complete the experience.
+                </h2>
+
+                <p className="mt-5 leading-8 text-gray-600">
+                  Virello organizes the available product information into
+                  clear sections so customers can understand the product
+                  without digging through a wall of text.
+                </p>
+
+                <div className="mt-7 divide-y border-y">
+                  {product.features.map((feature) => (
+                    <div
+                      key={feature}
+                      className="flex items-center justify-between py-5 font-semibold"
+                    >
+                      <span>{feature}</span>
+                      <span>✓</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </section>
+
+          {/* FAQ */}
+          <section className="border-t bg-white px-5 py-20">
+            <div className="mx-auto max-w-4xl">
+              <p className="text-center text-xs font-bold uppercase tracking-[0.25em] text-gray-400">
+                Frequently Asked Questions
+              </p>
+
+              <h2 className="mt-3 text-center text-4xl font-black">
+                Questions, answered.
+              </h2>
+
+              <div className="mt-10 divide-y border-y">
+                {product.faq.map((item, index) => (
+                  <div key={item.question}>
+                    <button
+                      onClick={() =>
+                        setOpenFaq(openFaq === index ? null : index)
+                      }
+                      className="flex w-full items-center justify-between py-6 text-left font-bold"
+                    >
+                      {item.question}
+                      <span className="ml-4 text-xl">
+                        {openFaq === index ? "−" : "+"}
+                      </span>
+                    </button>
+
+                    {openFaq === index && (
+                      <p className="pb-6 pr-10 leading-7 text-gray-600">
+                        {item.answer}
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </section>
+
+          {/* CTA */}
+          <section className="bg-black px-5 py-24 text-center text-white">
+            <p className="text-xs font-bold uppercase tracking-[0.3em] text-white/50">
+              Virello Product Experience
+            </p>
+
+            <h2 className="mx-auto mt-4 max-w-3xl text-4xl font-black tracking-tight md:text-6xl">
+              Make the product easier to understand. Easier to want.
+            </h2>
+
+            <button className="mt-8 rounded-2xl bg-white px-8 py-4 font-bold text-black">
+              ADD TO CART
+            </button>
+          </section>
+
+          {/* SEO */}
+          <section className="border-t bg-[#f6f6f3] px-5 py-16">
+            <div className="mx-auto max-w-4xl">
+              <h2 className="text-2xl font-black">SEO Information</h2>
+
+              <div className="mt-7 rounded-2xl border bg-white p-6">
+                <div className="flex items-center justify-between gap-4">
+                  <h3 className="font-bold">SEO Title</h3>
+                  <span
+                    className={
+                      seoTitle.length > 50
+                        ? "font-bold text-red-600"
+                        : "text-sm font-bold text-gray-500"
+                    }
+                  >
+                    {seoTitle.length}/50
+                  </span>
+                </div>
+
+                <div className="mt-4 rounded-xl bg-gray-50 p-4 text-sm">
+                  {seoTitle}
+                </div>
+              </div>
+
+              <div className="mt-5 rounded-2xl border bg-white p-6">
+                <div className="flex items-center justify-between gap-4">
+                  <h3 className="font-bold">Meta Description</h3>
+                  <span
+                    className={
+                      metaDescription.length > 160
+                        ? "font-bold text-red-600"
+                        : "text-sm font-bold text-gray-500"
+                    }
+                  >
+                    {metaDescription.length}/160
+                  </span>
+                </div>
+
+                <div className="mt-4 rounded-xl bg-gray-50 p-4 text-sm leading-6">
+                  {metaDescription}
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <footer className="border-t bg-white px-5 py-8 text-center text-xs font-bold tracking-[0.2em] text-gray-400">
+            VIRELLO AI OPTIMIZER
+          </footer>
+        </>
+      )}
     </main>
   );
-}
+                  }
