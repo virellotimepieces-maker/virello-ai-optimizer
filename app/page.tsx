@@ -1,396 +1,292 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 
 type ProductData = {
   title: string;
   price: string;
-  description: string;
-  benefits: string[];
-  features: string[];
-  faq: { question: string; answer: string }[];
+  audience: string;
+  style: string;
+  imageCount: number;
 };
 
-const defaultProduct: ProductData = {
-  title: "Premium Automatic Watch",
-  price: "$129.99",
-  description:
-    "A refined timepiece designed for a polished everyday look, combining versatile styling with details made to complement business, casual, and special-occasion outfits.",
-  benefits: [
-    "Refined design for a polished appearance",
-    "Versatile style for everyday and business wear",
-    "Comfort-focused design for extended wear",
-    "A timeless choice for personal use or gifting",
-  ],
-  features: [
-    "Premium-inspired watch design",
-    "Classic and versatile styling",
-    "Easy-to-read dial presentation",
-    "Designed for everyday versatility",
-    "Suitable for business and occasion wear",
-  ],
-  faq: [
-    {
-      question: "Is this watch suitable for everyday wear?",
-      answer:
-        "Its versatile design is intended to complement everyday, business, and occasion-ready outfits.",
-    },
-    {
-      question: "Can I wear it with formal clothing?",
-      answer:
-        "Yes. The refined styling makes it easy to pair with business and more formal outfits.",
-    },
-    {
-      question: "Is it suitable as a gift?",
-      answer:
-        "Its classic and versatile appearance makes it a thoughtful option for birthdays, anniversaries, holidays, and other occasions.",
-    },
-  ],
-};
-
-function cleanTitle(title: string) {
-  return title
+function buildProduct(data: ProductData) {
+  const cleanTitle = data.title
+    .replace(/\b(top|new)\b/gi, "")
     .replace(/\s+/g, " ")
-    .replace(/[|]+/g, " ")
     .trim();
-}
 
-function createProductTitle(title: string) {
-  const cleaned = cleanTitle(title);
+  const seoTitle = `${cleanTitle} | Men's Luxury Watch`;
 
-  if (!cleaned) return "Premium Automatic Watch";
+  const metaDescription =
+    `Discover the ${cleanTitle.toLowerCase()}, designed with a refined look for business, everyday wear and special occasions. Shop a polished timepiece today.`;
 
-  if (cleaned.length <= 50) return cleaned;
+  const description =
+    `Designed for men who appreciate a refined timepiece, the ${cleanTitle.toLowerCase()} brings a polished presence to both everyday and occasion-ready styling. Its versatile design pairs naturally with tailored business looks, smart-casual outfits and evening wear.
 
-  const words = cleaned.split(" ");
-  let result = "";
+Whether worn as an everyday accessory or selected as a thoughtful gift, this watch is designed to add a sophisticated finishing touch without feeling overdone.`;
 
-  for (const word of words) {
-    const next = result ? `${result} ${word}` : word;
+  const highlights = [
+    "Refined design for a polished appearance",
+    "Versatile styling for business and casual wear",
+    "Designed for comfortable everyday use",
+    "A sophisticated choice for personal wear or gifting",
+  ];
 
-    if (next.length > 50) break;
-
-    result = next;
-  }
-
-  return result || cleaned.substring(0, 50).trim();
-}
-
-function createSeoTitle(title: string) {
-  const base = createProductTitle(title);
-
-  if (base.length <= 50) return base;
-
-  return base.substring(0, 50).trim();
-}
-
-function createMetaDescription(product: ProductData) {
-  const text =
-    `${product.title}. ${product.description} ` +
-    "Shop with confidence and discover a refined style for everyday wear.";
-
-  if (text.length <= 160) return text;
-
-  return text.substring(0, 157).trimEnd() + "...";
-}
-
-function generateContent(title: string, price: string): ProductData {
-  const optimizedTitle = createProductTitle(title);
-
-  const lower = optimizedTitle.toLowerCase();
-
-  const isWatch =
-    lower.includes("watch") ||
-    lower.includes("automatic") ||
-    lower.includes("quartz") ||
-    lower.includes("chronograph");
-
-  if (isWatch) {
-    return {
-      title: optimizedTitle,
-      price: price || "$129.99",
-      description:
-        `A refined ${optimizedTitle.toLowerCase()} designed for a polished everyday look. Its versatile styling makes it easy to pair with business attire, casual outfits, and special-occasion looks.`,
-      benefits: [
-        "Refined design for a polished appearance",
-        "Versatile styling for business and casual wear",
-        "Comfort-focused design for everyday use",
-        "A timeless option for personal wear or gifting",
-      ],
-      features: [
-        "Refined watch presentation",
-        "Classic versatile styling",
-        "Easy-to-read dial",
-        "Designed for everyday versatility",
-        "Suitable for business and occasions",
-      ],
-      faq: [
-        {
-          question: "Is this watch suitable for everyday wear?",
-          answer:
-            "The versatile styling makes it suitable for everyday outfits, business looks, and special occasions.",
-        },
-        {
-          question: "Can it be worn with formal clothing?",
-          answer:
-            "Yes. The refined appearance pairs naturally with business and formal clothing.",
-        },
-        {
-          question: "Is it suitable as a gift?",
-          answer:
-            "Its classic styling makes it a versatile gift option for birthdays, anniversaries, holidays, and other occasions.",
-        },
-      ],
-    };
-  }
+  const faqs = [
+    {
+      q: "Is this watch suitable for everyday wear?",
+      a: "Yes. Its versatile design makes it suitable for everyday outfits as well as more polished occasions.",
+    },
+    {
+      q: "Can it be worn with formal clothing?",
+      a: "Yes. The refined styling pairs well with business attire, dress shirts and formal looks.",
+    },
+    {
+      q: "Is it suitable as a gift?",
+      a: "Yes. Its classic presentation makes it a thoughtful option for birthdays, anniversaries and other occasions.",
+    },
+  ];
 
   return {
-    title: optimizedTitle,
-    price: price || "$49.99",
-    description:
-      `Discover the ${optimizedTitle.toLowerCase()} designed to combine practical everyday use with a clean, polished presentation.`,
-    benefits: [
-      "Designed for practical everyday use",
-      "Clean and versatile presentation",
-      "Easy to incorporate into daily routines",
-      "A thoughtful option for personal use or gifting",
-    ],
-    features: [
-      "Practical everyday design",
-      "Clean modern presentation",
-      "Versatile styling",
-      "Designed for convenient use",
-      "Suitable for everyday needs",
-    ],
-    faq: [
-      {
-        question: "Is this suitable for everyday use?",
-        answer:
-          "Yes. The product is presented as a practical option for everyday use.",
-      },
-      {
-        question: "Who is this product for?",
-        answer:
-          "Its versatile design makes it suitable for customers looking for a practical and polished everyday option.",
-      },
-      {
-        question: "Is it suitable as a gift?",
-        answer:
-          "Its versatile presentation makes it suitable for a variety of gifting occasions.",
-      },
-    ],
+    cleanTitle,
+    seoTitle,
+    metaDescription,
+    description,
+    highlights,
+    faqs,
   };
 }
 
-export default function Page() {
-  const [productTitle, setProductTitle] = useState("");
-  const [price, setPrice] = useState("");
+export default function Home() {
+  const [mode, setMode] = useState<"edit" | "preview">("edit");
+
+  const [title, setTitle] = useState("");
+  const [price, setPrice] = useState("129.99");
   const [audience, setAudience] = useState("Men");
-  const [angle, setAngle] = useState("Premium / Luxury");
-  const [images, setImages] = useState(4);
-  const [generated, setGenerated] = useState<ProductData | null>(null);
-  const [activeImage, setActiveImage] = useState(0);
-  const [openFaq, setOpenFaq] = useState<number | null>(null);
+  const [style, setStyle] = useState("Premium / Luxury");
+  const [imageCount, setImageCount] = useState(4);
 
-  const product = generated || defaultProduct;
-
-  const seoTitle = useMemo(
-    () => createSeoTitle(product.title),
-    [product.title]
+  const [product, setProduct] = useState<ReturnType<typeof buildProduct> | null>(
+    null
   );
 
-  const metaDescription = useMemo(
-    () => createMetaDescription(product),
-    [product]
-  );
+  function generateProduct() {
+    if (!title.trim()) {
+      alert("Please enter a product title.");
+      return;
+    }
 
-  const imagePlaceholders = [
-    "Product Image",
-    "Detail View",
-    "Lifestyle View",
-    "Close-up View",
-    "Alternate View",
-    "Packaging",
-    "Product Detail",
-  ];
+    const result = buildProduct({
+      title,
+      price,
+      audience,
+      style,
+      imageCount,
+    });
 
-  function generate() {
-    const result = generateContent(
-      productTitle || "Premium Automatic Watch",
-      price
-    );
-
-    setGenerated(result);
-    setActiveImage(0);
-    setOpenFaq(null);
+    setProduct(result);
+    setMode("preview");
   }
 
   return (
-    <main className="min-h-screen bg-[#f6f6f3] text-[#171717]">
-      <style jsx global>{`
-        * {
-          box-sizing: border-box;
-        }
-
-        body {
-          margin: 0;
-          font-family:
-            Inter,
-            ui-sans-serif,
-            system-ui,
-            -apple-system,
-            BlinkMacSystemFont,
-            "Segoe UI",
-            sans-serif;
-        }
-      `}</style>
-
-      {/* HEADER */}
-      <header className="sticky top-0 z-50 border-b border-black/10 bg-white/95 backdrop-blur">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-5 py-4">
-          <div>
-            <div className="text-xl font-black tracking-[0.25em]">
-              VIRELLO
-            </div>
-            <div className="mt-1 text-[9px] font-bold tracking-[0.28em] text-gray-400">
-              AI PRODUCT OPTIMIZER
-            </div>
+    <main
+      style={{
+        minHeight: "100vh",
+        background: "#ffffff",
+        color: "#18181b",
+        fontFamily:
+          "Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif",
+      }}
+    >
+      <header
+        style={{
+          borderBottom: "1px solid #e5e7eb",
+          padding: "22px 24px",
+        }}
+      >
+        <div
+          style={{
+            maxWidth: 1100,
+            margin: "0 auto",
+          }}
+        >
+          <div
+            style={{
+              fontSize: 12,
+              fontWeight: 800,
+              letterSpacing: "0.16em",
+            }}
+          >
+            VIRELLO
           </div>
 
-          {generated && (
-            <button
-              onClick={() => setGenerated(null)}
-              className="rounded-xl border border-gray-300 bg-white px-4 py-2 text-sm font-semibold"
-            >
-              ← Edit Product
-            </button>
-          )}
+          <div
+            style={{
+              marginTop: 4,
+              fontSize: 12,
+              color: "#71717a",
+              letterSpacing: "0.08em",
+            }}
+          >
+            AI PRODUCT OPTIMIZER
+          </div>
         </div>
       </header>
 
-      {!generated ? (
-        /* GENERATOR */
-        <section className="mx-auto max-w-5xl px-5 py-12">
-          <div className="mb-10">
-            <p className="text-xs font-bold uppercase tracking-[0.25em] text-gray-500">
+      {mode === "edit" && (
+        <section
+          style={{
+            maxWidth: 900,
+            margin: "0 auto",
+            padding: "70px 24px",
+          }}
+        >
+          <div style={{ marginBottom: 45 }}>
+            <div
+              style={{
+                fontSize: 14,
+                fontWeight: 700,
+                color: "#71717a",
+                marginBottom: 18,
+              }}
+            >
               Virello AI
-            </p>
+            </div>
 
-            <h1 className="mt-3 text-4xl font-black tracking-tight md:text-6xl">
+            <h1
+              style={{
+                fontSize: "clamp(42px, 7vw, 76px)",
+                lineHeight: 0.98,
+                letterSpacing: "-0.055em",
+                margin: 0,
+                maxWidth: 760,
+              }}
+            >
               Create a better
               <br />
               product page.
             </h1>
 
-            <p className="mt-5 max-w-2xl leading-7 text-gray-600">
+            <p
+              style={{
+                fontSize: 18,
+                lineHeight: 1.6,
+                color: "#52525b",
+                maxWidth: 650,
+                marginTop: 28,
+              }}
+            >
               Enter your product information and generate a complete,
               product-specific ecommerce page.
             </p>
           </div>
 
-          <div className="space-y-5">
-            {/* PRODUCT */}
-            <div className="rounded-3xl border border-black/10 bg-white p-7 shadow-sm">
-              <p className="text-xs font-bold uppercase tracking-[0.2em] text-gray-400">
-                Product Information
-              </p>
+          <div
+            style={{
+              border: "1px solid #e4e4e7",
+              borderRadius: 20,
+              padding: 28,
+              background: "#fafafa",
+            }}
+          >
+            <h2 style={{ marginTop: 0, fontSize: 22 }}>
+              Product Information
+            </h2>
 
-              <label className="mt-5 block text-sm font-bold">
-                Product Title
-              </label>
+            <label style={labelStyle}>Product Title</label>
 
-              <input
-                value={productTitle}
-                onChange={(e) => setProductTitle(e.target.value)}
-                placeholder="Paste your original product title"
-                className="mt-2 w-full rounded-2xl border border-gray-300 px-5 py-4 outline-none focus:border-black"
-              />
+            <input
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="Paste your original product title"
+              style={inputStyle}
+            />
 
-              <label className="mt-5 block text-sm font-bold">
-                Product Price
-              </label>
+            <label style={labelStyle}>Product Price</label>
+
+            <div style={{ position: "relative" }}>
+              <span
+                style={{
+                  position: "absolute",
+                  left: 15,
+                  top: 14,
+                  color: "#71717a",
+                }}
+              >
+                $
+              </span>
 
               <input
                 value={price}
                 onChange={(e) => setPrice(e.target.value)}
-                placeholder="$129.99"
-                className="mt-2 w-full rounded-2xl border border-gray-300 px-5 py-4 outline-none focus:border-black"
+                style={{
+                  ...inputStyle,
+                  paddingLeft: 30,
+                }}
               />
             </div>
 
-            {/* AUDIENCE */}
-            <div className="rounded-3xl border border-black/10 bg-white p-7 shadow-sm">
-              <p className="text-xs font-bold uppercase tracking-[0.2em] text-gray-400">
-                Target Audience
-              </p>
+            <label style={labelStyle}>Target Audience</label>
 
-              <div className="mt-5 grid grid-cols-3 gap-3">
-                {["Women", "Men", "Unisex"].map((item) => (
-                  <button
-                    key={item}
-                    onClick={() => setAudience(item)}
-                    className={`rounded-2xl border px-4 py-4 font-semibold ${
-                      audience === item
-                        ? "border-black bg-black text-white"
-                        : "border-gray-200 bg-white"
-                    }`}
-                  >
-                    {item}
-                  </button>
-                ))}
-              </div>
+            <div style={buttonGroupStyle}>
+              {["Women", "Men", "Unisex"].map((item) => (
+                <button
+                  key={item}
+                  onClick={() => setAudience(item)}
+                  style={choiceStyle(audience === item)}
+                >
+                  {item}
+                </button>
+              ))}
             </div>
 
-            {/* ANGLE */}
-            <div className="rounded-3xl border border-black/10 bg-white p-7 shadow-sm">
-              <p className="text-xs font-bold uppercase tracking-[0.2em] text-gray-400">
-                Copywriting
-              </p>
+            <label style={labelStyle}>Copywriting</label>
 
-              <div className="mt-5 grid gap-3 sm:grid-cols-2 md:grid-cols-3">
-                {[
-                  "Premium / Luxury",
-                  "Professional",
-                  "Everyday",
-                  "Casual",
-                  "Sport",
-                  "Gift",
-                ].map((item) => (
-                  <button
-                    key={item}
-                    onClick={() => setAngle(item)}
-                    className={`rounded-2xl border px-4 py-4 text-sm font-semibold ${
-                      angle === item
-                        ? "border-black bg-black text-white"
-                        : "border-gray-200 bg-white"
-                    }`}
-                  >
-                    {item}
-                  </button>
-                ))}
-              </div>
+            <div
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                gap: 8,
+              }}
+            >
+              {[
+                "Premium / Luxury",
+                "Professional",
+                "Everyday",
+                "Casual",
+                "Sport",
+                "Gift",
+              ].map((item) => (
+                <button
+                  key={item}
+                  onClick={() => setStyle(item)}
+                  style={choiceStyle(style === item)}
+                >
+                  {item}
+                </button>
+              ))}
             </div>
 
-            {/* IMAGES */}
-            <div className="rounded-3xl border border-black/10 bg-white p-7 shadow-sm">
-              <p className="text-xs font-bold uppercase tracking-[0.2em] text-gray-400">
-                Visuals
-              </p>
+            <label style={labelStyle}>Visuals</label>
 
-              <label className="mt-4 block text-sm font-bold">
+            <div>
+              <div
+                style={{
+                  fontSize: 14,
+                  color: "#71717a",
+                  marginBottom: 10,
+                }}
+              >
                 Number of Product Images
-              </label>
+              </div>
 
-              <div className="mt-4 grid grid-cols-7 gap-2">
+              <div style={buttonGroupStyle}>
                 {[0, 1, 2, 3, 4, 5, 6].map((number) => (
                   <button
                     key={number}
-                    onClick={() => setImages(number)}
-                    className={`rounded-xl border py-3 text-sm font-bold ${
-                      images === number
-                        ? "border-black bg-black text-white"
-                        : "border-gray-200 bg-white"
-                    }`}
+                    onClick={() => setImageCount(number)}
+                    style={choiceStyle(imageCount === number)}
                   >
                     {number}
                   </button>
@@ -398,272 +294,451 @@ export default function Page() {
               </div>
             </div>
 
-            {/* GENERATE */}
             <button
-              onClick={generate}
-              className="w-full rounded-2xl bg-black px-6 py-5 text-lg font-bold text-white transition hover:bg-gray-800"
+              onClick={generateProduct}
+              style={{
+                marginTop: 32,
+                width: "100%",
+                padding: "17px 22px",
+                borderRadius: 12,
+                border: "none",
+                background: "#18181b",
+                color: "#fff",
+                fontSize: 16,
+                fontWeight: 700,
+                cursor: "pointer",
+              }}
             >
               Generate AI Product Page →
             </button>
           </div>
         </section>
-      ) : (
-        /* GENERATED PAGE */
-        <>
-          {/* HERO */}
-          <section className="mx-auto grid max-w-7xl gap-12 px-5 py-10 md:grid-cols-2 md:py-16">
-            <div>
-              <div className="overflow-hidden rounded-3xl bg-[#ecece8]">
-                <div className="flex aspect-square items-center justify-center p-10">
-                  <div className="flex h-64 w-64 items-center justify-center rounded-full border-[18px] border-gray-800 bg-white shadow-2xl md:h-80 md:w-80">
-                    <div className="text-center">
-                      <div className="text-3xl font-black">V</div>
-                      <div className="mt-2 text-[9px] font-bold tracking-[0.3em]">
-                        VIRELLO
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
+      )}
 
-              <div className="mt-3 grid grid-cols-4 gap-3">
-                {Array.from({ length: Math.max(1, images) }).map(
-                  (_, index) => (
-                    <button
-                      key={index}
-                      onClick={() => setActiveImage(index)}
-                      className={`aspect-square rounded-xl border bg-white text-xs font-semibold ${
-                        activeImage === index
-                          ? "border-2 border-black"
-                          : "border-gray-200"
-                      }`}
+      {mode === "preview" && product && (
+        <section
+          style={{
+            maxWidth: 1100,
+            margin: "0 auto",
+            padding: "24px",
+          }}
+        >
+          <button
+            onClick={() => setMode("edit")}
+            style={{
+              border: "1px solid #d4d4d8",
+              background: "#fff",
+              borderRadius: 10,
+              padding: "10px 16px",
+              cursor: "pointer",
+              fontSize: 14,
+              marginBottom: 35,
+            }}
+          >
+            ← Edit Product
+          </button>
+
+          <div
+            style={{
+              borderTop: "1px solid #e4e4e7",
+              paddingTop: 30,
+            }}
+          >
+            <div
+              style={{
+                fontSize: 12,
+                letterSpacing: "0.14em",
+                fontWeight: 800,
+              }}
+            >
+              VIRELLO
+            </div>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)",
+                gap: 55,
+                marginTop: 35,
+              }}
+            >
+              <div>
+                <div
+                  style={{
+                    aspectRatio: "1 / 1",
+                    borderRadius: 18,
+                    background:
+                      "linear-gradient(135deg, #f4f4f5, #e4e4e7)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    color: "#71717a",
+                    fontSize: 15,
+                  }}
+                >
+                  Product Image
+                </div>
+
+                {product &&
+                  [1, 2, 3].slice(
+                    0,
+                    Math.max(0, Math.min(product ? 3 : 0, imageCount - 1))
+                  ).map((item) => (
+                    <div
+                      key={item}
+                      style={{
+                        marginTop: 12,
+                        aspectRatio: "1 / 1",
+                        borderRadius: 14,
+                        background: "#f4f4f5",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        color: "#71717a",
+                        fontSize: 13,
+                      }}
                     >
-                      {imagePlaceholders[index] || "Product View"}
-                    </button>
-                  )
-                )}
-              </div>
-            </div>
-
-            <div className="flex flex-col justify-center">
-              <p className="text-xs font-bold uppercase tracking-[0.25em] text-gray-400">
-                Premium Collection
-              </p>
-
-              <h1 className="mt-4 text-4xl font-black leading-[0.98] tracking-tight md:text-6xl">
-                {product.title}
-              </h1>
-
-              <div className="mt-6 flex items-center gap-3">
-                <span className="text-2xl font-bold">{product.price}</span>
-              </div>
-
-              <p className="mt-6 text-lg leading-8 text-gray-600">
-                {product.description}
-              </p>
-
-              <div className="mt-7 divide-y border-y">
-                {product.benefits.map((benefit) => (
-                  <div
-                    key={benefit}
-                    className="flex items-center gap-3 py-4 text-sm font-semibold"
-                  >
-                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-black text-xs text-white">
-                      ✓
-                    </span>
-                    {benefit}
-                  </div>
-                ))}
-              </div>
-
-              <button className="mt-7 rounded-2xl bg-black px-6 py-5 font-bold tracking-wide text-white">
-                ADD TO CART
-              </button>
-
-              <div className="mt-4 grid grid-cols-3 gap-2">
-                {["Secure Checkout", "Easy Returns", "Support"].map((item) => (
-                  <div
-                    key={item}
-                    className="rounded-xl border bg-white p-3 text-center text-[10px] font-bold uppercase text-gray-500"
-                  >
-                    {item}
-                  </div>
-                ))}
-              </div>
-            </div>
-          </section>
-
-          {/* BENEFITS */}
-          <section className="border-y bg-white px-5 py-20">
-            <div className="mx-auto max-w-7xl">
-              <p className="text-xs font-bold uppercase tracking-[0.25em] text-gray-400">
-                Why it stands out
-              </p>
-
-              <h2 className="mt-3 max-w-3xl text-4xl font-black tracking-tight md:text-5xl">
-                Designed around what customers actually want.
-              </h2>
-
-              <div className="mt-10 grid gap-4 md:grid-cols-4">
-                {product.benefits.map((benefit, index) => (
-                  <div
-                    key={benefit}
-                    className="rounded-2xl border bg-[#fafaf8] p-6"
-                  >
-                    <div className="text-xs font-bold text-gray-400">
-                      0{index + 1}
+                      Additional Product View
                     </div>
-
-                    <h3 className="mt-12 text-lg font-bold leading-tight">
-                      {benefit}
-                    </h3>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </section>
-
-          {/* FEATURES */}
-          <section className="px-5 py-20">
-            <div className="mx-auto grid max-w-7xl gap-12 md:grid-cols-2 md:items-center">
-              <div className="flex aspect-square items-center justify-center rounded-3xl bg-[#e9e9e5]">
-                <div className="flex h-56 w-56 items-center justify-center rounded-full border-[15px] border-gray-800 bg-white shadow-xl md:h-72 md:w-72">
-                  <span className="text-2xl font-black">V</span>
-                </div>
+                  ))}
               </div>
 
               <div>
-                <p className="text-xs font-bold uppercase tracking-[0.25em] text-gray-400">
-                  Product Details
+                <div
+                  style={{
+                    color: "#71717a",
+                    fontSize: 14,
+                    marginBottom: 18,
+                  }}
+                >
+                  Premium Collection
+                </div>
+
+                <h1
+                  style={{
+                    fontSize: "clamp(36px, 5vw, 62px)",
+                    lineHeight: 1.02,
+                    letterSpacing: "-0.045em",
+                    margin: "0 0 25px",
+                  }}
+                >
+                  {product.cleanTitle}
+                </h1>
+
+                <div
+                  style={{
+                    fontSize: 25,
+                    fontWeight: 600,
+                    marginBottom: 28,
+                  }}
+                >
+                  ${price}
+                </div>
+
+                <p
+                  style={{
+                    fontSize: 18,
+                    lineHeight: 1.7,
+                    color: "#52525b",
+                    whiteSpace: "pre-line",
+                  }}
+                >
+                  {product.description}
                 </p>
 
-                <h2 className="mt-3 text-4xl font-black tracking-tight md:text-5xl">
-                  Details that complete the experience.
-                </h2>
-
-                <p className="mt-5 leading-8 text-gray-600">
-                  Virello organizes the available product information into
-                  clear sections so customers can understand the product
-                  without digging through a wall of text.
-                </p>
-
-                <div className="mt-7 divide-y border-y">
-                  {product.features.map((feature) => (
+                <div style={{ marginTop: 30 }}>
+                  {product.highlights.map((item) => (
                     <div
-                      key={feature}
-                      className="flex items-center justify-between py-5 font-semibold"
+                      key={item}
+                      style={{
+                        marginBottom: 12,
+                        fontSize: 16,
+                      }}
                     >
-                      <span>{feature}</span>
-                      <span>✓</span>
+                      ✓ {item}
                     </div>
                   ))}
                 </div>
+
+                <button
+                  style={{
+                    marginTop: 25,
+                    padding: "16px 28px",
+                    borderRadius: 10,
+                    border: "none",
+                    background: "#18181b",
+                    color: "#fff",
+                    fontSize: 16,
+                    fontWeight: 700,
+                  }}
+                >
+                  ADD TO CART
+                </button>
+
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(3, 1fr)",
+                    gap: 12,
+                    marginTop: 25,
+                    paddingTop: 20,
+                    borderTop: "1px solid #e4e4e7",
+                    color: "#52525b",
+                    fontSize: 13,
+                  }}
+                >
+                  <div>Secure Checkout</div>
+                  <div>Easy Returns</div>
+                  <div>Support</div>
+                </div>
               </div>
             </div>
-          </section>
 
-          {/* FAQ */}
-          <section className="border-t bg-white px-5 py-20">
-            <div className="mx-auto max-w-4xl">
-              <p className="text-center text-xs font-bold uppercase tracking-[0.25em] text-gray-400">
-                Frequently Asked Questions
-              </p>
-
-              <h2 className="mt-3 text-center text-4xl font-black">
-                Questions, answered.
+            <section
+              style={{
+                marginTop: 80,
+                paddingTop: 45,
+                borderTop: "1px solid #e4e4e7",
+              }}
+            >
+              <h2
+                style={{
+                  fontSize: 32,
+                  letterSpacing: "-0.03em",
+                }}
+              >
+                Why it stands out
               </h2>
 
-              <div className="mt-10 divide-y border-y">
-                {product.faq.map((item, index) => (
-                  <div key={item.question}>
-                    <button
-                      onClick={() =>
-                        setOpenFaq(openFaq === index ? null : index)
-                      }
-                      className="flex w-full items-center justify-between py-6 text-left font-bold"
-                    >
-                      {item.question}
-                      <span className="ml-4 text-xl">
-                        {openFaq === index ? "−" : "+"}
-                      </span>
-                    </button>
+              <p
+                style={{
+                  maxWidth: 720,
+                  color: "#52525b",
+                  lineHeight: 1.7,
+                  fontSize: 17,
+                }}
+              >
+                A versatile timepiece designed to complement your wardrobe
+                with a polished and confident finish.
+              </p>
+            </section>
 
-                    {openFaq === index && (
-                      <p className="pb-6 pr-10 leading-7 text-gray-600">
-                        {item.answer}
-                      </p>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          </section>
+            <section
+              style={{
+                marginTop: 65,
+                paddingTop: 45,
+                borderTop: "1px solid #e4e4e7",
+              }}
+            >
+              <h2
+                style={{
+                  fontSize: 32,
+                  letterSpacing: "-0.03em",
+                }}
+              >
+                Frequently Asked Questions
+              </h2>
 
-          {/* CTA */}
-          <section className="bg-black px-5 py-24 text-center text-white">
-            <p className="text-xs font-bold uppercase tracking-[0.3em] text-white/50">
-              Virello Product Experience
-            </p>
-
-            <h2 className="mx-auto mt-4 max-w-3xl text-4xl font-black tracking-tight md:text-6xl">
-              Make the product easier to understand. Easier to want.
-            </h2>
-
-            <button className="mt-8 rounded-2xl bg-white px-8 py-4 font-bold text-black">
-              ADD TO CART
-            </button>
-          </section>
-
-          {/* SEO */}
-          <section className="border-t bg-[#f6f6f3] px-5 py-16">
-            <div className="mx-auto max-w-4xl">
-              <h2 className="text-2xl font-black">SEO Information</h2>
-
-              <div className="mt-7 rounded-2xl border bg-white p-6">
-                <div className="flex items-center justify-between gap-4">
-                  <h3 className="font-bold">SEO Title</h3>
-                  <span
-                    className={
-                      seoTitle.length > 50
-                        ? "font-bold text-red-600"
-                        : "text-sm font-bold text-gray-500"
-                    }
+              {product.faqs.map((faq) => (
+                <details
+                  key={faq.q}
+                  style={{
+                    borderBottom: "1px solid #e4e4e7",
+                    padding: "20px 0",
+                  }}
+                >
+                  <summary
+                    style={{
+                      cursor: "pointer",
+                      fontWeight: 600,
+                      fontSize: 17,
+                    }}
                   >
-                    {seoTitle.length}/50
-                  </span>
-                </div>
+                    {faq.q}
+                  </summary>
 
-                <div className="mt-4 rounded-xl bg-gray-50 p-4 text-sm">
-                  {seoTitle}
-                </div>
-              </div>
-
-              <div className="mt-5 rounded-2xl border bg-white p-6">
-                <div className="flex items-center justify-between gap-4">
-                  <h3 className="font-bold">Meta Description</h3>
-                  <span
-                    className={
-                      metaDescription.length > 160
-                        ? "font-bold text-red-600"
-                        : "text-sm font-bold text-gray-500"
-                    }
+                  <p
+                    style={{
+                      color: "#52525b",
+                      lineHeight: 1.6,
+                      marginBottom: 0,
+                    }}
                   >
-                    {metaDescription.length}/160
-                  </span>
+                    {faq.a}
+                  </p>
+                </details>
+              ))}
+            </section>
+
+            <section
+              style={{
+                marginTop: 65,
+                padding: "40px 0",
+                borderTop: "1px solid #e4e4e7",
+              }}
+            >
+              <h2
+                style={{
+                  fontSize: 30,
+                  marginBottom: 10,
+                }}
+              >
+                SEO Information
+              </h2>
+
+              <div style={{ marginTop: 30 }}>
+                <h3 style={{ marginBottom: 8 }}>SEO Title</h3>
+
+                <div
+                  style={{
+                    padding: 18,
+                    background: "#f4f4f5",
+                    borderRadius: 10,
+                    lineHeight: 1.5,
+                  }}
+                >
+                  {product.seoTitle}
                 </div>
 
-                <div className="mt-4 rounded-xl bg-gray-50 p-4 text-sm leading-6">
-                  {metaDescription}
+                <div
+                  style={{
+                    marginTop: 7,
+                    fontSize: 13,
+                    color: "#71717a",
+                  }}
+                >
+                  {product.seoTitle.length}/60
                 </div>
               </div>
-            </div>
-          </section>
 
-          <footer className="border-t bg-white px-5 py-8 text-center text-xs font-bold tracking-[0.2em] text-gray-400">
-            VIRELLO AI OPTIMIZER
-          </footer>
-        </>
+              <div style={{ marginTop: 30 }}>
+                <h3 style={{ marginBottom: 8 }}>Meta Description</h3>
+
+                <div
+                  style={{
+                    padding: 18,
+                    background: "#f4f4f5",
+                    borderRadius: 10,
+                    lineHeight: 1.5,
+                  }}
+                >
+                  {product.metaDescription}
+                </div>
+
+                <div
+                  style={{
+                    marginTop: 7,
+                    fontSize: 13,
+                    color: "#71717a",
+                  }}
+                >
+                  {product.metaDescription.length}/160
+                </div>
+              </div>
+            </section>
+
+            <section
+              style={{
+                marginTop: 30,
+                padding: "50px 0 80px",
+                borderTop: "1px solid #e4e4e7",
+                textAlign: "center",
+              }}
+            >
+              <div
+                style={{
+                  fontSize: 13,
+                  letterSpacing: "0.12em",
+                  color: "#71717a",
+                }}
+              >
+                VIRELLO PRODUCT EXPERIENCE
+              </div>
+
+              <h2
+                style={{
+                  fontSize: "clamp(34px, 5vw, 56px)",
+                  letterSpacing: "-0.04em",
+                  margin: "20px auto",
+                  maxWidth: 700,
+                }}
+              >
+                Make the product easier to understand. Easier to want.
+              </h2>
+
+              <button
+                style={{
+                  padding: "16px 30px",
+                  borderRadius: 10,
+                  border: "none",
+                  background: "#18181b",
+                  color: "#fff",
+                  fontWeight: 700,
+                }}
+              >
+                ADD TO CART
+              </button>
+            </section>
+          </div>
+        </section>
       )}
+
+      <style jsx global>{`
+        * {
+          box-sizing: border-box;
+        }
+
+        button,
+        input {
+          font: inherit;
+        }
+
+        input:focus {
+          outline: 2px solid #18181b;
+          outline-offset: 1px;
+        }
+
+        @media (max-width: 760px) {
+          main section > div[style*="grid-template-columns"] {
+            grid-template-columns: 1fr !important;
+          }
+        }
+      `}</style>
     </main>
   );
-                  }
+}
+
+const labelStyle: React.CSSProperties = {
+  display: "block",
+  fontSize: 14,
+  fontWeight: 700,
+  marginTop: 24,
+  marginBottom: 9,
+};
+
+const inputStyle: React.CSSProperties = {
+  width: "100%",
+  padding: "14px 15px",
+  borderRadius: 10,
+  border: "1px solid #d4d4d8",
+  background: "#fff",
+  color: "#18181b",
+  fontSize: 16,
+};
+
+const buttonGroupStyle: React.CSSProperties = {
+  display: "flex",
+  flexWrap: "wrap",
+  gap: 8,
+};
+
+const choiceStyle = (active: boolean): React.CSSProperties => ({
+  padding: "10px 15px",
+  borderRadius: 9,
+  border: active ? "1px solid #18181b" : "1px solid #d4d4d8",
+  background: active ? "#18181b" : "#fff",
+  color: active ? "#fff" : "#18181b",
+  cursor: "pointer",
+  fontSize: 14,
+  fontWeight: active ? 700 : 500,
+});
