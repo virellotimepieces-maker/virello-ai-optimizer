@@ -531,6 +531,21 @@ export default function Home() {
             flex: 1 1 45%;
           }
         }
+        .page input,
+.page textarea,
+.page .searchBox input {
+  color: #171717 !important;
+  background: #fff !important;
+}
+
+.page label {
+  color: #222 !important;
+}
+
+.page input::placeholder,
+.page textarea::placeholder {
+  color: #777 !important;
+}
       `}</style>
     </main>
   );
