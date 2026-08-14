@@ -2,490 +2,466 @@
 
 import { useMemo, useState } from "react";
 
-type Product = {
-  id: number;
-  name: string;
-  price: string;
-  image: string;
-  collection: string;
+type ProductInput = {
+  title: string;
   description: string;
+  features: string;
+  productType: string;
+  brand: string;
+  material: string;
+  color: string;
+  movement: string;
+  caseSize: string;
+  waterResistance: string;
+  targetCustomer: string;
+  price: string;
 };
 
-const initialProducts: Product[] = [
-  {
-    id: 1,
-    name: "Automatic Steel Timepiece",
-    price: "249.00",
-    image:
-      "https://images.unsplash.com/photo-1524805444758-089113d48a6d?auto=format&fit=crop&w=900&q=80",
-    collection: "Automatic",
-    description:
-      "A refined automatic timepiece with a clean dial and polished stainless steel case.",
-  },
-  {
-    id: 2,
-    name: "Classic Chronograph",
-    price: "289.00",
-    image:
-      "https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=900&q=80",
-    collection: "Chronographs",
-    description:
-      "A sophisticated chronograph designed with balanced proportions and timeless appeal.",
-  },
-  {
-    id: 3,
-    name: "Minimal Steel Watch",
-    price: "199.00",
-    image:
-      "https://images.unsplash.com/photo-1523170335258-f5ed11844a49?auto=format&fit=crop&w=900&q=80",
-    collection: "Everyday",
-    description:
-      "A versatile steel watch with understated styling for everyday wear.",
-  },
-  {
-    id: 4,
-    name: "Refined Black Dial",
-    price: "229.00",
-    image:
-      "https://images.unsplash.com/photo-1522312346375-d1a52e2b99b3?auto=format&fit=crop&w=900&q=80",
-    collection: "Signature",
-    description:
-      "A polished timepiece featuring a deep dial and refined modern character.",
-  },
-];
+function clean(value: string) {
+  return value
+    .replace(/\s+/g, " ")
+    .replace(/https?:\/\/\S+/gi, "")
+    .trim();
+}
 
-export default function Home() {
-  const [products, setProducts] = useState(initialProducts);
-  const [cart, setCart] = useState<Record<number, number>>({});
-  const [announcement, setAnnouncement] = useState(
-    "Complimentary shipping on orders over $100"
-  );
-  const [brand, setBrand] = useState("Horizon Timepieces");
-  const [heroTitle, setHeroTitle] = useState("Timeless Timepieces");
-  const [heroText, setHeroText] = useState(
-    "Refined watches designed to bring understated sophistication to every occasion."
-  );
-  const [heroImage, setHeroImage] = useState(
-    "https://images.unsplash.com/photo-1524805444758-089113d48a6d?auto=format&fit=crop&w=1800&q=85"
-  );
-  const [accent, setAccent] = useState("#111111");
-  const [showBuilder, setShowBuilder] = useState(true);
-  const [activeCollection, setActiveCollection] = useState("All");
+function limit(value: string, max: number) {
+  return value.length <= max ? value : value.slice(0, max).replace(/\s+\S*$/, "").trim();
+}
 
-  const cartCount = Object.values(cart).reduce(
-    (sum, quantity) => sum + quantity,
-    0
+function slugify(value: string) {
+  return clean(value)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+}
+
+function unique(items: string[]) {
+  return [...new Set(items.map(clean).filter(Boolean))];
+}
+
+function generateOptimizedProduct(input: ProductInput) {
+  const title = clean(input.title);
+  const description = clean(input.description);
+  const features = unique(
+    input.features
+      .split(/\n|,|•|;/)
+      .map(clean)
+      .filter(Boolean)
   );
 
-  const cartTotal = Object.entries(cart).reduce(
-    (sum, [id, quantity]) => {
-      const product = products.find(
-        (item) => item.id === Number(id)
-      );
+  const productType = clean(input.productType) || "Timepiece";
+  const brand = clean(input.brand);
+  const material = clean(input.material);
+  const color = clean(input.color);
+  const movement = clean(input.movement);
+  const caseSize = clean(input.caseSize);
+  const waterResistance = clean(input.waterResistance);
 
-      return sum + (product ? Number(product.price) * quantity : 0);
-    },
-    0
+  /*
+   * IMPORTANT:
+   * Only supplied specifications are used.
+   * The optimizer does not invent technical claims.
+   */
+
+  const titleParts = unique([
+    brand && brand !== "Generic" ? brand : "",
+    title,
+  ]);
+
+  let optimizedTitle = titleParts.join(" ");
+
+  if (optimizedTitle.length > 65) {
+    optimizedTitle = limit(title, 65);
+  }
+
+  const benefitPool = [
+    movement ? `Powered by a ${movement.toLowerCase()} movement` : "",
+    material ? `Crafted with ${material.toLowerCase()}` : "",
+    color ? `${color} finish for a refined look` : "",
+    caseSize ? `${caseSize} case size` : "",
+    waterResistance ? `${waterResistance} water resistance` : "",
+    features[0] ? clean(features[0]) : "",
+    features[1] ? clean(features[1]) : "",
+  ];
+
+  const benefits = unique(benefitPool).slice(0, 6);
+
+  const specificationLines = unique([
+    movement ? `Movement: ${movement}` : "",
+    material ? `Material: ${material}` : "",
+    color ? `Color: ${color}` : "",
+    caseSize ? `Case Size: ${caseSize}` : "",
+    waterResistance ? `Water Resistance: ${waterResistance}` : "",
+    ...features.slice(0, 8),
+  ]);
+
+  const opening = [
+    `Designed for a refined everyday presence, the ${optimizedTitle} brings together considered styling and the specifications that matter.`,
+    description,
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  const descriptionParagraphs = [
+    opening,
+    benefits.length
+      ? `Key highlights include ${benefits.slice(0, 3).join(", ")}${benefits.length > 3 ? ", and more." : "."}`
+      : "",
+    `A clean, versatile design makes this ${productType.toLowerCase()} easy to pair with both polished and everyday looks.`,
+  ].filter(Boolean);
+
+  const seoTitle = limit(
+    `${optimizedTitle} | ${brand || "Horizon Timepieces"}`,
+    60
   );
 
-  function addToCart(id: number) {
-    setCart((current) => ({
+  const metaDescription = limit(
+    `${optimizedTitle}. Explore the design, features and specifications of this refined ${productType.toLowerCase()} from ${brand || "Horizon Timepieces"}.`,
+    160
+  );
+
+  const altText = limit(
+    `${optimizedTitle}${color ? ` in ${color}` : ""}${material ? ` ${material}` : ""}`,
+    125
+  );
+
+  const tags = unique([
+    "timepiece",
+    "watches",
+    productType,
+    brand,
+    color,
+    material,
+    movement,
+    ...features.slice(0, 5),
+  ])
+    .map((tag) => tag.toLowerCase())
+    .filter((tag) => tag.length >= 2)
+    .slice(0, 15);
+
+  return {
+    optimizedTitle,
+    description: descriptionParagraphs.join("\n\n"),
+    benefits,
+    specifications: specificationLines,
+    seoTitle,
+    metaDescription,
+    urlHandle: slugify(optimizedTitle),
+    imageAltText: altText,
+    tags,
+    productType,
+  };
+}
+
+export default function ProductOptimizer() {
+  const [input, setInput] = useState<ProductInput>({
+    title: "",
+    description: "",
+    features: "",
+    productType: "Luxury Watch",
+    brand: "",
+    material: "",
+    color: "",
+    movement: "",
+    caseSize: "",
+    waterResistance: "",
+    targetCustomer: "",
+    price: "",
+  });
+
+  const [optimized, setOptimized] = useState<ReturnType<
+    typeof generateOptimizedProduct
+  > | null>(null);
+
+  const [copied, setCopied] = useState<string | null>(null);
+
+  const update = (key: keyof ProductInput, value: string) => {
+    setInput((current) => ({
       ...current,
-      [id]: (current[id] || 0) + 1,
+      [key]: value,
     }));
-  }
+  };
 
-  function changeQuantity(id: number, amount: number) {
-    setCart((current) => {
-      const next = Math.max(0, (current[id] || 0) + amount);
-      const copy = { ...current };
+  const optimize = () => {
+    if (!input.title.trim()) return;
+    setOptimized(generateOptimizedProduct(input));
+  };
 
-      if (next === 0) {
-        delete copy[id];
-      } else {
-        copy[id] = next;
-      }
+  const copy = async (key: string, value: string) => {
+    await navigator.clipboard.writeText(value);
+    setCopied(key);
+    setTimeout(() => setCopied(null), 1500);
+  };
 
-      return copy;
-    });
-  }
-
-  function updateProduct(
-    id: number,
-    field: keyof Product,
-    value: string
-  ) {
-    setProducts((current) =>
-      current.map((product) =>
-        product.id === id
-          ? { ...product, [field]: value }
-          : product
-      )
-    );
-  }
-
-  const collections = useMemo(
-    () => [
-      "All",
-      ...Array.from(
-        new Set(products.map((product) => product.collection))
-      ),
-    ],
-    [products]
+  const seoCount = useMemo(
+    () => optimized?.seoTitle.length ?? 0,
+    [optimized]
   );
 
-  const visibleProducts =
-    activeCollection === "All"
-      ? products
-      : products.filter(
-          (product) => product.collection === activeCollection
-        );
+  const metaCount = useMemo(
+    () => optimized?.metaDescription.length ?? 0,
+    [optimized]
+  );
 
   return (
-    <main
-      className="app"
-      style={{ "--accent": accent } as React.CSSProperties}
-    >
-      {showBuilder && (
-        <section className="builder">
-          <div className="builderHead">
-            <div>
-              <strong>Storefront Builder</strong>
-              <span>Live preview & controls</span>
-            </div>
-
-            <button onClick={() => setShowBuilder(false)}>
-              Hide Builder
-            </button>
-          </div>
-
-          <div className="controls">
-            <label>
-              Brand
-              <input
-                value={brand}
-                onChange={(e) => setBrand(e.target.value)}
-              />
-            </label>
-
-            <label>
-              Announcement
-              <input
-                value={announcement}
-                onChange={(e) =>
-                  setAnnouncement(e.target.value)
-                }
-              />
-            </label>
-
-            <label>
-              Hero Title
-              <input
-                value={heroTitle}
-                onChange={(e) =>
-                  setHeroTitle(e.target.value)
-                }
-              />
-            </label>
-
-            <label>
-              Hero Text
-              <textarea
-                value={heroText}
-                onChange={(e) =>
-                  setHeroText(e.target.value)
-                }
-              />
-            </label>
-
-            <label>
-              Hero Image URL
-              <input
-                value={heroImage}
-                onChange={(e) =>
-                  setHeroImage(e.target.value)
-                }
-              />
-            </label>
-
-            <label>
-              Accent Color
-              <input
-                type="color"
-                value={accent}
-                onChange={(e) =>
-                  setAccent(e.target.value)
-                }
-              />
-            </label>
-          </div>
-
-          <div className="productEditor">
-            <h3>Edit Products</h3>
-
-            {products.map((product) => (
-              <div className="editRow" key={product.id}>
-                <input
-                  value={product.name}
-                  onChange={(e) =>
-                    updateProduct(
-                      product.id,
-                      "name",
-                      e.target.value
-                    )
-                  }
-                />
-
-                <input
-                  value={product.price}
-                  onChange={(e) =>
-                    updateProduct(
-                      product.id,
-                      "price",
-                      e.target.value
-                    )
-                  }
-                />
-
-                <input
-                  value={product.image}
-                  onChange={(e) =>
-                    updateProduct(
-                      product.id,
-                      "image",
-                      e.target.value
-                    )
-                  }
-                />
-
-                <input
-                  value={product.collection}
-                  onChange={(e) =>
-                    updateProduct(
-                      product.id,
-                      "collection",
-                      e.target.value
-                    )
-                  }
-                />
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {!showBuilder && (
-        <button
-          className="showBuilder"
-          onClick={() => setShowBuilder(true)}
-        >
-          Edit Storefront
-        </button>
-      )}
-
-      <section className="storefront">
-        <div className="announcement">
-          {announcement}
+    <main className="optimizer">
+      <header className="top">
+        <div>
+          <p className="eyebrow">HORIZON TIMEPIECES</p>
+          <h1>Product Optimizer</h1>
+          <p className="subtitle">
+            Create polished, unique product content built for customers and
+            search engines.
+          </p>
         </div>
+      </header>
 
-        <header className="nav">
-          <div className="brand">{brand}</div>
-
-          <nav>
-            <a href="#shop">Shop</a>
-            <a href="#collections">Collections</a>
-            <a href="#about">About</a>
-          </nav>
-
-          <div className="cart">
-            Cart <b>{cartCount}</b>
-          </div>
-        </header>
-
-        <section
-          className="hero"
-          style={{
-            backgroundImage: `linear-gradient(90deg, rgba(0,0,0,.72), rgba(0,0,0,.15)), url(${heroImage})`,
-          }}
-        >
-          <div className="heroContent">
-            <p>THE COLLECTION</p>
-
-            <h1>{heroTitle}</h1>
-
-            <div>{heroText}</div>
-
-            <a href="#shop" className="heroButton">
-              Explore Collection
-            </a>
-          </div>
-        </section>
-
-        <section className="shop" id="shop">
-          <div className="sectionHead">
+      <section className="workspace">
+        <div className="panel inputPanel">
+          <div className="panelTitle">
             <div>
-              <p className="eyebrow">CURATED FOR YOU</p>
-              <h2>Featured Timepieces</h2>
+              <p className="eyebrow">PRODUCT DATA</p>
+              <h2>Product Information</h2>
             </div>
-
-            <div
-              className="collections"
-              id="collections"
-            >
-              {collections.map((collection) => (
-                <button
-                  className={
-                    activeCollection === collection
-                      ? "selected"
-                      : ""
-                  }
-                  onClick={() =>
-                    setActiveCollection(collection)
-                  }
-                  key={collection}
-                >
-                  {collection}
-                </button>
-              ))}
-            </div>
+            <span className="badge">AI READY</span>
           </div>
+
+          <Field
+            label="Original Product Title"
+            value={input.title}
+            onChange={(v) => update("title", v)}
+            placeholder="Example: PAGANI DESIGN Automatic Men's Watch"
+          />
+
+          <Field
+            label="Original Description"
+            value={input.description}
+            onChange={(v) => update("description", v)}
+            textarea
+            placeholder="Paste the supplier/product description here..."
+          />
+
+          <Field
+            label="Features / Specifications"
+            value={input.features}
+            onChange={(v) => update("features", v)}
+            textarea
+            placeholder={"One feature per line\nAutomatic movement\nStainless steel case\nSapphire crystal"}
+          />
 
           <div className="grid">
-            {visibleProducts.map((product) => (
-              <article className="card" key={product.id}>
-                <div className="imageWrap">
-                  <img
-                    src={product.image}
-                    alt={product.name}
-                  />
+            <Field
+              label="Product Type"
+              value={input.productType}
+              onChange={(v) => update("productType", v)}
+              placeholder="Luxury Watch"
+            />
 
-                  <span>{product.collection}</span>
+            <Field
+              label="Brand"
+              value={input.brand}
+              onChange={(v) => update("brand", v)}
+              placeholder="Brand if applicable"
+            />
+
+            <Field
+              label="Material"
+              value={input.material}
+              onChange={(v) => update("material", v)}
+              placeholder="Stainless Steel"
+            />
+
+            <Field
+              label="Color"
+              value={input.color}
+              onChange={(v) => update("color", v)}
+              placeholder="Black"
+            />
+
+            <Field
+              label="Movement"
+              value={input.movement}
+              onChange={(v) => update("movement", v)}
+              placeholder="Automatic"
+            />
+
+            <Field
+              label="Case Size"
+              value={input.caseSize}
+              onChange={(v) => update("caseSize", v)}
+              placeholder="40mm"
+            />
+
+            <Field
+              label="Water Resistance"
+              value={input.waterResistance}
+              onChange={(v) => update("waterResistance", v)}
+              placeholder="5 ATM"
+            />
+
+            <Field
+              label="Price"
+              value={input.price}
+              onChange={(v) => update("price", v)}
+              placeholder="$249.00"
+            />
+          </div>
+
+          <Field
+            label="Target Customer"
+            value={input.targetCustomer}
+            onChange={(v) => update("targetCustomer", v)}
+            placeholder="Men looking for a refined everyday timepiece"
+          />
+
+          <button
+            className="optimizeButton"
+            onClick={optimize}
+            disabled={!input.title.trim()}
+          >
+            Optimize Product
+          </button>
+
+          <p className="note">
+            Technical claims are only generated from information you provide.
+            No specifications are invented.
+          </p>
+        </div>
+
+        <div className="panel resultPanel">
+          <div className="panelTitle">
+            <div>
+              <p className="eyebrow">OPTIMIZED OUTPUT</p>
+              <h2>Product Content</h2>
+            </div>
+          </div>
+
+          {!optimized ? (
+            <div className="empty">
+              <div className="emptyIcon">✦</div>
+              <h3>Ready to optimize</h3>
+              <p>
+                Enter the product information on the left, then optimize it
+                into clean, customer-focused content.
+              </p>
+            </div>
+          ) : (
+            <div className="results">
+              <Output
+                title="Product Title"
+                value={optimized.optimizedTitle}
+                onCopy={() => copy("title", optimized.optimizedTitle)}
+                copied={copied === "title"}
+              />
+
+              <Output
+                title="Product Description"
+                value={optimized.description}
+                multiline
+                onCopy={() => copy("description", optimized.description)}
+                copied={copied === "description"}
+              />
+
+              <div className="resultBlock">
+                <div className="resultHeader">
+                  <h3>Key Benefits</h3>
+                  <button
+                    onClick={() =>
+                      copy("benefits", optimized.benefits.join("\n"))
+                    }
+                  >
+                    {copied === "benefits" ? "Copied" : "Copy"}
+                  </button>
                 </div>
 
-                <div className="cardBody">
-                  <h3>{product.name}</h3>
+                <ul className="benefits">
+                  {optimized.benefits.map((benefit) => (
+                    <li key={benefit}>{benefit}</li>
+                  ))}
+                </ul>
+              </div>
 
-                  <p>{product.description}</p>
-
-                  <div className="cardBottom">
-                    <strong>
-                      ${Number(product.price).toFixed(2)}
-                    </strong>
-
-                    <button
-                      onClick={() =>
-                        addToCart(product.id)
-                      }
-                    >
-                      Add to Cart
-                    </button>
-                  </div>
+              <div className="resultBlock">
+                <div className="resultHeader">
+                  <h3>Specifications</h3>
+                  <button
+                    onClick={() =>
+                      copy(
+                        "specs",
+                        optimized.specifications.join("\n")
+                      )
+                    }
+                  >
+                    {copied === "specs" ? "Copied" : "Copy"}
+                  </button>
                 </div>
-              </article>
-            ))}
-          </div>
-        </section>
 
-        <section
-          className="cartPanel"
-          aria-label="Shopping cart"
-        >
-          <div>
-            <strong>Cart</strong>
-            <span>
-              {cartCount} item
-              {cartCount === 1 ? "" : "s"}
-            </span>
-          </div>
+                <div className="specs">
+                  {optimized.specifications.map((spec) => (
+                    <div key={spec}>{spec}</div>
+                  ))}
+                </div>
+              </div>
 
-          <div className="cartItems">
-            {cartCount === 0 ? (
-              <span>Your cart is empty.</span>
-            ) : (
-              Object.entries(cart).map(
-                ([id, quantity]) => {
-                  const product = products.find(
-                    (p) => p.id === Number(id)
-                  );
+              <Output
+                title={`SEO Title · ${seoCount}/60`}
+                value={optimized.seoTitle}
+                onCopy={() => copy("seo", optimized.seoTitle)}
+                copied={copied === "seo"}
+              />
 
-                  if (!product) return null;
-
-                  return (
-                    <div
-                      className="cartItem"
-                      key={id}
-                    >
-                      <span>{product.name}</span>
-
-                      <div>
-                        <button
-                          onClick={() =>
-                            changeQuantity(
-                              product.id,
-                              -1
-                            )
-                          }
-                        >
-                          −
-                        </button>
-
-                        <b>{quantity}</b>
-
-                        <button
-                          onClick={() =>
-                            changeQuantity(
-                              product.id,
-                              1
-                            )
-                          }
-                        >
-                          +
-                        </button>
-                      </div>
-                    </div>
-                  );
+              <Output
+                title={`Meta Description · ${metaCount}/160`}
+                value={optimized.metaDescription}
+                onCopy={() =>
+                  copy("meta", optimized.metaDescription)
                 }
-              )
-            )}
-          </div>
+                copied={copied === "meta"}
+              />
 
-          <div className="cartTotal">
-            <strong>
-              Total ${cartTotal.toFixed(2)}
-            </strong>
+              <Output
+                title="URL Handle"
+                value={optimized.urlHandle}
+                onCopy={() => copy("url", optimized.urlHandle)}
+                copied={copied === "url"}
+              />
 
-            <button disabled={cartCount === 0}>
-              Checkout
-            </button>
-          </div>
-        </section>
+              <Output
+                title="Image Alt Text"
+                value={optimized.imageAltText}
+                onCopy={() => copy("alt", optimized.imageAltText)}
+                copied={copied === "alt"}
+              />
 
-        <footer id="about">
-          <div>
-            <strong>{brand}</strong>
+              <div className="resultBlock">
+                <div className="resultHeader">
+                  <h3>Product Tags</h3>
+                  <button
+                    onClick={() =>
+                      copy("tags", optimized.tags.join(", "))
+                    }
+                  >
+                    {copied === "tags" ? "Copied" : "Copy"}
+                  </button>
+                </div>
 
-            <p>
-              Thoughtfully selected timepieces with a focus
-              on refined design and timeless style.
-            </p>
-          </div>
+                <div className="tags">
+                  {optimized.tags.map((tag) => (
+                    <span key={tag}>{tag}</span>
+                  ))}
+                </div>
+              </div>
 
-          <div>
-            <h4>Shop</h4>
-            <a href="#shop">All Watches</a>
-            <a href="#collections">Collections</a>
-          </div>
-
-          <div>
-            <h4>Customer Care</h4>
-            <a href="#about">Shipping</a>
-            <a href="#about">Returns</a>
-            <a href="#about">Contact</a>
-          </div>
-        </footer>
-
-        <div className="copyright">
-          © 2026 {brand}. All rights reserved.
+              <Output
+                title="Product Type"
+                value={optimized.productType}
+                onCopy={() =>
+                  copy("type", optimized.productType)
+                }
+                copied={copied === "type"}
+              />
+            </div>
+          )}
         </div>
       </section>
 
@@ -494,510 +470,366 @@ export default function Home() {
           box-sizing: border-box;
         }
 
-        .app {
+        .optimizer {
           min-height: 100vh;
-          background: #eef0f2;
+          background: #f6f6f4;
           color: #151515;
+          padding: 44px 5% 80px;
           font-family: Arial, sans-serif;
         }
 
-        .builder {
-          max-width: 1400px;
-          margin: 0 auto;
-          padding: 18px;
+        .top {
+          max-width: 1450px;
+          margin: 0 auto 32px;
         }
 
-        .builderHead {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          margin-bottom: 12px;
-        }
-
-        .builderHead div {
-          display: flex;
-          gap: 12px;
-          align-items: center;
-        }
-
-        .builderHead span {
-          color: #666;
-          font-size: 13px;
-        }
-
-        .builder button,
-        .showBuilder {
-          border: 0;
-          background: #111;
-          color: #fff;
-          padding: 10px 14px;
-          border-radius: 8px;
-          cursor: pointer;
-          font-weight: 600;
-        }
-
-        .controls {
-          display: grid;
-          grid-template-columns: repeat(3, 1fr);
-          gap: 10px;
-          background: #fff;
-          padding: 14px;
-          border-radius: 12px;
-        }
-
-        .controls label {
-          font-size: 12px;
-          font-weight: 700;
-          color: #333;
-        }
-
-        .controls input,
-        .controls textarea,
-        .editRow input {
-          width: 100%;
-          margin-top: 6px;
-          padding: 10px;
-          border: 1px solid #d5d7da;
-          border-radius: 8px;
-          color: #111;
-          background: #fff;
-        }
-
-        .controls textarea {
-          min-height: 72px;
-          resize: vertical;
-        }
-
-        .productEditor {
-          margin-top: 10px;
-          background: #fff;
-          padding: 14px;
-          border-radius: 12px;
-        }
-
-        .productEditor h3 {
-          margin: 0 0 10px;
-        }
-
-        .editRow {
-          display: grid;
-          grid-template-columns: 1.2fr 0.5fr 2fr 1fr;
-          gap: 8px;
-          margin-bottom: 8px;
-        }
-
-        .showBuilder {
-          position: fixed;
-          top: 12px;
-          right: 12px;
-          z-index: 20;
-        }
-
-        .storefront {
-          background: #fff;
-          max-width: 1400px;
-          margin: auto;
-          box-shadow: 0 8px 30px rgba(0, 0, 0, 0.08);
-        }
-
-        .announcement {
-          background: var(--accent);
-          color: #fff;
-          text-align: center;
-          padding: 9px 14px;
-          font-size: 12px;
-          letter-spacing: 0.04em;
-        }
-
-        .nav {
-          height: 72px;
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          padding: 0 5%;
-          border-bottom: 1px solid #eee;
-        }
-
-        .brand {
-          font-family: Georgia, serif;
-          font-size: 24px;
-          letter-spacing: 0.03em;
-        }
-
-        nav {
-          display: flex;
-          gap: 28px;
-        }
-
-        nav a,
-        footer a {
-          color: inherit;
-          text-decoration: none;
-        }
-
-        .cart {
-          font-size: 14px;
-        }
-
-        .cart b {
-          background: #111;
-          color: #fff;
-          border-radius: 20px;
-          padding: 4px 8px;
-          margin-left: 5px;
-        }
-
-        .hero {
-          min-height: 540px;
-          background-size: cover;
-          background-position: center;
-          display: flex;
-          align-items: center;
-          color: #fff;
-        }
-
-        .heroContent {
-          max-width: 650px;
-          padding: 8%;
-        }
-
-        .heroContent p,
         .eyebrow {
-          font-size: 12px;
-          letter-spacing: 0.18em;
-        }
-
-        .heroContent h1 {
-          font-family: Georgia, serif;
-          font-size: clamp(44px, 7vw, 82px);
-          line-height: 0.95;
-          margin: 16px 0;
-          font-weight: 500;
-        }
-
-        .heroContent div {
-          max-width: 520px;
-          line-height: 1.7;
-        }
-
-        .heroButton {
-          display: inline-block;
-          margin-top: 26px;
-          padding: 13px 20px;
-          background: #fff;
-          color: #111;
-          text-decoration: none;
-          border-radius: 3px;
+          margin: 0 0 8px;
+          font-size: 10px;
+          letter-spacing: 0.2em;
           font-weight: 700;
+          color: #777;
         }
 
-        .shop {
-          padding: 70px 5%;
+        h1 {
+          margin: 0;
+          font: 500 clamp(38px, 5vw, 64px) / 1 Georgia, serif;
         }
 
-        .sectionHead {
+        .subtitle {
+          color: #666;
+          max-width: 650px;
+          line-height: 1.7;
+          margin-top: 15px;
+        }
+
+        .workspace {
+          max-width: 1450px;
+          margin: auto;
+          display: grid;
+          grid-template-columns: minmax(360px, 0.9fr) minmax(420px, 1.1fr);
+          gap: 22px;
+          align-items: start;
+        }
+
+        .panel {
+          background: white;
+          border: 1px solid #e5e5e1;
+          border-radius: 8px;
+          padding: 28px;
+          box-shadow: 0 10px 30px rgba(0, 0, 0, 0.03);
+        }
+
+        .panelTitle {
           display: flex;
           justify-content: space-between;
           gap: 20px;
-          align-items: end;
-          margin-bottom: 30px;
+          align-items: start;
+          margin-bottom: 25px;
         }
 
-        .sectionHead h2 {
-          font-family: Georgia, serif;
-          font-size: 40px;
-          margin: 7px 0 0;
-          font-weight: 500;
+        h2 {
+          margin: 0;
+          font: 500 28px Georgia, serif;
         }
 
-        .collections {
+        .badge {
+          border: 1px solid #ddd;
+          padding: 6px 9px;
+          font-size: 9px;
+          letter-spacing: 0.1em;
+        }
+
+        .field {
+          margin-bottom: 17px;
+        }
+
+        .field label {
+          display: block;
+          font-size: 11px;
+          font-weight: 700;
+          margin-bottom: 7px;
+          letter-spacing: 0.04em;
+        }
+
+        input,
+        textarea {
+          width: 100%;
+          border: 1px solid #d7d7d2;
+          background: #fff;
+          border-radius: 4px;
+          padding: 12px;
+          font: inherit;
+          outline: none;
+        }
+
+        textarea {
+          min-height: 100px;
+          resize: vertical;
+        }
+
+        input:focus,
+        textarea:focus {
+          border-color: #777;
+        }
+
+        .grid {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 0 12px;
+        }
+
+        .optimizeButton {
+          width: 100%;
+          border: 0;
+          background: #111;
+          color: white;
+          padding: 15px;
+          border-radius: 4px;
+          font-weight: 700;
+          cursor: pointer;
+          margin-top: 5px;
+        }
+
+        .optimizeButton:disabled {
+          opacity: 0.45;
+          cursor: not-allowed;
+        }
+
+        .note {
+          color: #777;
+          font-size: 11px;
+          line-height: 1.6;
+          margin-bottom: 0;
+        }
+
+        .empty {
+          min-height: 620px;
+          display: flex;
+          flex-direction: column;
+          justify-content: center;
+          align-items: center;
+          text-align: center;
+          color: #777;
+          padding: 40px;
+        }
+
+        .emptyIcon {
+          width: 58px;
+          height: 58px;
+          display: grid;
+          place-items: center;
+          border: 1px solid #ddd;
+          border-radius: 50%;
+          color: #222;
+          margin-bottom: 18px;
+        }
+
+        .empty h3 {
+          color: #222;
+          font: 500 25px Georgia, serif;
+          margin: 0 0 8px;
+        }
+
+        .empty p {
+          max-width: 400px;
+          line-height: 1.7;
+          font-size: 13px;
+        }
+
+        .results {
+          display: grid;
+          gap: 14px;
+        }
+
+        .resultBlock {
+          border: 1px solid #e5e5e1;
+          padding: 17px;
+          border-radius: 5px;
+        }
+
+        .resultHeader {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          gap: 15px;
+          margin-bottom: 10px;
+        }
+
+        .resultHeader h3 {
+          margin: 0;
+          font-size: 12px;
+        }
+
+        .resultHeader button {
+          border: 1px solid #ddd;
+          background: white;
+          padding: 6px 10px;
+          font-size: 10px;
+          cursor: pointer;
+        }
+
+        .output {
+          border: 1px solid #e5e5e1;
+          padding: 17px;
+          border-radius: 5px;
+        }
+
+        .outputTop {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          gap: 15px;
+        }
+
+        .outputTop h3 {
+          margin: 0;
+          font-size: 12px;
+        }
+
+        .outputTop button {
+          border: 1px solid #ddd;
+          background: white;
+          padding: 6px 10px;
+          font-size: 10px;
+          cursor: pointer;
+        }
+
+        .outputValue {
+          margin-top: 11px;
+          white-space: pre-wrap;
+          line-height: 1.7;
+          color: #444;
+          font-size: 13px;
+          word-break: break-word;
+        }
+
+        .benefits {
+          margin: 0;
+          padding: 0;
+          list-style: none;
+          display: grid;
+          gap: 9px;
+        }
+
+        .benefits li {
+          font-size: 13px;
+          padding-left: 19px;
+          position: relative;
+        }
+
+        .benefits li:before {
+          content: "✓";
+          position: absolute;
+          left: 0;
+          font-weight: 700;
+        }
+
+        .specs {
+          display: grid;
+          gap: 8px;
+          font-size: 13px;
+          color: #555;
+        }
+
+        .tags {
           display: flex;
           flex-wrap: wrap;
           gap: 7px;
         }
 
-        .collections button {
-          border: 1px solid #ccc;
-          background: #fff;
-          padding: 8px 12px;
-          border-radius: 20px;
-          cursor: pointer;
-        }
-
-        .collections .selected {
-          background: #111;
-          color: #fff;
-          border-color: #111;
-        }
-
-        .grid {
-          display: grid;
-          grid-template-columns: repeat(4, 1fr);
-          gap: 22px;
-        }
-
-        .card {
-          border: 1px solid #e7e7e7;
-          background: #fff;
-        }
-
-        .imageWrap {
-          aspect-ratio: 1 / 1.12;
-          position: relative;
-          overflow: hidden;
-          background: #f5f5f5;
-        }
-
-        .imageWrap img {
-          width: 100%;
-          height: 100%;
-          object-fit: cover;
-          display: block;
-          transition: transform 0.3s;
-        }
-
-        .card:hover img {
-          transform: scale(1.03);
-        }
-
-        .imageWrap span {
-          position: absolute;
-          top: 10px;
-          left: 10px;
-          background: #fff;
-          padding: 6px 8px;
-          font-size: 10px;
-          text-transform: uppercase;
-          letter-spacing: 0.08em;
-        }
-
-        .cardBody {
-          padding: 16px;
-        }
-
-        .cardBody h3 {
-          font-family: Georgia, serif;
-          font-size: 20px;
-          font-weight: 500;
-          margin: 0 0 8px;
-        }
-
-        .cardBody p {
-          color: #666;
-          font-size: 13px;
-          line-height: 1.55;
-          min-height: 42px;
-        }
-
-        .cardBottom {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          margin-top: 16px;
-        }
-
-        .cardBottom button {
-          background: var(--accent);
-          color: #fff;
-          border: 0;
-          padding: 9px 12px;
-          cursor: pointer;
+        .tags span {
+          background: #f2f2ef;
+          border: 1px solid #e2e2de;
+          padding: 7px 9px;
+          font-size: 11px;
           border-radius: 3px;
         }
 
-        .cartPanel {
-          margin: 0 5% 70px;
-          border: 1px solid #ddd;
-          padding: 20px;
-          display: grid;
-          gap: 15px;
-        }
-
-        .cartPanel > div:first-child {
-          display: flex;
-          justify-content: space-between;
-        }
-
-        .cartPanel > div:first-child span {
-          color: #777;
-        }
-
-        .cartItems {
-          display: grid;
-          gap: 8px;
-        }
-
-        .cartItem {
-          display: flex;
-          justify-content: space-between;
-          padding: 10px 0;
-          border-bottom: 1px solid #eee;
-        }
-
-        .cartItem button {
-          border: 1px solid #ccc;
-          background: #fff;
-          padding: 4px 9px;
-          cursor: pointer;
-        }
-
-        .cartItem b {
-          margin: 0 10px;
-        }
-
-        .cartTotal {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-        }
-
-        .cartTotal button {
-          background: var(--accent);
-          color: #fff;
-          border: 0;
-          padding: 11px 18px;
-          cursor: pointer;
-        }
-
-        .cartTotal button:disabled {
-          opacity: 0.4;
-          cursor: not-allowed;
-        }
-
-        footer {
-          background: #111;
-          color: #fff;
-          display: grid;
-          grid-template-columns: 2fr 1fr 1fr;
-          gap: 50px;
-          padding: 55px 5%;
-        }
-
-        footer strong {
-          font-family: Georgia, serif;
-          font-size: 24px;
-        }
-
-        footer p {
-          color: #aaa;
-          max-width: 420px;
-          line-height: 1.6;
-        }
-
-        footer h4 {
-          margin-top: 0;
-        }
-
-        footer a {
-          display: block;
-          color: #aaa;
-          margin: 9px 0;
-          font-size: 14px;
-        }
-
-        .copyright {
-          background: #111;
-          color: #777;
-          text-align: center;
-          padding: 18px;
-          border-top: 1px solid #333;
-          font-size: 12px;
-        }
-
-        @media (max-width: 900px) {
-          .controls {
-            grid-template-columns: 1fr 1fr;
-          }
-
-          .editRow {
-            grid-template-columns: 1fr 1fr;
-          }
-
-          .grid {
-            grid-template-columns: repeat(2, 1fr);
-          }
-
-          .sectionHead {
-            align-items: start;
-            flex-direction: column;
+        @media (max-width: 1000px) {
+          .workspace {
+            grid-template-columns: 1fr;
           }
         }
 
         @media (max-width: 600px) {
-          .builder {
-            padding: 10px;
+          .optimizer {
+            padding: 28px 4% 60px;
           }
 
-          .controls {
-            grid-template-columns: 1fr;
-          }
-
-          .editRow {
-            grid-template-columns: 1fr;
-          }
-
-          .nav {
-            padding: 0 4%;
-          }
-
-          nav {
-            display: none;
-          }
-
-          .brand {
-            font-size: 19px;
-          }
-
-          .hero {
-            min-height: 480px;
-          }
-
-          .heroContent {
-            padding: 9%;
-          }
-
-          .heroContent h1 {
-            font-size: 50px;
-          }
-
-          .shop {
-            padding: 45px 4%;
+          .panel {
+            padding: 20px;
           }
 
           .grid {
-            grid-template-columns: 1fr 1fr;
-            gap: 10px;
-          }
-
-          .cardBody {
-            padding: 10px;
-          }
-
-          .cardBody h3 {
-            font-size: 16px;
-          }
-
-          .cardBody p {
-            font-size: 12px;
-          }
-
-          .cardBottom {
-            align-items: start;
-            gap: 7px;
-            flex-direction: column;
-          }
-
-          footer {
             grid-template-columns: 1fr;
-            gap: 25px;
-            padding: 40px 6%;
+          }
+
+          .empty {
+            min-height: 400px;
           }
         }
       `}</style>
-      .announcement-bar {
-  background: #111 !important;
-  color: #fff !important;
-      }
     </main>
   );
-          }
+}
+
+function Field({
+  label,
+  value,
+  onChange,
+  placeholder,
+  textarea = false,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  textarea?: boolean;
+}) {
+  return (
+    <div className="field">
+      <label>{label}</label>
+      {textarea ? (
+        <textarea
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder}
+        />
+      ) : (
+        <input
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder}
+        />
+      )}
+    </div>
+  );
+}
+
+function Output({
+  title,
+  value,
+  onCopy,
+  copied,
+  multiline = false,
+}: {
+  title: string;
+  value: string;
+  onCopy: () => void;
+  copied: boolean;
+  multiline?: boolean;
+}) {
+  return (
+    <div className="output">
+      <div className="outputTop">
+        <h3>{title}</h3>
+        <button onClick={onCopy}>{copied ? "Copied" : "Copy"}</button>
+      </div>
+
+      <div className={`outputValue ${multiline ? "multiline" : ""}`}>
+        {value}
+      </div>
+    </div>
+  );
+}
