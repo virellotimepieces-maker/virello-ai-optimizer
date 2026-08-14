@@ -2,6 +2,13 @@
 
 import { useState } from "react";
 
+type ProductInfo = {
+  description: string;
+  features: string[];
+  productType: string;
+  collection: string;
+};
+
 type Result = {
   title: string;
   description: string;
@@ -17,17 +24,17 @@ type Result = {
 
 function cleanText(text: string) {
   return text
-    .replace(/\r/g, "")
-    .replace(/\n{3,}/g, "\n\n")
+    .replace(/\r/g, " ")
+    .replace(/\n+/g, " ")
+    .replace(/\s{2,}/g, " ")
     .replace(/\b(2026|2025|2024)\b/gi, "")
     .replace(
-      /\b(top luxury|best quality|hot sale|new arrival|free shipping|official|wholesale)\b/gi,
+      /\b(top luxury|best quality|hot sale|new arrival|free shipping|wholesale|official)\b/gi,
       ""
     )
     .replace(/\b(dear customer|welcome to our store)\b/gi, "")
     .replace(/\b(no reason to return)\b/gi, "")
     .replace(/\b(guaranteed for \d+ years?)\b/gi, "")
-    .replace(/\s{2,}/g, " ")
     .trim();
 }
 
@@ -57,7 +64,7 @@ function detectProductType(title: string) {
   }
 
   if (
-    /\b(shirt|dress|jacket|pants|jeans|hoodie|blouse|skirt|romper|shorts|top|sweater|cardigan)\b/i.test(
+    /\b(shirt|dress|jacket|pants|jeans|hoodie|blouse|skirt|romper|shorts|top|sweater|cardigan|tshirt|t-shirt)\b/i.test(
       text
     )
   ) {
@@ -65,7 +72,7 @@ function detectProductType(title: string) {
   }
 
   if (
-    /\b(shoe|shoes|sneaker|sneakers|sandals|boots|loafer|slippers)\b/i.test(
+    /\b(shoe|shoes|sneaker|sneakers|sandals|boots|loafer|loafers|slippers)\b/i.test(
       text
     )
   ) {
@@ -73,13 +80,15 @@ function detectProductType(title: string) {
   }
 
   if (
-    /\b(faucet|shower|bathroom|mirror|bathtub|sink|tap|vanity)\b/i.test(text)
+    /\b(faucet|shower|bathroom|mirror|bathtub|sink|tap|vanity|toilet)\b/i.test(
+      text
+    )
   ) {
     return "Bathroom";
   }
 
   if (
-    /\b(organizer|storage|drawer|closet|shelf|rack|container|storage box)\b/i.test(
+    /\b(organizer|storage|drawer|closet|shelf|rack|container|storage box|packing cube)\b/i.test(
       text
     )
   ) {
@@ -87,7 +96,7 @@ function detectProductType(title: string) {
   }
 
   if (
-    /\b(phone|charger|usb|electronic|keyboard|fan|speaker|headphone|wireless|earbuds)\b/i.test(
+    /\b(phone|charger|usb|electronic|keyboard|fan|speaker|headphone|wireless|earbuds|laser projection|solar panel)\b/i.test(
       text
     )
   ) {
@@ -95,7 +104,7 @@ function detectProductType(title: string) {
   }
 
   if (
-    /\b(kitchen|peeler|sealer|bottle|thermos|utensil|cookware|grinder)\b/i.test(
+    /\b(kitchen|peeler|sealer|bottle|thermos|utensil|cookware|grinder|food vacuum)\b/i.test(
       text
     )
   ) {
@@ -103,42 +112,50 @@ function detectProductType(title: string) {
   }
 
   if (
-    /\b(car|vehicle|automotive|dashboard|trunk|seat|auto|car accessory)\b/i.test(
+    /\b(car|vehicle|automotive|dashboard|trunk|seat|auto|car accessory|ashtray)\b/i.test(
       text
     )
   ) {
     return "Automotive";
   }
 
-  return "General";
+  if (
+    /\b(ring|necklace|bracelet|earring|jewelry|jewellery)\b/i.test(text)
+  ) {
+    return "Jewelry";
+  }
+
+  if (
+    /\b(baby|infant|toddler|kids|children|nail clipper)\b/i.test(text)
+  ) {
+    return "Baby & Kids";
+  }
+
+  return "Lifestyle";
 }
 
 function detectCollection(productType: string) {
   switch (productType) {
     case "Watches":
       return "Watches";
-
     case "Apparel":
       return "Apparel";
-
     case "Footwear":
       return "Footwear";
-
     case "Bathroom":
       return "Bathroom";
-
     case "Home Organization":
       return "Home Organization";
-
     case "Electronics":
       return "Electronics";
-
     case "Kitchen":
       return "Kitchen";
-
     case "Automotive":
       return "Automotive";
-
+    case "Jewelry":
+      return "Jewelry";
+    case "Baby & Kids":
+      return "Baby & Kids";
     default:
       return "Lifestyle";
   }
@@ -163,7 +180,9 @@ function extractGender(source: string) {
     return "Men's";
   }
 
-  if (/\bwomen'?s\b|\bwomen\b|\bladies\b|\bfemale\b/i.test(source)) {
+  if (
+    /\bwomen'?s\b|\bwomen\b|\bladies\b|\bfemale\b/i.test(source)
+  ) {
     return "Women's";
   }
 
@@ -171,43 +190,32 @@ function extractGender(source: string) {
 }
 
 function extractWatchMovement(source: string) {
-  if (/\bchronograph\b/i.test(source)) {
-    return "Chronograph";
-  }
-
-  if (/\bautomatic\b/i.test(source)) {
-    return "Automatic";
-  }
-
-  if (/\bmechanical\b/i.test(source)) {
-    return "Mechanical";
-  }
-
-  if (/\bquartz\b/i.test(source)) {
-    return "Quartz";
-  }
+  if (/\bchronograph\b/i.test(source)) return "Chronograph";
+  if (/\bautomatic\b/i.test(source)) return "Automatic";
+  if (/\bmechanical\b/i.test(source)) return "Mechanical";
+  if (/\bquartz\b/i.test(source)) return "Quartz";
 
   return "";
 }
 
 function buildWatchTitle(originalTitle: string) {
-  let source = cleanText(originalTitle);
-
-  source = removeSupplierWords(source);
+  const source = removeSupplierWords(cleanText(originalTitle));
 
   const gender = extractGender(source);
   const movement = extractWatchMovement(source);
 
   const modelMatch = source.match(
-    /\b(PAGANI DESIGN|PAGANI|PD-\d+|V\d+|V\d+\s?[A-Z]?\d*|Moon|V\d+\s?Moon)\b/gi
+    /\b(PAGANI DESIGN|PAGANI|PD-\d+|V\d+(?:\s?[A-Z]?\d*)?|Moon)\b/gi
   );
 
   const model =
-    modelMatch && modelMatch.length > 0
-      ? Array.from(new Set(modelMatch.map((x) => x.trim()))).join(" ")
+    modelMatch && modelMatch.length
+      ? Array.from(new Set(modelMatch.map((item) => item.trim()))).join(" ")
       : "";
 
-  const importantWords = source
+  let details = source
+    .replace(/\bPAGANI DESIGN\b/gi, "")
+    .replace(/\bPAGANI\b/gi, "")
     .replace(/\bmen'?s\b/gi, "")
     .replace(/\bwomen'?s\b/gi, "")
     .replace(/\bmen\b/gi, "")
@@ -220,14 +228,12 @@ function buildWatchTitle(originalTitle: string) {
     .replace(/\bautomatic\b/gi, "")
     .replace(/\bmechanical\b/gi, "")
     .replace(/\bchronograph\b/gi, "")
-    .replace(/\bPAGANI DESIGN\b/gi, "")
-    .replace(/\bPAGANI\b/gi, "")
     .replace(/\s{2,}/g, " ")
     .trim();
 
   const parts = [
     model,
-    importantWords,
+    details,
     gender,
     movement,
     "Watch",
@@ -237,13 +243,12 @@ function buildWatchTitle(originalTitle: string) {
 
   result = result
     .replace(/\bWatch Watch\b/gi, "Watch")
-    .replace(/\bPAGANI DESIGN PAGANI DESIGN\b/gi, "PAGANI DESIGN")
     .replace(/\bMoon Moon\b/gi, "Moon")
     .replace(/\s{2,}/g, " ")
     .trim();
 
   if (!result) {
-    return "Classic Watch";
+    result = "Classic Watch";
   }
 
   return limit(result, 65);
@@ -257,13 +262,14 @@ function buildApparelTitle(originalTitle: string) {
 
   if (/\bdress\b/i.test(source)) item = "Dress";
   else if (/\bblouse\b/i.test(source)) item = "Blouse";
-  else if (/\bshirt\b/i.test(source)) item = "Shirt";
+  else if (/\bshirt\b|\bt-shirt\b|\btshirt\b/i.test(source)) item = "Shirt";
   else if (/\bjacket\b/i.test(source)) item = "Jacket";
   else if (/\bjeans\b/i.test(source)) item = "Jeans";
   else if (/\bpants\b/i.test(source)) item = "Pants";
   else if (/\bskirt\b/i.test(source)) item = "Skirt";
   else if (/\bhoodie\b/i.test(source)) item = "Hoodie";
   else if (/\bsweater\b/i.test(source)) item = "Sweater";
+  else if (/\bcardigan\b/i.test(source)) item = "Cardigan";
 
   const details = source
     .replace(/\bmen'?s\b/gi, "")
@@ -271,7 +277,7 @@ function buildApparelTitle(originalTitle: string) {
     .replace(/\bmen\b/gi, "")
     .replace(/\bwomen\b/gi, "")
     .replace(
-      /\b(dress|blouse|shirt|jacket|jeans|pants|skirt|hoodie|sweater)\b/gi,
+      /\b(dress|blouse|shirt|jacket|jeans|pants|skirt|hoodie|sweater|cardigan|t-shirt|tshirt)\b/gi,
       ""
     )
     .replace(/\s{2,}/g, " ")
@@ -293,9 +299,13 @@ function buildFootwearTitle(originalTitle: string) {
   else if (/boot/i.test(source)) item = "Boots";
   else if (/loafer/i.test(source)) item = "Loafers";
   else if (/slipper/i.test(source)) item = "Slippers";
+  else if (/shoe/i.test(source)) item = "Shoes";
 
   const details = source
-    .replace(/\b(shoes?|sneakers?|sandals?|boots?|loafers?|slippers?)\b/gi, "")
+    .replace(
+      /\b(shoes?|sneakers?|sandals?|boots?|loafers?|slippers?)\b/gi,
+      ""
+    )
     .replace(/\s{2,}/g, " ")
     .trim();
 
@@ -311,37 +321,61 @@ function buildBathroomTitle(originalTitle: string) {
   else if (/\bshower\b/i.test(source)) item = "Shower Fixture";
   else if (/\bmirror\b/i.test(source)) item = "Bathroom Mirror";
   else if (/\bsink\b/i.test(source)) item = "Bathroom Sink";
+  else if (/\btoilet\b/i.test(source)) item = "Toilet Fixture";
 
   const details = source
-    .replace(/\b(faucet|tap|shower|mirror|bathroom|sink)\b/gi, "")
+    .replace(
+      /\b(faucet|tap|shower|mirror|bathroom|sink|toilet)\b/gi,
+      ""
+    )
     .replace(/\s{2,}/g, " ")
     .trim();
 
   return limit(`${details} ${item}`.trim(), 65);
 }
 
-function buildGenericTitle(originalTitle: string, productType: string) {
+function buildGenericTitle(
+  originalTitle: string,
+  productType: string
+) {
   const source = removeSupplierWords(cleanText(originalTitle));
 
-  if (!source) {
-    return "Product";
+  const suffixMap: Record<string, string> = {
+    "Home Organization": "Organizer",
+    Electronics: "Device",
+    Kitchen: "Kitchen Tool",
+    Automotive: "Car Accessory",
+    Jewelry: "Jewelry",
+    "Baby & Kids": "Accessory",
+    Lifestyle: "Essential",
+  };
+
+  const suffix = suffixMap[productType] || "";
+
+  const cleaned = source
+    .replace(
+      /\b(product|item|goods|new|latest|best|hot|sale)\b/gi,
+      ""
+    )
+    .replace(/\s{2,}/g, " ")
+    .trim();
+
+  if (!cleaned) {
+    return productType === "Lifestyle"
+      ? "Everyday Essential"
+      : suffix || productType;
   }
 
-  const suffix =
-    productType === "Home Organization"
-      ? "Organizer"
-      : productType === "Electronics"
-      ? "Device"
-      : productType === "Kitchen"
-      ? "Kitchen Tool"
-      : productType === "Automotive"
-      ? "Car Accessory"
-      : "";
-
-  return limit(`${source} ${suffix}`.replace(/\s{2,}/g, " ").trim(), 65);
+  return limit(
+    `${cleaned}${suffix ? ` ${suffix}` : ""}`.trim(),
+    65
+  );
 }
 
-function buildTitle(originalTitle: string, productType: string) {
+function buildTitle(
+  originalTitle: string,
+  productType: string
+) {
   switch (productType) {
     case "Watches":
       return buildWatchTitle(originalTitle);
@@ -360,42 +394,37 @@ function buildTitle(originalTitle: string, productType: string) {
   }
 }
 
-function buildFeatures(title: string, productType: string) {
-  const text = title.toLowerCase();
+function buildFeatures(
+  sourceTitle: string,
+  productType: string
+) {
+  const text = sourceTitle.toLowerCase();
   const features: string[] = [];
 
   if (productType === "Watches") {
-    if (text.includes("quartz")) {
+    if (text.includes("quartz"))
       features.push("Quartz movement");
-    }
 
-    if (text.includes("automatic")) {
+    if (text.includes("automatic"))
       features.push("Automatic movement");
-    }
 
-    if (text.includes("mechanical")) {
+    if (text.includes("mechanical"))
       features.push("Mechanical movement");
-    }
 
-    if (text.includes("chronograph")) {
+    if (text.includes("chronograph"))
       features.push("Chronograph function");
-    }
 
-    if (text.includes("steel")) {
+    if (text.includes("steel"))
       features.push("Stainless steel construction");
-    }
 
-    if (text.includes("moon")) {
+    if (text.includes("moon"))
       features.push("Moon-inspired design");
-    }
 
-    if (text.includes("men")) {
+    if (text.includes("men"))
       features.push("Men's styling");
-    }
 
-    if (text.includes("women")) {
+    if (text.includes("women"))
       features.push("Women's styling");
-    }
 
     features.push(
       "Refined timepiece design",
@@ -435,13 +464,25 @@ function buildFeatures(title: string, productType: string) {
     features.push(
       "Practical kitchen functionality",
       "Convenient everyday use",
-      "Simple, useful design"
+      "Simple useful design"
     );
   } else if (productType === "Automotive") {
     features.push(
       "Practical vehicle accessory",
       "Convenient everyday use",
       "Functional design"
+    );
+  } else if (productType === "Jewelry") {
+    features.push(
+      "Refined accessory styling",
+      "Versatile everyday wear",
+      "Easy to pair with different looks"
+    );
+  } else if (productType === "Baby & Kids") {
+    features.push(
+      "Practical everyday design",
+      "Convenient to use",
+      "Designed for everyday needs"
     );
   } else {
     features.push(
@@ -463,39 +504,58 @@ function buildDescription(
 
   switch (productType) {
     case "Watches":
-      opening = `${title} combines refined styling with practical timekeeping for everyday wear.`;
+      opening =
+        `${title} combines refined styling with practical timekeeping for everyday wear.`;
       break;
 
     case "Apparel":
-      opening = `${title} offers versatile styling designed for comfortable everyday wear.`;
+      opening =
+        `${title} offers versatile styling designed for comfortable everyday wear.`;
       break;
 
     case "Footwear":
-      opening = `${title} combines everyday comfort with versatile styling for casual use.`;
+      opening =
+        `${title} combines everyday comfort with versatile styling for casual use.`;
       break;
 
     case "Bathroom":
-      opening = `${title} brings practical functionality and clean modern styling to the bathroom.`;
+      opening =
+        `${title} brings practical functionality and clean modern styling to the bathroom.`;
       break;
 
     case "Home Organization":
-      opening = `${title} is designed to make everyday organization simple, practical, and convenient.`;
+      opening =
+        `${title} is designed to make everyday organization simple, practical, and convenient.`;
       break;
 
     case "Electronics":
-      opening = `${title} provides practical functionality in a convenient design for everyday use.`;
+      opening =
+        `${title} provides practical functionality in a convenient design for everyday use.`;
       break;
 
     case "Kitchen":
-      opening = `${title} is designed to provide convenient functionality for everyday kitchen tasks.`;
+      opening =
+        `${title} is designed to provide convenient functionality for everyday kitchen tasks.`;
       break;
 
     case "Automotive":
-      opening = `${title} provides practical functionality for convenient everyday vehicle use.`;
+      opening =
+        `${title} provides practical functionality for convenient everyday vehicle use.`;
+      break;
+
+    case "Jewelry":
+      opening =
+        `${title} adds refined styling to everyday looks with a versatile accessory design.`;
+      break;
+
+    case "Baby & Kids":
+      opening =
+        `${title} is designed with practical everyday use and convenience in mind.`;
       break;
 
     default:
-      opening = `${title} is designed for customers who value practical function, clean style, and everyday usability.`;
+      opening =
+        `${title} is designed for customers who value practical function, clean style, and everyday usability.`;
   }
 
   return [
@@ -504,15 +564,48 @@ function buildDescription(
     "Key features:",
     ...features.map((feature) => `• ${feature}`),
     "",
-    `A versatile ${productType.toLowerCase()} choice designed for customers who appreciate quality, useful functionality, and a polished look.`,
+    `A versatile ${productType.toLowerCase()} choice designed for customers who appreciate useful functionality and a polished look.`,
   ].join("\n");
+}
+
+function buildProductInfo(
+  originalTitle: string
+): ProductInfo {
+  const productType = detectProductType(originalTitle);
+  const collection = detectCollection(productType);
+
+  const title = buildTitle(
+    originalTitle,
+    productType
+  );
+
+  const features = buildFeatures(
+    originalTitle,
+    productType
+  );
+
+  const description = buildDescription(
+    title,
+    productType,
+    features
+  );
+
+  return {
+    description,
+    features,
+    productType,
+    collection,
+  };
 }
 
 function buildSeoTitle(title: string) {
   return limit(title, 50);
 }
 
-function buildMetaDescription(title: string, productType: string) {
+function buildMetaDescription(
+  title: string,
+  productType: string
+) {
   const sentence =
     `Shop ${title} with refined design and practical features. ` +
     `A versatile ${productType.toLowerCase()} choice for everyday use.`;
@@ -520,7 +613,10 @@ function buildMetaDescription(title: string, productType: string) {
   return limit(sentence, 160);
 }
 
-function buildKeywords(title: string, productType: string) {
+function buildKeywords(
+  title: string,
+  productType: string
+) {
   const words = title
     .toLowerCase()
     .replace(/[^a-z0-9\s]/g, " ")
@@ -539,9 +635,11 @@ function buildKeywords(title: string, productType: string) {
   return keywords.join(", ");
 }
 
-function buildTags(title: string, productType: string) {
+function buildTags(
+  title: string,
+  productType: string
+) {
   const text = title.toLowerCase();
-
   const tags = new Set<string>();
 
   tags.add(productType.toLowerCase());
@@ -550,22 +648,28 @@ function buildTags(title: string, productType: string) {
     tags.add("watches");
     tags.add("timepieces");
 
-    if (text.includes("quartz")) tags.add("quartz");
-    if (text.includes("automatic")) tags.add("automatic");
-    if (text.includes("chronograph")) tags.add("chronograph");
-    if (text.includes("steel")) tags.add("stainless steel");
-    if (text.includes("men")) tags.add("men's watches");
-    if (text.includes("women")) tags.add("women's watches");
+    if (text.includes("quartz"))
+      tags.add("quartz");
+
+    if (text.includes("automatic"))
+      tags.add("automatic");
+
+    if (text.includes("chronograph"))
+      tags.add("chronograph");
+
+    if (text.includes("steel"))
+      tags.add("stainless steel");
+
+    if (text.includes("men"))
+      tags.add("men's watches");
+
+    if (text.includes("women"))
+      tags.add("women's watches");
   }
 
   if (productType === "Apparel") {
     tags.add("fashion");
     tags.add("clothing");
-
-    if (text.includes("dress")) tags.add("dresses");
-    if (text.includes("shirt")) tags.add("shirts");
-    if (text.includes("jacket")) tags.add("jackets");
-    if (text.includes("jeans")) tags.add("jeans");
   }
 
   if (productType === "Bathroom") {
@@ -585,52 +689,35 @@ function buildAltText(title: string) {
   return limit(`${title} product`, 125);
 }
 
-function generateResult(originalTitle: string): Result {
-  const productType = detectProductType(originalTitle);
-  const collection = detectCollection(productType);
-
-  const title = buildTitle(originalTitle, productType);
-
-  const features = buildFeatures(title, productType);
-
-  const description = buildDescription(
-    title,
-    productType,
-    features
+function generateResult(
+  originalTitle: string,
+  productInfo: ProductInfo
+): Result {
+  const title = buildTitle(
+    originalTitle,
+    productInfo.productType
   );
-
-  const seoTitle = buildSeoTitle(title);
-
-  const metaDescription = buildMetaDescription(
-    title,
-    productType
-  );
-
-  const keywords = buildKeywords(
-    title,
-    productType
-  );
-
-  const tags = buildTags(
-    title,
-    productType
-  );
-
-  const altText = buildAltText(title);
-
-  const handle = makeHandle(title);
 
   return {
     title,
-    description,
-    seoTitle,
-    metaDescription,
-    keywords,
-    tags,
-    altText,
-    handle,
-    productType,
-    collection,
+    description: productInfo.description,
+    seoTitle: buildSeoTitle(title),
+    metaDescription: buildMetaDescription(
+      title,
+      productInfo.productType
+    ),
+    keywords: buildKeywords(
+      title,
+      productInfo.productType
+    ),
+    tags: buildTags(
+      title,
+      productInfo.productType
+    ),
+    altText: buildAltText(title),
+    handle: makeHandle(title),
+    productType: productInfo.productType,
+    collection: productInfo.collection,
   };
 }
 
@@ -680,7 +767,9 @@ function ResultCard({
     <div className="resultCard">
       <div className="resultHeader">
         <div>
-          <div className="resultLabel">{label}</div>
+          <div className="resultLabel">
+            {label}
+          </div>
 
           {counter && (
             <div className="counter">
@@ -700,22 +789,47 @@ function ResultCard({
 }
 
 export default function Home() {
-  const [originalTitle, setOriginalTitle] = useState("");
-  const [result, setResult] = useState<Result | null>(null);
+  const [originalTitle, setOriginalTitle] =
+    useState("");
+
+  const [productInfo, setProductInfo] =
+    useState<ProductInfo | null>(null);
+
+  const [result, setResult] =
+    useState<Result | null>(null);
+
+  const [autoFilled, setAutoFilled] =
+    useState(false);
+
+  function autoFillProductInformation() {
+    const title = originalTitle.trim();
+
+    if (!title) return;
+
+    const info = buildProductInfo(title);
+
+    setProductInfo(info);
+    setAutoFilled(true);
+  }
 
   function optimizeProduct() {
     const title = originalTitle.trim();
 
-    if (!title) {
-      return;
-    }
+    if (!title) return;
 
-    setResult(generateResult(title));
+    const info =
+      productInfo || buildProductInfo(title);
+
+    setProductInfo(info);
+    setResult(generateResult(title, info));
+    setAutoFilled(true);
   }
 
   function clearAll() {
     setOriginalTitle("");
+    setProductInfo(null);
     setResult(null);
+    setAutoFilled(false);
   }
 
   return (
@@ -724,8 +838,13 @@ export default function Home() {
         <div className="brandMark">V</div>
 
         <div>
-          <div className="brandName">Virello</div>
-          <div className="brandSub">AI OPTIMIZER</div>
+          <div className="brandName">
+            Virello
+          </div>
+
+          <div className="brandSub">
+            AI OPTIMIZER
+          </div>
         </div>
       </header>
 
@@ -741,13 +860,15 @@ export default function Home() {
         </h1>
 
         <p>
-          Create polished, professional product content
-          from a single product title.
+          Create polished, professional product
+          content from a single product title.
         </p>
       </section>
 
       <section className="panel">
-        <div className="sectionNumber">01</div>
+        <div className="sectionNumber">
+          01
+        </div>
 
         <h2>Product information</h2>
 
@@ -759,19 +880,35 @@ export default function Home() {
 
         <input
           value={originalTitle}
-          onChange={(event) =>
-            setOriginalTitle(event.target.value)
-          }
-          placeholder="Paste original product title"
+          onChange={(event) => {
+            setOriginalTitle(event.target.value);
+            setAutoFilled(false);
+            setProductInfo(null);
+          }}
+          placeholder="Paste the original product title"
           className="titleInput"
           type="text"
           autoComplete="off"
         />
 
+        <button
+          type="button"
+          onClick={
+            autoFillProductInformation
+          }
+          disabled={!originalTitle.trim()}
+          className="autoFillButton"
+        >
+          {autoFilled
+            ? "Product Information Ready"
+            : "Auto-Fill Product Information"}
+        </button>
+
         <p className="helper">
-          Enter the supplier product title only. Virello
-          will automatically derive the product information
-          from it.
+          Enter the product title only. Virello
+          automatically derives the description,
+          features, product type, and collection from
+          the title.
         </p>
 
         <button
@@ -794,11 +931,16 @@ export default function Home() {
 
       {result && (
         <section className="panel">
-          <div className="sectionNumber">02</div>
+          <div className="sectionNumber">
+            02
+          </div>
 
           <div className="readyRow">
             <h2>Optimized listing</h2>
-            <span className="ready">READY</span>
+
+            <span className="ready">
+              READY
+            </span>
           </div>
 
           <div className="divider" />
@@ -1004,7 +1146,8 @@ export default function Home() {
         .titleInput:focus {
           border-color: #111;
           box-shadow:
-            0 0 0 3px rgba(0, 0, 0, 0.06);
+            0 0 0 3px
+            rgba(0, 0, 0, 0.06);
         }
 
         .helper {
@@ -1014,6 +1157,7 @@ export default function Home() {
           margin: 14px 2px 28px;
         }
 
+        .autoFillButton,
         .primaryButton,
         .clearButton {
           width: 100%;
@@ -1022,6 +1166,18 @@ export default function Home() {
           font-size: 17px;
           font-weight: 800;
           cursor: pointer;
+        }
+
+        .autoFillButton {
+          margin-top: 16px;
+          background: white;
+          color: #111;
+          border: 1px solid #111;
+        }
+
+        .autoFillButton:disabled {
+          opacity: 0.45;
+          cursor: not-allowed;
         }
 
         .primaryButton {
