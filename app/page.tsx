@@ -58,29 +58,776 @@ function CopyButton({ value }: { value: string }) {
   }
 
   return (
-    <button type="button" className="copyButton" onClick={copyText}>
+    <button className="copyButton" onClick={copyText} type="button">
       {copied ? "Copied" : "Copy"}
     </button>
   );
 }
 
-function cleanText(text: string) {
-  return text
-    .replace(/https?:\/\/\S+/gi, "")
-    .replace(/\s+/g, " ")
-    .trim();
-}
+export default function Home() {
+  const [productName, setProductName] = useState("");
+  const [productDetails, setProductDetails] = useState("");
+  const [audience, setAudience] = useState("");
+  const [price, setPrice] = useState("");
+  const [generated, setGenerated] = useState(false);
 
-function removeMarketplaceWords(text: string) {
-  return cleanText(text)
-    .replace(
-      /\b(aliexpress|alibaba|dropshipping|drop shipping|supplier|wholesale|factory direct|factory price|cheap|hot sale|best seller|free shipping|2025|2026)\b/gi,
-      ""
-    )
-    .replace(/\s+/g, " ")
-    .replace(/\s+([,.!?])/g, "$1")
-    .trim();
-}
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [seoTitle, setSeoTitle] = useState("");
+  const [metaDescription, setMetaDescription] = useState("");
+  const [productType, setProductType] = useState("");
+  const [tags, setTags] = useState("");
+
+  function optimizeProduct() {
+    const name =
+      productName.trim() || "Premium Everyday Product";
+
+    const details =
+      productDetails.trim() ||
+      "Designed with practical features, a refined look, and everyday usability.";
+
+    const target =
+      audience.trim() || "customers looking for quality and convenience";
+
+    const optimizedTitle =
+      name.length > 65
+        ? name.slice(0, 65).trim()
+        : name;
+
+    const optimizedDescription = `${details}
+
+Designed for ${target}, this product combines practical functionality with a clean, considered design.
+
+Key features:
+• Thoughtful, everyday functionality
+• Clean and versatile design
+• Easy to use
+• Made for convenient everyday use
+• A practical addition to your routine
+
+A simple choice for customers who value quality, functionality, and a polished shopping experience.`;
+
+    const seo =
+      `${optimizedTitle} | Virello`;
+
+    const meta =
+      `Discover ${optimizedTitle.toLowerCase()} with practical features, refined design, and everyday functionality. Shop with confidence.`;
+
+    const type =
+      name.toLowerCase().includes("watch")
+        ? "Watches"
+        : name.toLowerCase().includes("shirt") ||
+          name.toLowerCase().includes("dress") ||
+          name.toLowerCase().includes("jacket")
+        ? "Apparel"
+        : name.toLowerCase().includes("bath") ||
+          name.toLowerCase().includes("shower") ||
+          name.toLowerCase().includes("faucet")
+        ? "Bathroom"
+        : "Lifestyle";
+
+    const generatedTags = [
+      "featured",
+      "new arrival",
+      "best seller",
+      "everyday essentials",
+      type.toLowerCase(),
+    ].join(", ");
+
+    setTitle(optimizedTitle);
+    setDescription(optimizedDescription);
+    setSeoTitle(seo.slice(0, 70));
+    setMetaDescription(meta.slice(0, 160));
+    setProductType(type);
+    setTags(generatedTags);
+    setGenerated(true);
+  }
+
+  function clearAll() {
+    setProductName("");
+    setProductDetails("");
+    setAudience("");
+    setPrice("");
+    setTitle("");
+    setDescription("");
+    setSeoTitle("");
+    setMetaDescription("");
+    setProductType("");
+    setTags("");
+    setGenerated(false);
+  }
+
+  return (
+    <main className="page">
+      <style jsx global>{`
+        * {
+          box-sizing: border-box;
+        }
+
+        body {
+          margin: 0;
+          background: #f6f7f9;
+          color: #17181a;
+          font-family:
+            Inter,
+            ui-sans-serif,
+            system-ui,
+            -apple-system,
+            BlinkMacSystemFont,
+            "Segoe UI",
+            sans-serif;
+        }
+
+        button,
+        input,
+        textarea {
+          font: inherit;
+        }
+
+        .page {
+          min-height: 100vh;
+          background:
+            radial-gradient(
+              circle at top right,
+              rgba(30, 41, 59, 0.06),
+              transparent 34%
+            ),
+            #f6f7f9;
+        }
+
+        .topbar {
+          height: 72px;
+          background: #ffffff;
+          border-bottom: 1px solid #e5e7eb;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 0 34px;
+          position: sticky;
+          top: 0;
+          z-index: 20;
+        }
+
+        .brand {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          font-weight: 800;
+          letter-spacing: -0.4px;
+        }
+
+        .brandMark {
+          width: 38px;
+          height: 38px;
+          border-radius: 11px;
+          background: #111827;
+          color: #ffffff;
+          display: grid;
+          place-items: center;
+          font-size: 16px;
+        }
+
+        .brandName {
+          font-size: 18px;
+        }
+
+        .brandSub {
+          color: #8a8f98;
+          font-weight: 500;
+          font-size: 13px;
+          margin-left: 3px;
+        }
+
+        .status {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          color: #5f6670;
+          font-size: 13px;
+        }
+
+        .statusDot {
+          width: 8px;
+          height: 8px;
+          background: #22c55e;
+          border-radius: 50%;
+        }
+
+        .container {
+          width: min(1180px, calc(100% - 32px));
+          margin: 0 auto;
+          padding: 54px 0 80px;
+        }
+
+        .hero {
+          margin-bottom: 34px;
+        }
+
+        .eyebrow {
+          display: inline-flex;
+          align-items: center;
+          gap: 7px;
+          padding: 7px 11px;
+          border-radius: 999px;
+          background: #ffffff;
+          border: 1px solid #e4e7eb;
+          color: #59616d;
+          font-size: 12px;
+          font-weight: 700;
+          letter-spacing: 0.3px;
+          text-transform: uppercase;
+        }
+
+        .hero h1 {
+          font-size: clamp(34px, 5vw, 58px);
+          line-height: 1.02;
+          letter-spacing: -2.8px;
+          max-width: 760px;
+          margin: 18px 0 14px;
+        }
+
+        .hero p {
+          max-width: 680px;
+          color: #68707b;
+          font-size: 17px;
+          line-height: 1.65;
+          margin: 0;
+        }
+
+        .layout {
+          display: grid;
+          grid-template-columns: 0.88fr 1.12fr;
+          gap: 22px;
+          align-items: start;
+        }
+
+        .card {
+          background: #ffffff;
+          border: 1px solid #e2e5e9;
+          border-radius: 18px;
+          box-shadow: 0 8px 30px rgba(15, 23, 42, 0.045);
+        }
+
+        .cardHeader {
+          padding: 23px 24px 18px;
+          border-bottom: 1px solid #eceef1;
+        }
+
+        .cardHeader h2 {
+          font-size: 18px;
+          margin: 0 0 6px;
+          letter-spacing: -0.4px;
+        }
+
+        .cardHeader p {
+          color: #747b85;
+          font-size: 13px;
+          line-height: 1.5;
+          margin: 0;
+        }
+
+        .cardBody {
+          padding: 24px;
+        }
+
+        .field {
+          margin-bottom: 19px;
+        }
+
+        .field:last-child {
+          margin-bottom: 0;
+        }
+
+        .field label {
+          display: block;
+          margin-bottom: 8px;
+          font-size: 13px;
+          font-weight: 700;
+          color: #30353b;
+        }
+
+        .field input,
+        .field textarea {
+          width: 100%;
+          border: 1px solid #dfe3e8;
+          background: #fbfcfd;
+          color: #17181a;
+          border-radius: 11px;
+          padding: 12px 13px;
+          outline: none;
+          transition: 0.15s ease;
+        }
+
+        .field input {
+          height: 46px;
+        }
+
+        .field textarea {
+          resize: vertical;
+          min-height: 125px;
+          line-height: 1.55;
+        }
+
+        .field input:focus,
+        .field textarea:focus {
+          border-color: #9ca3af;
+          background: #ffffff;
+          box-shadow: 0 0 0 3px rgba(17, 24, 39, 0.06);
+        }
+
+        .actions {
+          display: flex;
+          gap: 10px;
+          margin-top: 23px;
+        }
+
+        .primaryButton,
+        .secondaryButton {
+          border: 0;
+          border-radius: 11px;
+          height: 46px;
+          padding: 0 18px;
+          cursor: pointer;
+          font-weight: 750;
+        }
+
+        .primaryButton {
+          flex: 1;
+          background: #111827;
+          color: #ffffff;
+        }
+
+        .primaryButton:hover {
+          background: #202938;
+        }
+
+        .secondaryButton {
+          background: #f1f3f5;
+          color: #343941;
+        }
+
+        .resultGrid {
+          display: grid;
+          gap: 16px;
+        }
+
+        .resultBox {
+          border: 1px solid #e4e7eb;
+          border-radius: 13px;
+          background: #fcfcfd;
+          overflow: hidden;
+        }
+
+        .resultTop {
+          min-height: 47px;
+          padding: 12px 13px;
+          border-bottom: 1px solid #e8eaed;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 12px;
+        }
+
+        .resultLabel {
+          font-size: 12px;
+          font-weight: 800;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+          color: #707781;
+        }
+
+        .copyButton {
+          border: 1px solid #dfe3e8;
+          background: #ffffff;
+          color: #3d434b;
+          border-radius: 8px;
+          padding: 6px 10px;
+          font-size: 12px;
+          font-weight: 700;
+          cursor: pointer;
+        }
+
+        .copyButton:hover {
+          background: #f3f4f6;
+        }
+
+        .resultContent {
+          padding: 14px;
+          font-size: 14px;
+          line-height: 1.65;
+          white-space: pre-wrap;
+          color: #252a31;
+          min-height: 48px;
+        }
+
+        .emptyState {
+          min-height: 410px;
+          display: grid;
+          place-items: center;
+          text-align: center;
+          padding: 35px;
+        }
+
+        .emptyIcon {
+          width: 58px;
+          height: 58px;
+          border-radius: 16px;
+          background: #f0f2f4;
+          display: grid;
+          place-items: center;
+          margin: 0 auto 16px;
+          font-size: 23px;
+        }
+
+        .emptyState h3 {
+          margin: 0 0 7px;
+          font-size: 17px;
+        }
+
+        .emptyState p {
+          max-width: 360px;
+          margin: 0 auto;
+          color: #7a818b;
+          line-height: 1.6;
+          font-size: 13px;
+        }
+
+        .stats {
+          display: grid;
+          grid-template-columns: repeat(3, 1fr);
+          gap: 10px;
+          margin-top: 17px;
+        }
+
+        .stat {
+          background: #f7f8f9;
+          border: 1px solid #e8eaed;
+          border-radius: 11px;
+          padding: 12px;
+        }
+
+        .stat strong {
+          display: block;
+          font-size: 17px;
+          margin-bottom: 3px;
+        }
+
+        .stat span {
+          color: #7b828c;
+          font-size: 11px;
+        }
+
+        .tips {
+          margin-top: 22px;
+          padding: 16px;
+          border-radius: 13px;
+          background: #f7f8fa;
+          border: 1px solid #e7e9ec;
+        }
+
+        .tipsTitle {
+          font-weight: 800;
+          font-size: 13px;
+          margin-bottom: 8px;
+        }
+
+        .tips ul {
+          margin: 0;
+          padding-left: 18px;
+          color: #707780;
+          font-size: 12px;
+          line-height: 1.7;
+        }
+
+        .footer {
+          margin-top: 34px;
+          text-align: center;
+          color: #969ca5;
+          font-size: 12px;
+        }
+
+        @media (max-width: 900px) {
+          .layout {
+            grid-template-columns: 1fr;
+          }
+
+          .hero h1 {
+            letter-spacing: -1.8px;
+          }
+        }
+
+        @media (max-width: 600px) {
+          .topbar {
+            padding: 0 17px;
+          }
+
+          .brandSub {
+            display: none;
+          }
+
+          .container {
+            width: min(100% - 22px, 1180px);
+            padding-top: 35px;
+          }
+
+          .hero p {
+            font-size: 15px;
+          }
+
+          .cardHeader,
+          .cardBody {
+            padding: 18px;
+          }
+
+          .stats {
+            grid-template-columns: 1fr;
+          }
+        }
+      `}</style>
+
+      <header className="topbar">
+        <div className="brand">
+          <div className="brandMark">V</div>
+          <div className="brandName">
+            Virello <span className="brandSub">AI Optimizer</span>
+          </div>
+        </div>
+
+        <div className="status">
+          <span className="statusDot" />
+          Ready
+        </div>
+      </header>
+
+      <div className="container">
+        <section className="hero">
+          <div className="eyebrow">Product Optimization</div>
+
+          <h1>
+            Turn product information into a stronger store listing.
+          </h1>
+
+          <p>
+            Create polished product titles, descriptions, SEO metadata,
+            product types, and tags from one simple workspace.
+          </p>
+        </section>
+
+        <div className="layout">
+          <section className="card">
+            <div className="cardHeader">
+              <h2>Product details</h2>
+              <p>
+                Enter the information you already have. Virello will organize
+                it into a cleaner product listing.
+              </p>
+            </div>
+
+            <div className="cardBody">
+              <Field
+                label="Product name"
+                value={productName}
+                onChange={setProductName}
+                placeholder="Example: Automatic Stainless Steel Watch"
+              />
+
+              <Field
+                label="Product details"
+                value={productDetails}
+                onChange={setProductDetails}
+                placeholder="Describe materials, features, design, functions, size, finish, or anything important about the product."
+                textarea
+              />
+
+              <Field
+                label="Target customer"
+                value={audience}
+                onChange={setAudience}
+                placeholder="Example: customers looking for a refined everyday watch"
+              />
+
+              <Field
+                label="Price"
+                value={price}
+                onChange={setPrice}
+                placeholder="Example: $129.00"
+              />
+
+              <div className="actions">
+                <button
+                  className="primaryButton"
+                  onClick={optimizeProduct}
+                  type="button"
+                >
+                  Optimize Product
+                </button>
+
+                <button
+                  className="secondaryButton"
+                  onClick={clearAll}
+                  type="button"
+                >
+                  Clear
+                </button>
+              </div>
+
+              <div className="tips">
+                <div className="tipsTitle">For better results</div>
+
+                <ul>
+                  <li>Include the main product material.</li>
+                  <li>Mention important functions or features.</li>
+                  <li>Describe who the product is designed for.</li>
+                  <li>Avoid copying the supplier's original wording.</li>
+                </ul>
+              </div>
+            </div>
+          </section>
+
+          <section className="card">
+            <div className="cardHeader">
+              <h2>Optimized listing</h2>
+              <p>
+                Ready-to-use content for your storefront and search results.
+              </p>
+            </div>
+
+            {generated ? (
+              <div className="cardBody">
+                <div className="resultGrid">
+                  <div className="resultBox">
+                    <div className="resultTop">
+                      <span className="resultLabel">
+                        Product title
+                      </span>
+
+                      <CopyButton value={title} />
+                    </div>
+
+                    <div className="resultContent">
+                      {title}
+                    </div>
+                  </div>
+
+                  <div className="resultBox">
+                    <div className="resultTop">
+                      <span className="resultLabel">
+                        Product description
+                      </span>
+
+                      <CopyButton value={description} />
+                    </div>
+
+                    <div className="resultContent">
+                      {description}
+                    </div>
+                  </div>
+
+                  <div className="resultBox">
+                    <div className="resultTop">
+                      <span className="resultLabel">
+                        SEO title
+                      </span>
+
+                      <CopyButton value={seoTitle} />
+                    </div>
+
+                    <div className="resultContent">
+                      {seoTitle}
+                    </div>
+                  </div>
+
+                  <div className="resultBox">
+                    <div className="resultTop">
+                      <span className="resultLabel">
+                        Meta description
+                      </span>
+
+                      <CopyButton value={metaDescription} />
+                    </div>
+
+                    <div className="resultContent">
+                      {metaDescription}
+                    </div>
+                  </div>
+
+                  <div className="resultBox">
+                    <div className="resultTop">
+                      <span className="resultLabel">
+                        Product type
+                      </span>
+
+                      <CopyButton value={productType} />
+                    </div>
+
+                    <div className="resultContent">
+                      {productType}
+                    </div>
+                  </div>
+
+                  <div className="resultBox">
+                    <div className="resultTop">
+                      <span className="resultLabel">
+                        Product tags
+                      </span>
+
+                      <CopyButton value={tags} />
+                    </div>
+
+                    <div className="resultContent">
+                      {tags}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="stats">
+                  <div className="stat">
+                    <strong>
+                      {title.length}
+                    </strong>
+                    <span>Title characters</span>
+                  </div>
+
+                  <div className="stat">
+                    <strong>
+                      {seoTitle.length}
+                    </strong>
+                    <span>SEO title characters</span>
+                  </div>
+
+                  <div className="stat">
+                    <strong>
+                      {metaDescription.length}
+                    </strong>
+                    <span>Meta characters</span>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="emptyState">
+                <div>
+                  <div className="emptyIcon">✦</div>
+
+                  <h3>Your optimized listing will appear here</h3>
+
+                  <p>
+                    Add your product information on the left, then select
+                    Optimize Product to generate the complete listing.
+                  </p>
+                </div>
+              </div>
+            )}
+          </section>
+        </div>
+
+        <div className="footer">
+          Virello AI Optimizer · Built for cleaner, more professional
+          ecommerce listings.
+        </div>
+      </div>
+    </main>
+  );
+}}
 
 function limit(text: string, max: number) {
   return text.trim().slice(0, max).trim();
