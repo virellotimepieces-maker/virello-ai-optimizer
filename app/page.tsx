@@ -1,499 +1,287 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { ChangeEvent, useMemo, useState } from "react";
 
 type ProductResult = {
   title: string;
   description: string;
-  seoTitle: string;
-  metaDescription: string;
   bullets: string[];
   specs: string[];
+  seoTitle: string;
+  metaDescription: string;
 };
 
 const MAX_IMAGES = 6;
 
-const cleanText = (value: string) =>
-  value.replace(/\s+/g, " ").trim();
+const clean = (s: string) =>
+  s.replace(/\s+/g, " ").replace(/[|]+/g, " ").trim();
 
-const removeYear = (value: string) =>
-  cleanText(
-    value
+const stripSupplierNoise = (s: string) =>
+  clean(
+    s
       .replace(/\b(19|20)\d{2}\b/g, "")
-      .replace(/\s+/g, " ")
-  );
-
-const removeOrigin = (value: string) =>
-  cleanText(
-    value
       .replace(
-        /\b(country of origin|origin|made in|place of origin)\s*[:\-]?\s*[a-zA-Z ,.-]+/gi,
+        /\b(country of origin|place of origin|origin|made in)\s*[:\-]?\s*[a-zA-Z ,.-]+/gi,
         ""
       )
-      .replace(/\s+/g, " ")
   );
 
-const sanitizeText = (value: string) =>
-  removeYear(removeOrigin(value));
+const limit = (s: string, max: number) => {
+  const value = stripSupplierNoise(s);
+  if (value.length <= max) return value;
 
-const limitText = (value: string, max: number) => {
-  const clean = sanitizeText(value);
+  const cut = value.slice(0, max + 1);
+  const i = cut.lastIndexOf(" ");
 
-  if (clean.length <= max) return clean;
-
-  const shortened = clean.slice(0, max + 1);
-  const lastSpace = shortened.lastIndexOf(" ");
-
-  return shortened
-    .slice(0, lastSpace > 0 ? lastSpace : max)
+  return cut
+    .slice(0, i > 0 ? i : max)
     .replace(/[.,;:!?|-]+$/, "")
     .trim();
 };
 
-function createProductTitle(original: string) {
-  const text = sanitizeText(original);
-  const lower = text.toLowerCase();
+function makeTitle(input: string) {
+  const source = stripSupplierNoise(input);
+  const lower = source.toLowerCase();
 
-  const modelMatch = text.match(/\bv\s?\d+\b/i);
+  const model = source
+    .match(/\bv\s?\d+\b/i)?.[0]
+    ?.replace(/\s+/g, "")
+    .toUpperCase();
 
-  const model = modelMatch?.[0]
-    ? modelMatch[0]
-        .replace(/\s+/g, "")
-        .toUpperCase()
-    : "";
+  if (/(watch|timepiece|chronograph|pagani)/i.test(source)) {
+    const parts = [
+      lower.includes("pagani") ? "Pagani" : "",
+      model || "",
+      lower.includes("moon") ? "Moon" : "",
+      lower.includes("chronograph") ? "Chronograph" : "",
+      "Men's Watch",
+    ].filter(Boolean);
 
-  const isWatch =
-    lower.includes("watch") ||
-    lower.includes("timepiece") ||
-    lower.includes("chronograph") ||
-    lower.includes("pagani");
-
-  if (isWatch) {
-    const parts: string[] = [];
-
-    if (lower.includes("pagani")) {
-      parts.push("Pagani");
-    }
-
-    if (model) {
-      parts.push(model);
-    }
-
-    if (lower.includes("moon")) {
-      parts.push("Moon");
-    }
-
-    if (
-      lower.includes("chronograph") &&
-      !parts.includes("Chronograph")
-    ) {
-      parts.push("Chronograph");
-    }
-
-    parts.push("Men's Watch");
-
-    return sanitizeText(parts.join(" "));
+    return clean(parts.join(" "));
   }
 
-  const cleaned = text
-    .replace(
-      /\b(country of origin|origin|made in|place of origin)\b/gi,
-      ""
-    )
-    .replace(/[|,:;()[\]{}]/g, " ")
+  return source
+    .replace(/[,:;()[\]{}]/g, " ")
     .split(/\s+/)
     .filter(Boolean)
     .slice(0, 7)
     .join(" ");
-
-  return sanitizeText(cleaned);
 }
 
-function createDescription(
+function makeCopy(
   title: string,
   audience: string,
   style: string
-) {
-  const cleanTitle = sanitizeText(title);
-
+): ProductResult {
   const audienceText =
     audience === "Women"
       ? "women"
       : audience === "Men"
-      ? "men"
-      : "everyday wear";
+        ? "men"
+        : "men and women";
 
   const styleText =
     style === "Premium / Luxury"
-      ? "a refined, premium look"
+      ? "a refined premium look"
       : style === "Professional"
-      ? "a polished professional look"
+        ? "a polished professional look"
+        : style === "Sport"
+          ? "a confident sport-inspired look"
+          : style === "Gift"
+            ? "a thoughtful gifting option"
+            : style === "Casual"
+              ? "an effortless casual look"
+              : "a versatile everyday style";
+
+  const bullets =
+    style === "Professional"
+      ? [
+          "Refined styling that complements business and formal outfits",
+          "Versatile enough for workdays, evenings and special occasions",
+          "Clean presentation that feels polished without being overstated",
+          "A strong choice for personal wear or gifting",
+        ]
       : style === "Sport"
-      ? "a versatile sport-inspired look"
-      : style === "Gift"
-      ? "a thoughtful gifting option"
-      : style === "Casual"
-      ? "an easy casual look"
-      : "an easy everyday style";
+        ? [
+            "Confident sport-inspired styling for an active wardrobe",
+            "Easy to pair with casual and everyday outfits",
+            "Versatile design made for regular wear",
+            "A practical option for personal use or gifting",
+          ]
+        : [
+            "Refined design for a polished appearance",
+            "Versatile styling for business, casual and special occasions",
+            "Easy to pair with a wide range of outfits",
+            "A thoughtful option for personal wear or gifting",
+          ];
 
-  return sanitizeText(
-    `${cleanTitle} is designed for ${styleText}, with a clean and versatile profile for ${audienceText}. Its balanced styling makes it easy to pair with business attire, casual outfits, and special occasions.`
-  );
-}
-
-function createSeoTitle(title: string) {
-  const cleanTitle = sanitizeText(title);
-
-  const candidates = [
-    `${cleanTitle} | Men's Luxury Watch`,
-    `${cleanTitle} | Men's Premium Watch`,
-    `${cleanTitle} | Luxury Timepiece`,
-    `${cleanTitle} | Premium Timepiece`,
-    cleanTitle,
-  ];
-
-  const valid = candidates.find(
-    (item) => sanitizeText(item).length <= 60
-  );
-
-  return limitText(valid || cleanTitle, 60);
-}
-
-function createMetaDescription(
-  title: string,
-  style: string
-) {
-  const cleanTitle = sanitizeText(title);
-
-  const styleText =
-    style === "Premium / Luxury"
-      ? "refined luxury styling"
-      : style === "Professional"
-      ? "a polished professional look"
-      : style === "Sport"
-      ? "versatile sport-inspired styling"
-      : style === "Gift"
-      ? "an elegant gifting option"
-      : "versatile everyday styling";
-
-  const candidates = [
-    `Discover the ${cleanTitle}, designed with ${styleText}. A versatile timepiece for business, everyday wear and special occasions.`,
-    `Shop the ${cleanTitle}, featuring ${styleText} for business and everyday wear. Discover a polished timepiece today.`,
-    `Explore the ${cleanTitle}, created for ${styleText}. A refined choice for everyday outfits and special occasions.`,
-  ];
-
-  const valid = candidates.find(
-    (item) => sanitizeText(item).length <= 160
-  );
-
-  return limitText(valid || candidates[0], 160);
-}
-
-function createBullets(
-  style: string,
-  audience: string
-) {
-  if (style === "Sport") {
-    return [
-      "Versatile design for active everyday styling",
-      "Easy to pair with casual and sport-inspired outfits",
-      "Comfort-focused design for regular wear",
-      "A practical choice for personal use or gifting",
-    ];
-  }
-
-  if (style === "Professional") {
-    return [
-      "Polished design suited to professional settings",
-      "Easy to pair with business and formal attire",
-      "Versatile enough for everyday wear",
-      "A refined option for personal use or gifting",
-    ];
-  }
-
-  if (style === "Gift") {
-    return [
-      "Refined design suitable for gifting",
-      "Versatile style for different occasions",
-      "Easy to pair with casual or formal outfits",
-      "A timeless choice for someone special",
-    ];
-  }
-
-  if (audience === "Women") {
-    return [
-      "Refined design for a polished appearance",
-      "Versatile styling for everyday and special occasions",
-      "Easy to pair with a range of outfits",
-      "A thoughtful option for personal wear or gifting",
-    ];
-  }
-
-  return [
-    "Refined design for a polished appearance",
-    "Versatile styling for business and casual wear",
-    "Comfort-focused design for everyday use",
-    "A timeless option for personal wear or gifting",
-  ];
-}
-
-function createSpecs(
-  style: string,
-  audience: string
-) {
   const specs = [
     `Style: ${style}`,
-    `Designed for: ${
-      audience === "Unisex" ? "Men & Women" : audience
-    }`,
+    `Designed for: ${audience === "Unisex" ? "Men & Women" : audience}`,
     "Use: Everyday & Special Occasions",
     "Design: Refined & Versatile",
   ];
 
-  return specs.filter(
-    (item) => !/origin|made in|country/i.test(item)
+  const seoTitle = limit(`${title} | Men's Luxury Watch`, 60);
+
+  const metaDescription = limit(
+    `Discover the ${title}, designed for ${styleText}. A versatile timepiece for ${audienceText}, business, everyday wear and special occasions.`,
+    160
   );
+
+  return {
+    title,
+    description: `${title} is designed for ${styleText}, with a clean and versatile profile for ${audienceText}. Its balanced styling makes it easy to pair with business attire, casual outfits and special occasions.`,
+    bullets,
+    specs,
+    seoTitle,
+    metaDescription,
+  };
 }
 
-function readFileAsDataURL(file: File): Promise<string> {
+function readImage(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
 
-    reader.onload = () => {
-      if (typeof reader.result === "string") {
-        resolve(reader.result);
-      } else {
-        reject(new Error("Unable to read image."));
-      }
-    };
+    reader.onload = () =>
+      typeof reader.result === "string"
+        ? resolve(reader.result)
+        : reject(new Error("Image could not be read."));
 
     reader.onerror = () =>
-      reject(new Error("Unable to read image."));
+      reject(new Error("Image could not be read."));
 
     reader.readAsDataURL(file);
   });
 }
 
 export default function Home() {
-  const [productTitle, setProductTitle] =
-    useState("");
+  const [productTitle, setProductTitle] = useState("");
+  const [price, setPrice] = useState("129.99");
+  const [audience, setAudience] = useState("Men");
+  const [style, setStyle] = useState("Premium / Luxury");
+  const [imageCount, setImageCount] = useState(4);
+  const [uploadedImages, setUploadedImages] = useState<string[]>([]);
+  const [generated, setGenerated] = useState(false);
+  const [result, setResult] = useState<ProductResult | null>(null);
 
-  const [price, setPrice] =
-    useState("129.99");
+  const previewResult = useMemo(
+    () =>
+      productTitle.trim()
+        ? makeCopy(makeTitle(productTitle), audience, style)
+        : null,
+    [productTitle, audience, style]
+  );
 
-  const [audience, setAudience] =
-    useState("Men");
+  const activeResult = result ?? previewResult;
 
-  const [style, setStyle] =
-    useState("Premium / Luxury");
-
-  const [imageCount, setImageCount] =
-    useState(4);
-
-  const [uploadedImages, setUploadedImages] =
-    useState<string[]>([]);
-
-  const [generated, setGenerated] =
-    useState(false);
-
-  const [result, setResult] =
-    useState<ProductResult | null>(null);
-
-  const generatedResult =
-    useMemo<ProductResult | null>(() => {
-      if (!productTitle.trim()) {
-        return null;
-      }
-
-      const title =
-        createProductTitle(productTitle);
-
-      return {
-        title,
-        description:
-          createDescription(
-            title,
-            audience,
-            style
-          ),
-        seoTitle:
-          createSeoTitle(title),
-        metaDescription:
-          createMetaDescription(
-            title,
-            style
-          ),
-        bullets:
-          createBullets(
-            style,
-            audience
-          ),
-        specs:
-          createSpecs(
-            style,
-            audience
-          ),
-      };
-    }, [
-      productTitle,
-      audience,
-      style,
-    ]);
-
-  const activeResult =
-    result || generatedResult;
-
-  async function handleImageUpload(
-    event: React.ChangeEvent<HTMLInputElement>
+  async function uploadImages(
+    e: ChangeEvent<HTMLInputElement>
   ) {
-    const files = Array.from(
-      event.target.files || []
-    );
-
-    if (!files.length) {
-      return;
-    }
-
-    const imageFiles = files
-      .filter((file) =>
-        file.type.startsWith("image/")
-      )
+    const files = Array.from(e.target.files ?? [])
+      .filter((file) => file.type.startsWith("image/"))
       .slice(0, MAX_IMAGES);
 
-    if (!imageFiles.length) {
-      alert("Please select image files only.");
-      return;
-    }
+    if (!files.length) return;
 
     try {
-      const imageData =
-        await Promise.all(
-          imageFiles.map(readFileAsDataURL)
-        );
+      const images = await Promise.all(files.map(readImage));
 
-      setUploadedImages(imageData);
-      setImageCount(imageData.length);
+      setUploadedImages(images);
+      setImageCount(images.length);
     } catch {
       alert(
-        "There was a problem uploading the images."
+        "One or more images could not be uploaded. Please try again."
       );
     }
 
-    event.target.value = "";
+    e.target.value = "";
   }
 
   function removeImage(index: number) {
-    setUploadedImages((current) =>
-      current.filter((_, i) => i !== index)
+    const next = uploadedImages.filter(
+      (_, i) => i !== index
     );
 
-    setImageCount((current) =>
-      Math.max(0, Math.min(current - 1, MAX_IMAGES))
+    setUploadedImages(next);
+    setImageCount(
+      Math.min(next.length, MAX_IMAGES)
     );
   }
 
-  function clearImages() {
-    setUploadedImages([]);
-    setImageCount(0);
-  }
-
-  function generateProductPage() {
-    if (!productTitle.trim()) {
+  function generate() {
+    if (!previewResult) {
       alert(
-        "Please enter your original product title."
+        "Please enter the original product title first."
       );
       return;
     }
 
-    if (!generatedResult) {
-      return;
-    }
-
-    setResult(generatedResult);
+    setResult(previewResult);
     setGenerated(true);
 
-    setTimeout(() => {
-      document
-        .getElementById("preview")
-        ?.scrollIntoView({
-          behavior: "smooth",
-        });
-    }, 50);
-  }
-
-  function editProduct() {
-    setGenerated(false);
-    setResult(null);
-
-    window.scrollTo({
-      top: 0,
-      behavior: "smooth",
-    });
+    setTimeout(
+      () =>
+        document
+          .getElementById("preview")
+          ?.scrollIntoView({
+            behavior: "smooth",
+          }),
+      50
+    );
   }
 
   return (
     <main className="page">
-
       <header className="header">
-        <div>
-          <div className="brand-name">
-            VIRELLO
-          </div>
+        <div className="brand">VIRELLO</div>
 
-          <div className="brand-subtitle">
-            AI PRODUCT OPTIMIZER
-          </div>
+        <div className="subtitle">
+          AI PRODUCT OPTIMIZER
         </div>
       </header>
 
       {!generated ? (
-
         <section className="editor">
-
           <div className="eyebrow">
             Virello AI
           </div>
 
           <h1>
-            Create a better product page.
+            Turn product information into a page
+            built to convert.
           </h1>
 
           <p className="intro">
-            Turn a supplier product title into
-            a cleaner, more professional product
-            page with natural copy and
-            search-ready SEO information.
+            Create cleaner product copy, stronger
+            benefits, natural positioning and
+            search-ready SEO without supplier-style
+            wording.
           </p>
 
           <div className="panel">
+            <h2>Product Information</h2>
 
-            <div className="section-title">
-              Product Information
-            </div>
-
-            <label htmlFor="product-title">
+            <label htmlFor="title">
               Original Product Title
             </label>
 
             <textarea
-              id="product-title"
-              className="input title-input"
+              id="title"
               value={productTitle}
               onChange={(e) =>
                 setProductTitle(e.target.value)
               }
               placeholder="Paste the full supplier product title here"
-              rows={4}
             />
 
-            <div className="form-grid">
-
+            <div className="two-col">
               <div>
                 <label htmlFor="price">
                   Product Price
                 </label>
 
-                <div className="price-input">
+                <div className="price">
                   <span>$</span>
 
                   <input
@@ -512,14 +300,12 @@ export default function Home() {
                   Target Audience
                 </label>
 
-                <div className="button-row">
-
+                <div className="choices">
                   {[
                     "Women",
                     "Men",
                     "Unisex",
                   ].map((item) => (
-
                     <button
                       type="button"
                       key={item}
@@ -534,20 +320,16 @@ export default function Home() {
                     >
                       {item}
                     </button>
-
                   ))}
-
                 </div>
               </div>
-
             </div>
 
             <label>
               Copywriting Style
             </label>
 
-            <div className="button-row wrap">
-
+            <div className="choices">
               {[
                 "Premium / Luxury",
                 "Professional",
@@ -556,7 +338,6 @@ export default function Home() {
                 "Sport",
                 "Gift",
               ].map((item) => (
-
                 <button
                   type="button"
                   key={item}
@@ -571,182 +352,172 @@ export default function Home() {
                 >
                   {item}
                 </button>
-
               ))}
-
             </div>
 
             <label>
               Product Images
             </label>
 
-            <div className="upload-box">
-
+            <div className="upload">
               <input
-                id="product-images"
+                id="images"
                 type="file"
                 accept="image/*"
                 multiple
-                onChange={handleImageUpload}
-                className="file-input"
+                onChange={uploadImages}
               />
 
               <label
-                htmlFor="product-images"
+                htmlFor="images"
                 className="upload-button"
               >
                 + Upload Product Images
               </label>
 
-              <div className="upload-help">
-                Upload up to {MAX_IMAGES} product
-                images.
-              </div>
-
+              <p>
+                Upload up to 6 product images.
+              </p>
             </div>
 
             {uploadedImages.length > 0 && (
-
-              <div className="uploaded-area">
-
-                <div className="uploaded-header">
+              <div className="uploaded">
+                <div className="uploaded-top">
                   <strong>
-                    Uploaded Images
+                    {uploadedImages.length} image(s)
+                    uploaded
                   </strong>
 
                   <button
                     type="button"
-                    className="clear-images"
-                    onClick={clearImages}
+                    className="clear"
+                    onClick={() => {
+                      setUploadedImages([]);
+                      setImageCount(0);
+                    }}
                   >
                     Clear All
                   </button>
                 </div>
 
-                <div className="uploaded-grid">
-
+                <div className="thumbs">
                   {uploadedImages.map(
                     (image, index) => (
-
                       <div
-                        className="uploaded-card"
+                        className="thumb"
                         key={`${image}-${index}`}
                       >
-
                         <img
                           src={image}
-                          alt={`Product ${index + 1}`}
+                          alt={`Product image ${
+                            index + 1
+                          }`}
                         />
 
                         <button
                           type="button"
-                          className="remove-image"
                           onClick={() =>
                             removeImage(index)
                           }
-                          aria-label={`Remove image ${
-                            index + 1
-                          }`}
                         >
                           ×
                         </button>
 
-                        <div className="image-number">
+                        <small>
                           Image {index + 1}
-                        </div>
-
+                        </small>
                       </div>
-
                     )
                   )}
-
                 </div>
-
               </div>
-
             )}
 
             <label>
               Number of Product Images
             </label>
 
-            <div className="button-row">
-
+            <div className="number-row">
               {[0, 1, 2, 3, 4, 5, 6].map(
                 (number) => (
-
                   <button
                     type="button"
                     key={number}
                     className={
                       imageCount === number
-                        ? "image-choice active"
-                        : "image-choice"
+                        ? "number active"
+                        : "number"
                     }
                     onClick={() =>
-                      setImageCount(number)
+                      setImageCount(
+                        uploadedImages.length
+                          ? Math.min(
+                              number,
+                              uploadedImages.length
+                            )
+                          : number
+                      )
                     }
                   >
                     {number}
                   </button>
-
                 )
               )}
-
             </div>
 
             <button
               type="button"
               className="generate"
-              onClick={generateProductPage}
+              onClick={generate}
             >
-              Generate AI Product Page
-              <span> →</span>
+              Generate AI Product Page{" "}
+              <span>→</span>
             </button>
-
           </div>
-
         </section>
-
       ) : (
-
         <section
           id="preview"
-          className="preview-page"
+          className="preview"
         >
-
           <button
             type="button"
-            className="edit-button"
-            onClick={editProduct}
+            className="edit"
+            onClick={() => {
+              setGenerated(false);
+              setResult(null);
+
+              window.scrollTo({
+                top: 0,
+                behavior: "smooth",
+              });
+            }}
           >
             ← Edit Product
           </button>
 
           <div className="preview-brand">
-            VIRELLO
+            THE VIRELLO EDIT
           </div>
 
-          <div className="product-layout">
-
-            <div className="visual-column">
-
+          <div className="product-grid">
+            <div className="gallery">
               {imageCount > 0 ? (
-
                 <>
-                  <div className="image-main">
-
+                  <div className="main-image">
                     {uploadedImages[0] ? (
                       <img
                         src={uploadedImages[0]}
-                        alt="Main product"
+                        alt={
+                          activeResult?.title ||
+                          "Product"
+                        }
                       />
                     ) : (
                       <span>
-                        Product Image
+                        Upload a product image
                       </span>
                     )}
-
                   </div>
 
                   {Array.from({
@@ -755,16 +526,14 @@ export default function Home() {
                       imageCount - 1
                     ),
                   }).map((_, index) => {
-
                     const image =
                       uploadedImages[index + 1];
 
                     return (
                       <div
-                        className="image-small"
+                        className="small-image"
                         key={index}
                       >
-
                         {image ? (
                           <img
                             src={image}
@@ -774,30 +543,24 @@ export default function Home() {
                           />
                         ) : (
                           <span>
-                            Additional Product View
+                            Additional Product
+                            View
                           </span>
                         )}
-
                       </div>
                     );
                   })}
-
                 </>
-
               ) : (
-
-                <div className="image-main no-image">
-                  No Image
+                <div className="main-image empty">
+                  No Product Images Selected
                 </div>
-
               )}
-
             </div>
 
-            <div className="product-info">
-
-              <div className="collection">
-                Premium Collection
+            <div className="product-copy">
+              <div className="kicker">
+                PREMIUM COLLECTION
               </div>
 
               <h2>
@@ -812,29 +575,24 @@ export default function Home() {
                 {activeResult?.description}
               </p>
 
-              <div className="bullets">
-
+              <div className="benefits">
                 {activeResult?.bullets.map(
                   (bullet) => (
-
                     <div key={bullet}>
                       ✓ {bullet}
                     </div>
-
                   )
                 )}
-
               </div>
 
               <button
                 type="button"
-                className="cart-button"
+                className="cart"
               >
                 ADD TO CART
               </button>
 
               <div className="trust">
-
                 <span>
                   Secure Checkout
                 </span>
@@ -844,172 +602,126 @@ export default function Home() {
                 </span>
 
                 <span>
-                  Support
+                  Customer Support
                 </span>
-
               </div>
-
             </div>
-
           </div>
 
-          <section className="features-section">
-
-            <div className="section-kicker">
-              Product Details
+          <section className="section">
+            <div className="kicker">
+              WHY IT STANDS OUT
             </div>
 
             <h3>
-              Details that help customers
-              buy with confidence.
+              Give shoppers the reasons they
+              need to keep reading.
             </h3>
 
-            <div className="feature-grid">
+            <div className="cards">
+              {[
+                [
+                  "01",
+                  "Refined Design",
+                  "A polished presentation designed to complement different outfits and occasions.",
+                ],
+                [
+                  "02",
+                  "Versatile Styling",
+                  "Easy to position for business, casual and special-occasion looks.",
+                ],
+                [
+                  "03",
+                  "Everyday Appeal",
+                  "A clean, wearable aesthetic that fits naturally into personal style.",
+                ],
+                [
+                  "04",
+                  "Gift Ready",
+                  "A refined option for personal wear or a thoughtful gift.",
+                ],
+              ].map(
+                ([number, title, text]) => (
+                  <article
+                    className="card"
+                    key={number}
+                  >
+                    <small>{number}</small>
 
-              <div className="feature-card">
+                    <h4>{title}</h4>
 
-                <div className="feature-number">
-                  01
-                </div>
-
-                <h4>
-                  Refined Design
-                </h4>
-
-                <p>
-                  A clean and polished style
-                  designed to complement
-                  different outfits and
-                  occasions.
-                </p>
-
-              </div>
-
-              <div className="feature-card">
-
-                <div className="feature-number">
-                  02
-                </div>
-
-                <h4>
-                  Versatile Styling
-                </h4>
-
-                <p>
-                  Easy to wear with business,
-                  casual and occasion-ready
-                  looks.
-                </p>
-
-              </div>
-
-              <div className="feature-card">
-
-                <div className="feature-number">
-                  03
-                </div>
-
-                <h4>
-                  Everyday Appeal
-                </h4>
-
-                <p>
-                  Designed to fit naturally
-                  into everyday personal style.
-                </p>
-
-              </div>
-
-              <div className="feature-card">
-
-                <div className="feature-number">
-                  04
-                </div>
-
-                <h4>
-                  Gift Ready
-                </h4>
-
-                <p>
-                  A polished choice for personal
-                  wear or a thoughtful gift.
-                </p>
-
-              </div>
-
+                    <p>{text}</p>
+                  </article>
+                )
+              )}
             </div>
-
           </section>
 
-          <section className="specs-section">
-
-            <div className="section-kicker">
-              Product Information
+          <section className="section">
+            <div className="kicker">
+              PRODUCT INFORMATION
             </div>
 
             <h3>
-              Product specifications.
+              Clear details. No unnecessary
+              noise.
             </h3>
 
-            <div className="spec-list">
-
+            <div className="specs">
               {activeResult?.specs.map(
                 (spec) => {
-
-                  const parts =
-                    spec.split(":");
+                  const [
+                    key,
+                    ...rest
+                  ] = spec.split(":");
 
                   return (
                     <div
-                      className="spec-row"
+                      className="spec"
                       key={spec}
                     >
-
-                      <span>
-                        {parts[0]}
-                      </span>
+                      <span>{key}</span>
 
                       <strong>
-                        {parts
-                          .slice(1)
+                        {rest
                           .join(":")
                           .trim()}
                       </strong>
-
                     </div>
                   );
                 }
               )}
-
             </div>
-
           </section>
 
-          <section className="standout">
-
-            <div className="section-kicker">
-              Virello Product Experience
+          <section className="section callout">
+            <div className="kicker">
+              THE VIRELLO EXPERIENCE
             </div>
 
             <h3>
-              Make the product easier
-              to understand.
-              Easier to want.
+              Make the product easier to
+              understand. Easier to want.
             </h3>
+
+            <p>
+              Strong product pages make the
+              value clear, remove unnecessary
+              friction and give shoppers a
+              simple next step.
+            </p>
 
             <button
               type="button"
-              className="cart-button"
+              className="cart"
             >
               ADD TO CART
             </button>
-
           </section>
 
-          <section className="faq">
-
-            <div className="section-kicker">
-              Frequently Asked Questions
+          <section className="section faq">
+            <div className="kicker">
+              FREQUENTLY ASKED QUESTIONS
             </div>
 
             <h3>
@@ -1018,28 +730,27 @@ export default function Home() {
 
             <details>
               <summary>
-                Is this product suitable
-                for everyday use?
+                Is this suitable for everyday
+                wear?
               </summary>
 
               <p>
-                Yes. Its versatile styling
-                makes it suitable for
-                everyday outfits and
-                regular use.
+                Yes. The versatile styling is
+                designed to work naturally with
+                everyday outfits.
               </p>
             </details>
 
             <details>
               <summary>
-                Can it be worn with
-                formal clothing?
+                Can it be worn with formal
+                clothing?
               </summary>
 
               <p>
-                Yes. The refined design
-                pairs well with business
-                and formal clothing.
+                Yes. The refined presentation
+                pairs naturally with business
+                and dressier clothing.
               </p>
             </details>
 
@@ -1049,93 +760,75 @@ export default function Home() {
               </summary>
 
               <p>
-                Yes. Its versatile and
-                polished design makes it
-                a thoughtful gifting option.
+                Yes. The polished, versatile
+                design makes it a thoughtful
+                gifting option.
               </p>
             </details>
 
             <details>
               <summary>
-                Is this suitable for
-                different occasions?
+                Is it suitable for different
+                occasions?
               </summary>
 
               <p>
-                Yes. The clean styling makes
-                it easy to transition between
-                everyday, business and
-                special occasions.
+                Yes. The clean styling
+                transitions easily between
+                everyday, business and special
+                occasions.
               </p>
             </details>
-
           </section>
 
-          <section className="seo-section">
-
-            <h3>
-              SEO Information
-            </h3>
-
-            <div className="seo-card">
-
-              <div className="seo-label">
-                SEO Title
-              </div>
-
-              <div className="seo-value">
-                {activeResult?.seoTitle}
-              </div>
-
-              <div
-                className={
-                  (activeResult?.seoTitle
-                    .length || 0) <= 60
-                    ? "counter good"
-                    : "counter bad"
-                }
-              >
-                {activeResult?.seoTitle.length || 0}
-                /60
-              </div>
-
+          <section className="section">
+            <div className="kicker">
+              SEO INFORMATION
             </div>
 
-            <div className="seo-card">
+            <div className="seo">
+              <div>
+                <strong>
+                  SEO Title
+                </strong>
 
-              <div className="seo-label">
-                Meta Description
+                <p>
+                  {activeResult?.seoTitle}
+                </p>
+
+                <small>
+                  {activeResult?.seoTitle
+                    .length}
+                  /60
+                </small>
               </div>
 
-              <div className="seo-value">
-                {activeResult?.metaDescription}
-              </div>
+              <div>
+                <strong>
+                  Meta Description
+                </strong>
 
-              <div
-                className={
-                  (activeResult
-                    ?.metaDescription
-                    .length || 0) <= 160
-                    ? "counter good"
-                    : "counter bad"
-                }
-              >
-                {activeResult
-                  ?.metaDescription
-                  .length || 0}
-                /160
-              </div>
+                <p>
+                  {
+                    activeResult?.metaDescription
+                  }
+                </p>
 
+                <small>
+                  {
+                    activeResult
+                      ?.metaDescription
+                      .length
+                  }
+                  /160
+                </small>
+              </div>
             </div>
-
           </section>
-
         </section>
-
       )}
 
       <style jsx global>{`
-
         * {
           box-sizing: border-box;
         }
@@ -1168,66 +861,65 @@ export default function Home() {
 
         .page {
           min-height: 100vh;
-          width: 100%;
           overflow-x: hidden;
         }
 
         .header {
-          width: 100%;
           padding: 28px 5vw 18px;
         }
 
-        .brand-name {
+        .brand {
           font-size: 20px;
           font-weight: 750;
-          letter-spacing: .08em;
+          letter-spacing: 0.08em;
         }
 
-        .brand-subtitle {
+        .subtitle {
           margin-top: 4px;
           font-size: 13px;
-          letter-spacing: .06em;
+          letter-spacing: 0.06em;
         }
 
         .editor,
-        .preview-page {
+        .preview {
           width: min(1180px, 90vw);
-          margin: 0 auto;
+          margin: auto;
         }
 
         .editor {
           padding: 70px 0 110px;
         }
 
-        .eyebrow {
-          font-size: 15px;
-          margin-bottom: 28px;
+        .eyebrow,
+        .kicker {
           color: #666;
+          font-size: 14px;
+          letter-spacing: 0.06em;
         }
 
         h1 {
-          max-width: 900px;
-          margin: 0;
+          max-width: 980px;
+          margin: 26px 0 30px;
           font-size: clamp(
-            52px,
-            8vw,
-            92px
+            48px,
+            7vw,
+            88px
           );
-          line-height: .96;
-          letter-spacing: -.055em;
+          line-height: 0.96;
+          letter-spacing: -0.055em;
         }
 
         .intro {
-          max-width: 700px;
-          margin: 32px 0 52px;
+          max-width: 720px;
           font-size: 20px;
           line-height: 1.5;
           color: #4d4d4d;
+          margin-bottom: 52px;
         }
 
         .panel {
           background: #fff;
-          border: 1px solid #e4e4e0;
+          border: 1px solid #e3e3df;
           border-radius: 24px;
           padding: clamp(
             22px,
@@ -1236,13 +928,12 @@ export default function Home() {
           );
           box-shadow:
             0 12px 40px
-            rgba(0,0,0,.04);
+            rgba(0, 0, 0, 0.04);
         }
 
-        .section-title {
-          font-size: 21px;
-          font-weight: 700;
-          margin-bottom: 28px;
+        .panel h2 {
+          margin: 0 0 28px;
+          font-size: 22px;
         }
 
         label {
@@ -1252,106 +943,81 @@ export default function Home() {
           margin: 22px 0 9px;
         }
 
-        .input,
-        .price-input {
+        textarea,
+        .price {
           width: 100%;
           border: 1px solid #d8d8d4;
           border-radius: 12px;
           background: #fafaf9;
         }
 
-        .input {
-          padding: 15px 16px;
-          outline: none;
+        textarea {
+          min-height: 115px;
+          padding: 15px;
           resize: vertical;
-          min-height: 58px;
+          outline: none;
         }
 
-        .input:focus,
-        .price-input:focus-within {
+        textarea:focus,
+        .price:focus-within {
           border-color: #171717;
           background: #fff;
         }
 
-        .title-input {
-          min-height: 112px;
-        }
-
-        .form-grid {
+        .two-col {
           display: grid;
-          grid-template-columns:
-            minmax(180px, 260px)
-            1fr;
+          grid-template-columns: 260px 1fr;
           gap: 30px;
-          align-items: start;
         }
 
-        .price-input {
+        .price {
           display: flex;
           align-items: center;
           padding: 0 14px;
         }
 
-        .price-input span {
+        .price span {
           font-weight: 650;
           color: #555;
         }
 
-        .price-input input {
+        .price input {
           width: 100%;
+          padding: 15px 8px;
           border: 0;
           outline: 0;
           background: transparent;
-          padding: 15px 8px;
         }
 
-        .button-row {
+        .choices,
+        .number-row {
           display: flex;
           gap: 9px;
           flex-wrap: wrap;
         }
 
         .choice,
-        .image-choice {
+        .number {
           min-height: 42px;
           padding: 0 15px;
           border: 1px solid #d7d7d3;
           border-radius: 999px;
           background: #fff;
-          color: #222;
         }
 
-        .image-choice {
+        .number {
           width: 42px;
           padding: 0;
         }
 
         .choice.active,
-        .image-choice.active {
+        .number.active {
           background: #171717;
+          color: #fff;
           border-color: #171717;
-          color: #fff;
         }
 
-        .generate {
-          width: 100%;
-          min-height: 58px;
-          margin-top: 34px;
-          border: 0;
-          border-radius: 12px;
-          background: #171717;
-          color: #fff;
-          font-weight: 700;
-        }
-
-        .generate:hover,
-        .cart-button:hover {
-          opacity: .88;
-        }
-
-        /* IMAGE UPLOADER */
-
-        .upload-box {
+        .upload {
           border: 1px dashed #c9c9c4;
           border-radius: 16px;
           background: #fafaf8;
@@ -1359,7 +1025,7 @@ export default function Home() {
           text-align: center;
         }
 
-        .file-input {
+        .upload input {
           display: none;
         }
 
@@ -1373,59 +1039,56 @@ export default function Home() {
           border-radius: 10px;
           background: #171717;
           color: #fff;
-          font-weight: 700;
           cursor: pointer;
         }
 
-        .upload-help {
-          margin-top: 10px;
+        .upload p {
+          margin: 10px 0 0;
           color: #777;
           font-size: 13px;
         }
 
-        .uploaded-area {
+        .uploaded {
           margin-top: 22px;
         }
 
-        .uploaded-header {
+        .uploaded-top {
           display: flex;
-          align-items: center;
           justify-content: space-between;
-          gap: 15px;
+          align-items: center;
           margin-bottom: 12px;
         }
 
-        .clear-images {
+        .clear {
           border: 0;
           background: transparent;
-          color: #777;
           text-decoration: underline;
-          padding: 5px;
+          color: #666;
         }
 
-        .uploaded-grid {
+        .thumbs {
           display: grid;
           grid-template-columns:
-            repeat(3, minmax(0, 1fr));
+            repeat(3, 1fr);
           gap: 12px;
         }
 
-        .uploaded-card {
+        .thumb {
           position: relative;
           overflow: hidden;
           border: 1px solid #ddd;
           border-radius: 14px;
-          background: #f2f2f0;
+          background: #fff;
         }
 
-        .uploaded-card img {
-          display: block;
+        .thumb img {
           width: 100%;
-          aspect-ratio: 1 / 1;
+          aspect-ratio: 1;
           object-fit: cover;
+          display: block;
         }
 
-        .remove-image {
+        .thumb button {
           position: absolute;
           top: 7px;
           right: 7px;
@@ -1433,24 +1096,43 @@ export default function Home() {
           height: 30px;
           border: 0;
           border-radius: 50%;
-          background: rgba(0,0,0,.75);
+          background: rgba(
+            0,
+            0,
+            0,
+            0.75
+          );
           color: #fff;
           font-size: 20px;
-          line-height: 1;
         }
 
-        .image-number {
+        .thumb small {
+          display: block;
           padding: 8px 10px;
-          font-size: 12px;
           color: #666;
-          background: #fff;
         }
 
-        .preview-page {
+        .generate,
+        .cart {
+          width: 100%;
+          min-height: 56px;
+          margin-top: 32px;
+          border: 0;
+          border-radius: 10px;
+          background: #171717;
+          color: #fff;
+          font-weight: 700;
+        }
+
+        .generate span {
+          margin-left: 7px;
+        }
+
+        .preview {
           padding: 20px 0 100px;
         }
 
-        .edit-button {
+        .edit {
           border: 1px solid #d5d5d1;
           background: #fff;
           border-radius: 10px;
@@ -1462,150 +1144,106 @@ export default function Home() {
           margin: 36px 0 24px;
           font-size: 14px;
           font-weight: 750;
-          letter-spacing: .1em;
+          letter-spacing: 0.1em;
         }
 
-        .product-layout {
+        .product-grid {
           display: grid;
           grid-template-columns:
-            minmax(0, .9fr)
+            minmax(0, 0.9fr)
             minmax(0, 1.1fr);
           gap: clamp(
             35px,
             6vw,
             80px
           );
-          align-items: start;
         }
 
-        .visual-column {
+        .gallery {
           display: grid;
           grid-template-columns:
             repeat(2, minmax(0, 1fr));
           gap: 14px;
         }
 
-        .image-main,
-        .image-small {
+        .main-image,
+        .small-image {
           display: flex;
           align-items: center;
           justify-content: center;
           text-align: center;
+          overflow: hidden;
           background: #ededed;
           color: #777;
           border-radius: 18px;
           min-height: 180px;
-          padding: 20px;
-          overflow: hidden;
         }
 
-        .image-main {
+        .main-image {
           grid-column: 1 / -1;
-          aspect-ratio: 1 / 1;
-          font-size: 18px;
+          aspect-ratio: 1;
         }
 
-        .image-small {
-          aspect-ratio: 1 / 1;
-          font-size: 14px;
+        .small-image {
+          aspect-ratio: 1;
         }
 
-        .image-main img,
-        .image-small img {
+        .main-image img,
+        .small-image img {
           width: 100%;
           height: 100%;
           object-fit: cover;
           display: block;
         }
 
-        .no-image {
-          color: #777;
-        }
-
-        .product-info {
-          min-width: 0;
-        }
-
-        .collection {
-          color: #777;
-          font-size: 15px;
-          margin-bottom: 20px;
-        }
-
-        .product-info h2 {
+        .product-copy h2 {
           max-width: 680px;
-          margin: 0;
+          margin: 20px 0 0;
           font-size: clamp(
-            38px,
+            40px,
             5vw,
             68px
           );
           line-height: 1.02;
-          letter-spacing: -.045em;
+          letter-spacing: -0.045em;
         }
 
         .product-price {
-          margin-top: 25px;
+          margin-top: 24px;
           font-size: 24px;
-          font-weight: 600;
+          font-weight: 650;
         }
 
         .description {
           max-width: 650px;
-          margin-top: 28px;
           font-size: 18px;
           line-height: 1.6;
           color: #3f3f3f;
+          margin-top: 28px;
         }
 
-        .bullets {
+        .benefits {
           display: grid;
-          gap: 9px;
-          margin-top: 25px;
-          font-size: 16px;
+          gap: 10px;
           line-height: 1.45;
-        }
-
-        .cart-button {
-          min-height: 50px;
-          margin-top: 27px;
-          padding: 0 24px;
-          border: 0;
-          border-radius: 9px;
-          background: #171717;
-          color: #fff;
-          font-weight: 700;
         }
 
         .trust {
           display: flex;
           flex-wrap: wrap;
           gap: 15px 22px;
-          margin-top: 17px;
+          margin-top: 15px;
           color: #666;
           font-size: 14px;
         }
 
-        .features-section,
-        .specs-section,
-        .standout,
-        .faq,
-        .seo-section {
+        .section {
           margin-top: 100px;
           border-top: 1px solid #d5d5d1;
           padding-top: 44px;
         }
 
-        .section-kicker {
-          color: #777;
-          font-size: 15px;
-        }
-
-        .features-section h3,
-        .specs-section h3,
-        .standout h3,
-        .faq h3,
-        .seo-section > h3 {
+        .section h3 {
           max-width: 900px;
           margin: 20px 0 32px;
           font-size: clamp(
@@ -1614,45 +1252,44 @@ export default function Home() {
             64px
           );
           line-height: 1;
-          letter-spacing: -.045em;
+          letter-spacing: -0.045em;
         }
 
-        .feature-grid {
+        .cards {
           display: grid;
           grid-template-columns:
-            repeat(2, minmax(0, 1fr));
+            repeat(2, 1fr);
           gap: 16px;
         }
 
-        .feature-card {
+        .card {
           background: #fff;
           border: 1px solid #e2e2de;
           border-radius: 20px;
           padding: 28px;
         }
 
-        .feature-number {
+        .card small {
           color: #888;
-          font-size: 13px;
-          letter-spacing: .08em;
         }
 
-        .feature-card h4 {
-          margin: 22px 0 10px;
+        .card h4 {
           font-size: 23px;
+          margin: 22px 0 10px;
         }
 
-        .feature-card p {
-          margin: 0;
+        .card p,
+        .callout p {
           color: #555;
           line-height: 1.6;
+          margin: 0;
         }
 
-        .spec-list {
+        .specs {
           border-top: 1px solid #ccc;
         }
 
-        .spec-row {
+        .spec {
           display: flex;
           justify-content: space-between;
           gap: 20px;
@@ -1660,124 +1297,79 @@ export default function Home() {
           border-bottom: 1px solid #ccc;
         }
 
-        .spec-row span {
+        .spec span {
           color: #666;
         }
 
-        .spec-row strong {
+        .spec strong {
           text-align: right;
         }
 
-        details {
+        .callout p {
+          max-width: 720px;
+          font-size: 18px;
+        }
+
+        .faq details {
           border-top: 1px solid #ccc;
           padding: 20px 0;
         }
 
-        details:last-child {
+        .faq details:last-child {
           border-bottom: 1px solid #ccc;
         }
 
         summary {
           cursor: pointer;
-          font-size: 17px;
-          font-weight: 600;
+          font-weight: 650;
         }
 
         details p {
           max-width: 700px;
-          margin-bottom: 0;
-          line-height: 1.6;
           color: #555;
+          line-height: 1.6;
         }
 
-        .seo-card {
-          margin-top: 22px;
+        .seo {
+          display: grid;
+          gap: 18px;
+        }
+
+        .seo > div {
           background: #fff;
           border: 1px solid #e2e2de;
           border-radius: 18px;
           padding: 24px;
         }
 
-        .seo-label {
-          font-size: 16px;
-          font-weight: 700;
-          margin-bottom: 13px;
-        }
-
-        .seo-value {
+        .seo p {
           font-size: 17px;
           line-height: 1.5;
-          overflow-wrap: break-word;
+          overflow-wrap: anywhere;
         }
 
-        .counter {
-          margin-top: 11px;
-          font-size: 13px;
-        }
-
-        .counter.good {
+        .seo small {
           color: #26734d;
         }
 
-        .counter.bad {
-          color: #b42318;
-          font-weight: 700;
-        }
-
         @media (max-width: 800px) {
-
-          .header {
-            padding: 20px 5vw 10px;
-          }
-
-          .editor {
-            padding-top: 45px;
-          }
-
-          .intro {
-            font-size: 18px;
-          }
-
-          .form-grid {
+          .two-col,
+          .product-grid {
             grid-template-columns: 1fr;
-            gap: 0;
           }
 
-          .product-layout {
-            grid-template-columns: 1fr;
-            gap: 42px;
-          }
-
-          .visual-column {
-            order: 1;
-          }
-
-          .product-info {
+          .product-copy {
             order: 2;
           }
 
-          .product-info h2 {
-            font-size: clamp(
-              38px,
-              10vw,
-              56px
-            );
-          }
-
-          .description {
-            font-size: 17px;
-          }
-
-          .feature-grid {
+          .cards {
             grid-template-columns: 1fr;
           }
-
         }
 
         @media (max-width: 520px) {
-
           .editor,
-          .preview-page {
+          .preview {
             width: 92vw;
           }
 
@@ -1790,75 +1382,34 @@ export default function Home() {
           }
 
           .panel {
-            border-radius: 18px;
             padding: 20px;
+            border-radius: 18px;
           }
 
-          .visual-column {
+          .thumbs {
             grid-template-columns:
-              1fr 1fr;
+              repeat(2, 1fr);
           }
 
-          .image-main {
-            grid-column: 1 / -1;
-          }
-
-          .product-info h2 {
-            font-size: 40px;
-            line-height: 1.04;
-          }
-
-          .product-price {
-            font-size: 22px;
-          }
-
-          .features-section,
-          .specs-section,
-          .standout,
-          .faq,
-          .seo-section {
+          .section {
             margin-top: 70px;
             padding-top: 34px;
           }
 
-          .features-section h3,
-          .specs-section h3,
-          .standout h3,
-          .faq h3,
-          .seo-section > h3 {
+          .section h3 {
             font-size: 40px;
           }
 
-          .feature-card {
-            padding: 22px;
-          }
-
-          .spec-row {
+          .spec {
             flex-direction: column;
             gap: 7px;
           }
 
-          .spec-row strong {
+          .spec strong {
             text-align: left;
           }
-
-          .seo-card {
-            padding: 18px;
-          }
-
-          .seo-value {
-            font-size: 16px;
-          }
-
-          .uploaded-grid {
-            grid-template-columns:
-              repeat(2, minmax(0, 1fr));
-          }
-
         }
-
       `}</style>
-
     </main>
   );
 }
