@@ -11,6 +11,8 @@ type ProductResult = {
   specs: string[];
 };
 
+const MAX_IMAGES = 6;
+
 const cleanText = (value: string) =>
   value.replace(/\s+/g, " ").trim();
 
@@ -151,14 +153,10 @@ function createSeoTitle(title: string) {
   ];
 
   const valid = candidates.find(
-    (item) =>
-      sanitizeText(item).length <= 60
+    (item) => sanitizeText(item).length <= 60
   );
 
-  return limitText(
-    valid || cleanTitle,
-    60
-  );
+  return limitText(valid || cleanTitle, 60);
 }
 
 function createMetaDescription(
@@ -180,21 +178,15 @@ function createMetaDescription(
 
   const candidates = [
     `Discover the ${cleanTitle}, designed with ${styleText}. A versatile timepiece for business, everyday wear and special occasions.`,
-
     `Shop the ${cleanTitle}, featuring ${styleText} for business and everyday wear. Discover a polished timepiece today.`,
-
     `Explore the ${cleanTitle}, created for ${styleText}. A refined choice for everyday outfits and special occasions.`,
   ];
 
   const valid = candidates.find(
-    (item) =>
-      sanitizeText(item).length <= 160
+    (item) => sanitizeText(item).length <= 160
   );
 
-  return limitText(
-    valid || candidates[0],
-    160
-  );
+  return limitText(valid || candidates[0], 160);
 }
 
 function createBullets(
@@ -252,18 +244,34 @@ function createSpecs(
   const specs = [
     `Style: ${style}`,
     `Designed for: ${
-      audience === "Unisex"
-        ? "Men & Women"
-        : audience
+      audience === "Unisex" ? "Men & Women" : audience
     }`,
     "Use: Everyday & Special Occasions",
     "Design: Refined & Versatile",
   ];
 
   return specs.filter(
-    (item) =>
-      !/origin|made in|country/i.test(item)
+    (item) => !/origin|made in|country/i.test(item)
   );
+}
+
+function readFileAsDataURL(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+
+    reader.onload = () => {
+      if (typeof reader.result === "string") {
+        resolve(reader.result);
+      } else {
+        reject(new Error("Unable to read image."));
+      }
+    };
+
+    reader.onerror = () =>
+      reject(new Error("Unable to read image."));
+
+    reader.readAsDataURL(file);
+  });
 }
 
 export default function Home() {
@@ -281,6 +289,9 @@ export default function Home() {
 
   const [imageCount, setImageCount] =
     useState(4);
+
+  const [uploadedImages, setUploadedImages] =
+    useState<string[]>([]);
 
   const [generated, setGenerated] =
     useState(false);
@@ -331,6 +342,60 @@ export default function Home() {
 
   const activeResult =
     result || generatedResult;
+
+  async function handleImageUpload(
+    event: React.ChangeEvent<HTMLInputElement>
+  ) {
+    const files = Array.from(
+      event.target.files || []
+    );
+
+    if (!files.length) {
+      return;
+    }
+
+    const imageFiles = files
+      .filter((file) =>
+        file.type.startsWith("image/")
+      )
+      .slice(0, MAX_IMAGES);
+
+    if (!imageFiles.length) {
+      alert("Please select image files only.");
+      return;
+    }
+
+    try {
+      const imageData =
+        await Promise.all(
+          imageFiles.map(readFileAsDataURL)
+        );
+
+      setUploadedImages(imageData);
+      setImageCount(imageData.length);
+    } catch {
+      alert(
+        "There was a problem uploading the images."
+      );
+    }
+
+    event.target.value = "";
+  }
+
+  function removeImage(index: number) {
+    setUploadedImages((current) =>
+      current.filter((_, i) => i !== index)
+    );
+
+    setImageCount((current) =>
+      Math.max(0, Math.min(current - 1, MAX_IMAGES))
+    );
+  }
+
+  function clearImages() {
+    setUploadedImages([]);
+    setImageCount(0);
+  }
 
   function generateProductPage() {
     if (!productTitle.trim()) {
@@ -415,9 +480,7 @@ export default function Home() {
               className="input title-input"
               value={productTitle}
               onChange={(e) =>
-                setProductTitle(
-                  e.target.value
-                )
+                setProductTitle(e.target.value)
               }
               placeholder="Paste the full supplier product title here"
               rows={4}
@@ -426,32 +489,25 @@ export default function Home() {
             <div className="form-grid">
 
               <div>
-
                 <label htmlFor="price">
                   Product Price
                 </label>
 
                 <div className="price-input">
-
                   <span>$</span>
 
                   <input
                     id="price"
                     value={price}
                     onChange={(e) =>
-                      setPrice(
-                        e.target.value
-                      )
+                      setPrice(e.target.value)
                     }
                     inputMode="decimal"
                   />
-
                 </div>
-
               </div>
 
               <div>
-
                 <label>
                   Target Audience
                 </label>
@@ -473,9 +529,7 @@ export default function Home() {
                           : "choice"
                       }
                       onClick={() =>
-                        setAudience(
-                          item
-                        )
+                        setAudience(item)
                       }
                     >
                       {item}
@@ -484,7 +538,6 @@ export default function Home() {
                   ))}
 
                 </div>
-
               </div>
 
             </div>
@@ -527,6 +580,96 @@ export default function Home() {
               Product Images
             </label>
 
+            <div className="upload-box">
+
+              <input
+                id="product-images"
+                type="file"
+                accept="image/*"
+                multiple
+                onChange={handleImageUpload}
+                className="file-input"
+              />
+
+              <label
+                htmlFor="product-images"
+                className="upload-button"
+              >
+                + Upload Product Images
+              </label>
+
+              <div className="upload-help">
+                Upload up to {MAX_IMAGES} product
+                images.
+              </div>
+
+            </div>
+
+            {uploadedImages.length > 0 && (
+
+              <div className="uploaded-area">
+
+                <div className="uploaded-header">
+                  <strong>
+                    Uploaded Images
+                  </strong>
+
+                  <button
+                    type="button"
+                    className="clear-images"
+                    onClick={clearImages}
+                  >
+                    Clear All
+                  </button>
+                </div>
+
+                <div className="uploaded-grid">
+
+                  {uploadedImages.map(
+                    (image, index) => (
+
+                      <div
+                        className="uploaded-card"
+                        key={`${image}-${index}`}
+                      >
+
+                        <img
+                          src={image}
+                          alt={`Product ${index + 1}`}
+                        />
+
+                        <button
+                          type="button"
+                          className="remove-image"
+                          onClick={() =>
+                            removeImage(index)
+                          }
+                          aria-label={`Remove image ${
+                            index + 1
+                          }`}
+                        >
+                          ×
+                        </button>
+
+                        <div className="image-number">
+                          Image {index + 1}
+                        </div>
+
+                      </div>
+
+                    )
+                  )}
+
+                </div>
+
+              </div>
+
+            )}
+
+            <label>
+              Number of Product Images
+            </label>
+
             <div className="button-row">
 
               {[0, 1, 2, 3, 4, 5, 6].map(
@@ -541,9 +684,7 @@ export default function Home() {
                         : "image-choice"
                     }
                     onClick={() =>
-                      setImageCount(
-                        number
-                      )
+                      setImageCount(number)
                     }
                   >
                     {number}
@@ -557,9 +698,7 @@ export default function Home() {
             <button
               type="button"
               className="generate"
-              onClick={
-                generateProductPage
-              }
+              onClick={generateProductPage}
             >
               Generate AI Product Page
               <span> →</span>
@@ -592,27 +731,66 @@ export default function Home() {
 
             <div className="visual-column">
 
-              <div className="image-main">
-                {imageCount > 0
-                  ? "Product Image"
-                  : "No Image"}
-              </div>
+              {imageCount > 0 ? (
 
-              {Array.from({
-                length: Math.max(
-                  0,
-                  imageCount - 1
-                ),
-              }).map((_, index) => (
+                <>
+                  <div className="image-main">
 
-                <div
-                  className="image-small"
-                  key={index}
-                >
-                  Additional Product View
+                    {uploadedImages[0] ? (
+                      <img
+                        src={uploadedImages[0]}
+                        alt="Main product"
+                      />
+                    ) : (
+                      <span>
+                        Product Image
+                      </span>
+                    )}
+
+                  </div>
+
+                  {Array.from({
+                    length: Math.max(
+                      0,
+                      imageCount - 1
+                    ),
+                  }).map((_, index) => {
+
+                    const image =
+                      uploadedImages[index + 1];
+
+                    return (
+                      <div
+                        className="image-small"
+                        key={index}
+                      >
+
+                        {image ? (
+                          <img
+                            src={image}
+                            alt={`Product view ${
+                              index + 2
+                            }`}
+                          />
+                        ) : (
+                          <span>
+                            Additional Product View
+                          </span>
+                        )}
+
+                      </div>
+                    );
+                  })}
+
+                </>
+
+              ) : (
+
+                <div className="image-main no-image">
+                  No Image
                 </div>
 
-              ))}
+              )}
 
             </div>
 
@@ -627,14 +805,11 @@ export default function Home() {
               </h2>
 
               <div className="product-price">
-                $
-                {price || "0.00"}
+                ${price || "0.00"}
               </div>
 
               <p className="description">
-                {
-                  activeResult?.description
-                }
+                {activeResult?.description}
               </p>
 
               <div className="bullets">
@@ -842,7 +1017,6 @@ export default function Home() {
             </h3>
 
             <details>
-
               <summary>
                 Is this product suitable
                 for everyday use?
@@ -854,11 +1028,9 @@ export default function Home() {
                 everyday outfits and
                 regular use.
               </p>
-
             </details>
 
             <details>
-
               <summary>
                 Can it be worn with
                 formal clothing?
@@ -869,11 +1041,9 @@ export default function Home() {
                 pairs well with business
                 and formal clothing.
               </p>
-
             </details>
 
             <details>
-
               <summary>
                 Is it suitable as a gift?
               </summary>
@@ -883,11 +1053,9 @@ export default function Home() {
                 polished design makes it
                 a thoughtful gifting option.
               </p>
-
             </details>
 
             <details>
-
               <summary>
                 Is this suitable for
                 different occasions?
@@ -899,7 +1067,6 @@ export default function Home() {
                 everyday, business and
                 special occasions.
               </p>
-
             </details>
 
           </section>
@@ -928,8 +1095,7 @@ export default function Home() {
                     : "counter bad"
                 }
               >
-                {activeResult?.seoTitle.length ||
-                  0}
+                {activeResult?.seoTitle.length || 0}
                 /60
               </div>
 
@@ -942,9 +1108,7 @@ export default function Home() {
               </div>
 
               <div className="seo-value">
-                {
-                  activeResult?.metaDescription
-                }
+                {activeResult?.metaDescription}
               </div>
 
               <div
@@ -1185,6 +1349,103 @@ export default function Home() {
           opacity: .88;
         }
 
+        /* IMAGE UPLOADER */
+
+        .upload-box {
+          border: 1px dashed #c9c9c4;
+          border-radius: 16px;
+          background: #fafaf8;
+          padding: 22px;
+          text-align: center;
+        }
+
+        .file-input {
+          display: none;
+        }
+
+        .upload-button {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          min-height: 48px;
+          margin: 0;
+          padding: 0 20px;
+          border-radius: 10px;
+          background: #171717;
+          color: #fff;
+          font-weight: 700;
+          cursor: pointer;
+        }
+
+        .upload-help {
+          margin-top: 10px;
+          color: #777;
+          font-size: 13px;
+        }
+
+        .uploaded-area {
+          margin-top: 22px;
+        }
+
+        .uploaded-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 15px;
+          margin-bottom: 12px;
+        }
+
+        .clear-images {
+          border: 0;
+          background: transparent;
+          color: #777;
+          text-decoration: underline;
+          padding: 5px;
+        }
+
+        .uploaded-grid {
+          display: grid;
+          grid-template-columns:
+            repeat(3, minmax(0, 1fr));
+          gap: 12px;
+        }
+
+        .uploaded-card {
+          position: relative;
+          overflow: hidden;
+          border: 1px solid #ddd;
+          border-radius: 14px;
+          background: #f2f2f0;
+        }
+
+        .uploaded-card img {
+          display: block;
+          width: 100%;
+          aspect-ratio: 1 / 1;
+          object-fit: cover;
+        }
+
+        .remove-image {
+          position: absolute;
+          top: 7px;
+          right: 7px;
+          width: 30px;
+          height: 30px;
+          border: 0;
+          border-radius: 50%;
+          background: rgba(0,0,0,.75);
+          color: #fff;
+          font-size: 20px;
+          line-height: 1;
+        }
+
+        .image-number {
+          padding: 8px 10px;
+          font-size: 12px;
+          color: #666;
+          background: #fff;
+        }
+
         .preview-page {
           padding: 20px 0 100px;
         }
@@ -1235,6 +1496,7 @@ export default function Home() {
           border-radius: 18px;
           min-height: 180px;
           padding: 20px;
+          overflow: hidden;
         }
 
         .image-main {
@@ -1246,6 +1508,18 @@ export default function Home() {
         .image-small {
           aspect-ratio: 1 / 1;
           font-size: 14px;
+        }
+
+        .image-main img,
+        .image-small img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+          display: block;
+        }
+
+        .no-image {
+          color: #777;
         }
 
         .product-info {
@@ -1574,6 +1848,11 @@ export default function Home() {
 
           .seo-value {
             font-size: 16px;
+          }
+
+          .uploaded-grid {
+            grid-template-columns:
+              repeat(2, minmax(0, 1fr));
           }
 
         }
