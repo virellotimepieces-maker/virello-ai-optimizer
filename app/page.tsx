@@ -29,10 +29,8 @@ type ShopifyProduct = {
   status: string;
   vendor: string;
   price: string;
-  inventory: number | null;
-  featuredImage: string | null;
-  featuredImageAlt: string;
   images: ShopifyImage[];
+  featuredImage: string | null;
 };
 
 type Product = {
@@ -59,10 +57,7 @@ type Result = {
 };
 
 const clean = (value: string) =>
-  value
-    .replace(/\s+/g, " ")
-    .replace(/[|]+/g, " ")
-    .trim();
+  value.replace(/\s+/g, " ").trim();
 
 const stripHtml = (value: string) =>
   value
@@ -77,9 +72,7 @@ const stripHtml = (value: string) =>
 const limit = (value: string, max: number) => {
   const text = clean(value);
 
-  if (text.length <= max) {
-    return text;
-  }
+  if (text.length <= max) return text;
 
   const cut = text.slice(0, max + 1);
   const end = cut.lastIndexOf(" ");
@@ -104,7 +97,6 @@ function buildTitle(
     .trim();
 
   const words = source.split(/\s+/).filter(Boolean);
-
   const unique: string[] = [];
 
   for (const word of words) {
@@ -128,7 +120,7 @@ function buildTitle(
     unique.push(word);
   }
 
-  source = unique.slice(0, 7).join(" ");
+  source = unique.slice(0, 8).join(" ");
 
   const isWatch =
     /watch|timepiece|chronograph|automatic|quartz/i.test(
@@ -143,20 +135,18 @@ function buildTitle(
           ? "Men's"
           : "Unisex";
 
-    const alreadyHasGender =
+    const alreadyGender =
       /\b(men|men's|women|women's|unisex)\b/i.test(
         source
       );
 
-    const genderPart = alreadyHasGender ? "" : gender;
-
-    const alreadyHasWatch =
+    const alreadyWatch =
       /\bwatch|timepiece\b/i.test(source);
 
-    const watchPart = alreadyHasWatch ? "" : "Watch";
-
     return clean(
-      `${source} ${genderPart} ${watchPart}`
+      `${source} ${
+        alreadyGender ? "" : gender
+      } ${alreadyWatch ? "" : "Watch"}`
     );
   }
 
@@ -265,9 +255,7 @@ function generateResult(product: Product): Result {
     ? [
         "Clean, refined styling suited to a polished everyday wardrobe",
         "Versatile profile that transitions naturally from casual to dressier looks",
-        product.vendor
-          ? `Designed around the ${product.vendor} product presentation`
-          : "Designed with a balanced, refined presentation",
+        "Designed around the available product information",
         "A practical option for personal wear or considered gifting",
       ]
     : [
@@ -276,6 +264,14 @@ function generateResult(product: Product): Result {
         "Straightforward product information without unnecessary claims",
         "A practical option for personal use or gifting",
       ];
+
+  const description =
+    originalDescription.length > 40
+      ? `${title} is presented with ${stylePhrase}. ${originalDescription.slice(
+          0,
+          420
+        )}${originalDescription.length > 420 ? "…" : ""}`
+      : `${title} is presented with ${stylePhrase}, offering a clean and versatile option for ${audiencePhrase}. The copy focuses on the product information available rather than adding unverified specifications.`;
 
   const specs = [
     `Product Type: ${
@@ -297,14 +293,6 @@ function generateResult(product: Product): Result {
     specs.push(...factualSpecs);
   }
 
-  const description =
-    originalDescription.length > 40
-      ? `${title} is presented with ${stylePhrase}. ${originalDescription.slice(
-          0,
-          420
-        )}${originalDescription.length > 420 ? "…" : ""}`
-      : `${title} is presented with ${stylePhrase}, offering a clean and versatile option for ${audiencePhrase}. The copy focuses on the product information available rather than adding unverified specifications.`;
-
   const faq = [
     {
       q: "What is the product type?",
@@ -323,7 +311,7 @@ function generateResult(product: Product): Result {
     {
       q: "Where can I find the product specifications?",
       a: factualSpecs.length
-        ? "The specifications shown above are taken from the available product information."
+        ? "The specifications shown are based on the available product information."
         : "No additional technical specifications were found in the supplied product information.",
     },
   ];
@@ -335,7 +323,9 @@ function generateResult(product: Product): Result {
     specs,
     faq,
     seoTitle: limit(
-      `${title} | ${isWatch ? "Premium Timepiece" : "Premium Product"}`,
+      `${title} | ${
+        isWatch ? "Premium Timepiece" : "Premium Product"
+      }`,
       60
     ),
     metaDescription: limit(
@@ -356,9 +346,7 @@ function getShopFromToken(token: string) {
       )
     );
 
-    if (!payload.dest) {
-      return "";
-    }
+    if (!payload.dest) return "";
 
     return new URL(payload.dest).hostname;
   } catch {
@@ -370,12 +358,15 @@ function readImage(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
 
-    reader.onload = () =>
-      typeof reader.result === "string"
-        ? resolve(reader.result)
-        : reject(
-            new Error("Could not read image")
-          );
+    reader.onload = () => {
+      if (typeof reader.result === "string") {
+        resolve(reader.result);
+      } else {
+        reject(
+          new Error("Could not read image")
+        );
+      }
+    };
 
     reader.onerror = () =>
       reject(
@@ -387,9 +378,8 @@ function readImage(file: File): Promise<string> {
 }
 
 export default function Home() {
-  const [products, setProducts] = useState<
-    ShopifyProduct[]
-  >([]);
+  const [products, setProducts] =
+    useState<ShopifyProduct[]>([]);
 
   const [loadingProducts, setLoadingProducts] =
     useState(false);
@@ -441,11 +431,12 @@ export default function Home() {
   const update = <K extends keyof Product>(
     key: K,
     value: Product[K]
-  ) =>
+  ) => {
     setProduct((current) => ({
       ...current,
       [key]: value,
     }));
+  };
 
   async function getShopifySessionToken() {
     if (
@@ -453,7 +444,7 @@ export default function Home() {
       !window.shopify?.idToken
     ) {
       throw new Error(
-        "Shopify App Bridge session token is unavailable. Open Virello from Shopify Admin."
+        "Shopify session token is unavailable. Open Virello from Shopify Admin."
       );
     }
 
@@ -527,12 +518,12 @@ export default function Home() {
       (item) => item.id === productId
     );
 
-    if (!selected) {
-      return;
-    }
+    if (!selected) return;
 
     const images = selected.images.length
-      ? selected.images.map((image) => image.url)
+      ? selected.images.map(
+          (image) => image.url
+        )
       : selected.featuredImage
         ? [selected.featuredImage]
         : [];
@@ -604,7 +595,7 @@ export default function Home() {
         0,
         Math.min(
           activeImage,
-          images.length - 1
+          Math.max(images.length - 1, 0)
         )
       )
     );
