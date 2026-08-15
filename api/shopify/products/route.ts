@@ -74,6 +74,8 @@ export async function GET(request: NextRequest) {
     if (!tokenResponse.ok) {
       const errorText = await tokenResponse.text();
 
+      console.error("Shopify token exchange failed:", errorText);
+
       return NextResponse.json(
         {
           error: "Shopify token exchange failed",
@@ -87,9 +89,7 @@ export async function GET(request: NextRequest) {
 
     if (!tokenData.access_token) {
       return NextResponse.json(
-        {
-          error: "Shopify did not return an access token",
-        },
+        { error: "Shopify did not return an access token" },
         { status: 401 }
       );
     }
@@ -140,7 +140,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       shop,
-      products: productsData.data.products.nodes,
+      products: productsData.data?.products?.nodes ?? [],
     });
   } catch (error) {
     console.error("Shopify products error:", error);
