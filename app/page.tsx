@@ -26,11 +26,7 @@ type ShopifyProduct = {
   description: string;
   productType: string;
   tags: string[];
-  status: string;
-  vendor: string;
-  price: string;
   images: ShopifyImage[];
-  featuredImage: string | null;
 };
 
 type Product = {
@@ -141,7 +137,7 @@ function buildTitle(
       );
 
     const alreadyWatch =
-      /\bwatch|timepiece\b/i.test(source);
+      /\b(watch|timepiece)\b/i.test(source);
 
     return clean(
       `${source} ${
@@ -337,16 +333,23 @@ function generateResult(product: Product): Result {
 
 function getShopFromToken(token: string) {
   try {
+    const tokenParts = token.split(".");
+
+    if (tokenParts.length !== 3) {
+      return "";
+    }
+
+    const base64 = tokenParts[1]
+      .replace(/-/g, "+")
+      .replace(/_/g, "/");
+
     const payload = JSON.parse(
-      atob(
-        token
-          .split(".")[1]
-          .replace(/-/g, "+")
-          .replace(/_/g, "/")
-      )
+      atob(base64)
     );
 
-    if (!payload.dest) return "";
+    if (!payload.dest) {
+      return "";
+    }
 
     return new URL(payload.dest).hostname;
   } catch {
@@ -481,18 +484,21 @@ export default function Home() {
 
       const data = await response.json();
 
-      if (!response.ok || !data.success) {
+      if (
+        !response.ok ||
+        !Array.isArray(data.products)
+      ) {
         throw new Error(
           data.error ||
             "Unable to load Shopify products."
         );
       }
 
-      setProducts(data.products || []);
+      setProducts(data.products);
       setShopifyConnected(true);
 
       setConnectionMessage(
-        `${data.products?.length || 0} Shopify products loaded.`
+        `${data.products.length} Shopify products loaded.`
       );
     } catch (error) {
       setShopifyConnected(false);
@@ -524,9 +530,7 @@ export default function Home() {
       ? selected.images.map(
           (image) => image.url
         )
-      : selected.featuredImage
-        ? [selected.featuredImage]
-        : [];
+      : [];
 
     setSelectedProductId(productId);
 
@@ -534,7 +538,7 @@ export default function Home() {
       id: selected.id,
       title: selected.title,
       description: selected.description,
-      price: selected.price,
+      price: "",
       images,
       productType:
         selected.productType || "Watch",
@@ -553,7 +557,7 @@ export default function Home() {
         )
           ? "Premium / Luxury"
           : "Professional",
-      vendor: selected.vendor || "",
+      vendor: "",
     });
 
     setActiveImage(0);
@@ -1474,9 +1478,8 @@ export default function Home() {
             <p>
               Virello used the selected
               Shopify product title,
-              description, price, vendor,
-              tags and product images as
-              the source for this
+              description, tags and product
+              images as the source for this
               optimization.
             </p>
 
