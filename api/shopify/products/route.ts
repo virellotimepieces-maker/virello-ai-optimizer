@@ -5,7 +5,7 @@ const SHOPIFY_API_VERSION = "2026-07";
 export async function GET(request: NextRequest) {
   try {
     const sessionToken =
-      request.headers.get("authorization")?.replace("Bearer ", "") ||
+      request.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ||
       request.headers.get("x-shopify-session-token");
 
     if (!sessionToken) {
@@ -25,8 +25,17 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    const parts = sessionToken.split(".");
+
+    if (parts.length !== 3) {
+      return NextResponse.json(
+        { error: "Invalid Shopify session token" },
+        { status: 401 }
+      );
+    }
+
     const payload = JSON.parse(
-      Buffer.from(sessionToken.split(".")[1], "base64url").toString()
+      Buffer.from(parts[1], "base64url").toString("utf8")
     );
 
     const destination = payload.dest;
@@ -37,42 +46,36 @@ export async function GET(request: NextRequest) {
         { status: 400 }
       );
     }
-const tokenResponse = await fetch(
-  `https://${shop}/admin/oauth/access_token`,
-  {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
-      Accept: "application/json",
-    },
-    body: new URLSearchParams({
-      client_id: shopifyApiKey,
-      client_secret: shopifyApiSecret,
-      grant_type: "urn:ietf:params:oauth:grant-type:token-exchange",
-      subject_token: sessionToken,
-      subject_token_type: "urn:ietf:params:oauth:token-type:id_token",
-      requested_token_type:
-        "urn:shopify:params:oauth:token-type:online-access-token",
-    }).toString(),
-  }
-);
 
-if (!tokenResponse.ok) {
-  const errorText = await tokenResponse.text();
-
-  return NextResponse.json(
-    {
-      error: "Shopify token exchange failed",
-      details: errorText,
-    },
-    { status: 401 }
-  );
-}
-
-const tokenData = await tokenResponse.json();
     const shop = new URL(destination).hostname;
 
-    
+    const tokenResponse = await fetch(
+      `https://${shop}/admin/oauth/access_token`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          Accept: "application/json",
+        },
+        body: new URLSearchParams({
+          client_id: shopifyApiKey,
+          client_secret: shopifyApiSecret,
+          grant_type:
+            "urn:ietf:params:oauth:grant-type:token-exchange",
+          subject_token: sessionToken,
+          subject_token_type:
+            "urn:ietf:params:oauth:token-type:id_token",
+          requested_token_type:
+            "urn:shopify:params:oauth:token-type:online-access-token",
+        }).toString(),
+      }
+    );
+
+    if (!tokenResponse.ok) {
+      const errorText = await tokenResponse.text();
+
+      return NextResponse.json(
+        {
           error: "Shopify token exchange failed",
           details: errorText,
         },
@@ -81,6 +84,15 @@ const tokenData = await tokenResponse.json();
     }
 
     const tokenData = await tokenResponse.json();
+
+    if (!tokenData.access_token) {
+      return NextResponse.json(
+        {
+          error: "Shopify did not return an access token",
+        },
+        { status: 401 }
+      );
+    }
 
     const query = `
       query {
