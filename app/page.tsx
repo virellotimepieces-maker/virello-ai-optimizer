@@ -1,8 +1,42 @@
 "use client";
 
-import { ChangeEvent, useMemo, useState } from "react";
+import {
+  ChangeEvent,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+
+declare global {
+  interface Window {
+    shopify?: {
+      idToken?: () => Promise<string>;
+    };
+  }
+}
+
+type ShopifyImage = {
+  url: string;
+  altText: string | null;
+};
+
+type ShopifyProduct = {
+  id: string;
+  title: string;
+  description: string;
+  productType: string;
+  tags: string[];
+  status: string;
+  vendor: string;
+  price: string;
+  inventory: number | null;
+  featuredImage: string | null;
+  featuredImageAlt: string;
+  images: ShopifyImage[];
+};
 
 type Product = {
+  id: string;
   title: string;
   description: string;
   price: string;
@@ -11,6 +45,7 @@ type Product = {
   tags: string;
   audience: string;
   style: string;
+  vendor: string;
 };
 
 type Result = {
@@ -24,40 +59,187 @@ type Result = {
 };
 
 const clean = (value: string) =>
-  value.replace(/\s+/g, " ").replace(/[|]+/g, " ").trim();
+  value
+    .replace(/\s+/g, " ")
+    .replace(/[|]+/g, " ")
+    .trim();
+
+const stripHtml = (value: string) =>
+  value
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/\s+/g, " ")
+    .trim();
 
 const limit = (value: string, max: number) => {
   const text = clean(value);
-  if (text.length <= max) return text;
+
+  if (text.length <= max) {
+    return text;
+  }
+
   const cut = text.slice(0, max + 1);
   const end = cut.lastIndexOf(" ");
-  return `${cut.slice(0, end > 0 ? end : max).replace(/[.,;:!?-]+$/, "")}`;
+
+  return cut
+    .slice(0, end > 0 ? end : max)
+    .replace(/[.,;:!?-]+$/, "");
 };
 
-function buildTitle(title: string, audience: string, style: string) {
-  const source = clean(title)
-    .replace(/\b(official|wholesale|dropshipping|free shipping)\b/gi, "")
-    .replace(/[|,:;()[\]{}]+/g, " ");
+function buildTitle(
+  sourceTitle: string,
+  audience: string,
+  style: string
+) {
+  let source = clean(sourceTitle)
+    .replace(
+      /\b(official|wholesale|dropshipping|free shipping|cheap|hot sale|new arrival)\b/gi,
+      ""
+    )
+    .replace(/[|,:;()[\]{}]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 
   const words = source.split(/\s+/).filter(Boolean);
-  const base = words.slice(0, 7).join(" ");
 
-  if (/watch|timepiece|chronograph/i.test(source)) {
+  const unique: string[] = [];
+
+  for (const word of words) {
+    const normalized = word
+      .toLowerCase()
+      .replace(/[^a-z0-9]/gi, "");
+
+    if (!normalized) continue;
+
+    if (
+      unique.some(
+        (item) =>
+          item
+            .toLowerCase()
+            .replace(/[^a-z0-9]/gi, "") === normalized
+      )
+    ) {
+      continue;
+    }
+
+    unique.push(word);
+  }
+
+  source = unique.slice(0, 7).join(" ");
+
+  const isWatch =
+    /watch|timepiece|chronograph|automatic|quartz/i.test(
+      sourceTitle
+    );
+
+  if (isWatch) {
     const gender =
       audience === "Women"
         ? "Women's"
         : audience === "Men"
           ? "Men's"
           : "Unisex";
-    const luxury = style === "Premium / Luxury" ? "Luxury" : "";
-    return clean(`${base} ${luxury} ${gender} Watch`);
+
+    const alreadyHasGender =
+      /\b(men|men's|women|women's|unisex)\b/i.test(
+        source
+      );
+
+    const genderPart = alreadyHasGender ? "" : gender;
+
+    const alreadyHasWatch =
+      /\bwatch|timepiece\b/i.test(source);
+
+    const watchPart = alreadyHasWatch ? "" : "Watch";
+
+    return clean(
+      `${source} ${genderPart} ${watchPart}`
+    );
   }
 
-  return clean(`${base} ${style === "Premium / Luxury" ? "Premium" : ""}`);
+  const premium =
+    style === "Premium / Luxury" &&
+    !/\bpremium|luxury\b/i.test(source)
+      ? "Premium"
+      : "";
+
+  return clean(`${source} ${premium}`);
+}
+
+function extractSpecs(description: string) {
+  const text = stripHtml(description);
+
+  const specs: string[] = [];
+
+  const patterns = [
+    {
+      label: "Movement",
+      regex:
+        /\b(?:movement|mechanism)\s*[:\-]\s*([^.;,\n]+)/i,
+    },
+    {
+      label: "Case Material",
+      regex:
+        /\b(?:case material|case)\s*[:\-]\s*([^.;,\n]+)/i,
+    },
+    {
+      label: "Case Size",
+      regex:
+        /\b(?:case size|dial diameter|diameter)\s*[:\-]\s*([^.;,\n]+)/i,
+    },
+    {
+      label: "Water Resistance",
+      regex:
+        /\b(?:water resistance|waterproof|water resistant)\s*[:\-]?\s*([^.;,\n]+)/i,
+    },
+    {
+      label: "Strap",
+      regex:
+        /\b(?:strap|band|bracelet)\s*(?:material)?\s*[:\-]\s*([^.;,\n]+)/i,
+    },
+    {
+      label: "Crystal",
+      regex:
+        /\b(?:crystal|glass)\s*[:\-]\s*([^.;,\n]+)/i,
+    },
+    {
+      label: "Power Reserve",
+      regex:
+        /\b(?:power reserve)\s*[:\-]\s*([^.;,\n]+)/i,
+    },
+  ];
+
+  for (const item of patterns) {
+    const match = text.match(item.regex);
+
+    if (match?.[1]) {
+      specs.push(
+        `${item.label}: ${clean(match[1])}`
+      );
+    }
+  }
+
+  return specs;
 }
 
 function generateResult(product: Product): Result {
-  const title = buildTitle(product.title, product.audience, product.style);
+  const title = buildTitle(
+    product.title,
+    product.audience,
+    product.style
+  );
+
+  const originalDescription = stripHtml(
+    product.description
+  );
+
+  const isWatch =
+    /watch|timepiece|chronograph|automatic|quartz/i.test(
+      `${product.title} ${product.productType}`
+    );
 
   const stylePhrase =
     product.style === "Premium / Luxury"
@@ -67,7 +249,7 @@ function generateResult(product: Product): Result {
         : product.style === "Sport"
           ? "a confident sport-inspired look"
           : product.style === "Gift"
-            ? "a thoughtful gifting option"
+            ? "a considered gifting option"
             : "an effortless everyday look";
 
   const audiencePhrase =
@@ -75,215 +257,586 @@ function generateResult(product: Product): Result {
       ? "men and women"
       : product.audience.toLowerCase();
 
-  const bullets =
-    product.style === "Professional"
-      ? [
-          "Refined styling that complements business and formal outfits",
-          "A polished look that transitions from workdays to evenings",
-          "Versatile design that pairs easily with different outfits",
-          "A strong option for personal wear or gifting",
-        ]
-      : [
-          "Refined design for a polished appearance",
-          "Versatile styling for everyday and special occasions",
-          "Easy to pair with a wide range of outfits",
-          "A thoughtful option for personal wear or gifting",
-        ];
+  const factualSpecs = extractSpecs(
+    product.description
+  );
+
+  const bullets = isWatch
+    ? [
+        "Clean, refined styling suited to a polished everyday wardrobe",
+        "Versatile profile that transitions naturally from casual to dressier looks",
+        product.vendor
+          ? `Designed around the ${product.vendor} product presentation`
+          : "Designed with a balanced, refined presentation",
+        "A practical option for personal wear or considered gifting",
+      ]
+    : [
+        "Clean presentation designed for an easy shopping decision",
+        "Versatile styling suited to everyday use",
+        "Straightforward product information without unnecessary claims",
+        "A practical option for personal use or gifting",
+      ];
 
   const specs = [
-    `Product Type: ${product.productType || "Premium Timepiece"}`,
+    `Product Type: ${
+      product.productType || "Not specified"
+    }`,
     `Audience: ${product.audience}`,
     `Style: ${product.style}`,
-    `Use: Everyday & Special Occasions`,
-    product.tags ? `Tags: ${product.tags}` : "Presentation: Clean & Refined",
   ];
+
+  if (product.vendor) {
+    specs.push(`Vendor: ${product.vendor}`);
+  }
+
+  if (product.price) {
+    specs.push(`Price: $${product.price}`);
+  }
+
+  if (factualSpecs.length) {
+    specs.push(...factualSpecs);
+  }
+
+  const description =
+    originalDescription.length > 40
+      ? `${title} is presented with ${stylePhrase}. ${originalDescription.slice(
+          0,
+          420
+        )}${originalDescription.length > 420 ? "…" : ""}`
+      : `${title} is presented with ${stylePhrase}, offering a clean and versatile option for ${audiencePhrase}. The copy focuses on the product information available rather than adding unverified specifications.`;
 
   const faq = [
     {
-      q: "Is this suitable for everyday wear?",
-      a: "Yes. Its versatile styling is designed to work naturally with everyday outfits.",
+      q: "What is the product type?",
+      a: product.productType
+        ? `This product is listed as ${product.productType}.`
+        : "The product type has not been specified.",
     },
     {
-      q: "Can it be worn for formal occasions?",
-      a: "Yes. The refined presentation pairs naturally with business and dressier clothing.",
+      q: "Who is this product designed for?",
+      a: `The selected target audience is ${audiencePhrase}.`,
     },
     {
-      q: "Is it suitable as a gift?",
-      a: "Yes. The polished and versatile design makes it a thoughtful gifting option.",
+      q: "What style does this product have?",
+      a: `The selected presentation style is ${product.style}.`,
     },
     {
-      q: "What makes the design versatile?",
-      a: "Its clean profile makes it easy to pair with casual, professional and special-occasion looks.",
+      q: "Where can I find the product specifications?",
+      a: factualSpecs.length
+        ? "The specifications shown above are taken from the available product information."
+        : "No additional technical specifications were found in the supplied product information.",
     },
   ];
 
   return {
     title,
-    description: `${title} is designed for ${stylePhrase}, offering a clean and versatile profile for ${audiencePhrase}. Its balanced presentation makes it easy to pair with business attire, casual outfits and special occasions.`,
+    description,
     bullets,
     specs,
     faq,
-    seoTitle: limit(`${title} | Premium Timepiece`, 60),
+    seoTitle: limit(
+      `${title} | ${isWatch ? "Premium Timepiece" : "Premium Product"}`,
+      60
+    ),
     metaDescription: limit(
-      `Discover ${title}, designed for ${stylePhrase}. A versatile timepiece for ${audiencePhrase}, everyday wear, business and special occasions.`,
+      `Discover ${title}. Explore the available product details, styling and specifications for ${audiencePhrase}.`,
       160
     ),
   };
 }
 
+function getShopFromToken(token: string) {
+  try {
+    const payload = JSON.parse(
+      atob(
+        token
+          .split(".")[1]
+          .replace(/-/g, "+")
+          .replace(/_/g, "/")
+      )
+    );
+
+    if (!payload.dest) {
+      return "";
+    }
+
+    return new URL(payload.dest).hostname;
+  } catch {
+    return "";
+  }
+}
+
 function readImage(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
+
     reader.onload = () =>
       typeof reader.result === "string"
         ? resolve(reader.result)
-        : reject(new Error("Could not read image"));
-    reader.onerror = () => reject(new Error("Could not read image"));
+        : reject(
+            new Error("Could not read image")
+          );
+
+    reader.onerror = () =>
+      reject(
+        new Error("Could not read image")
+      );
+
     reader.readAsDataURL(file);
   });
 }
 
 export default function Home() {
+  const [products, setProducts] = useState<
+    ShopifyProduct[]
+  >([]);
+
+  const [loadingProducts, setLoadingProducts] =
+    useState(false);
+
+  const [shopifyConnected, setShopifyConnected] =
+    useState(false);
+
+  const [connectionMessage, setConnectionMessage] =
+    useState("");
+
+  const [selectedProductId, setSelectedProductId] =
+    useState("");
+
   const [product, setProduct] = useState<Product>({
+    id: "",
     title: "",
     description: "",
-    price: "129.99",
+    price: "",
     images: [],
     productType: "Watch",
     tags: "",
     audience: "Men",
     style: "Premium / Luxury",
+    vendor: "",
   });
 
-  const [result, setResult] = useState<Result | null>(null);
-  const [generated, setGenerated] = useState(false);
-  const [activeImage, setActiveImage] = useState(0);
-  const [copied, setCopied] = useState("");
+  const [result, setResult] =
+    useState<Result | null>(null);
+
+  const [generated, setGenerated] =
+    useState(false);
+
+  const [activeImage, setActiveImage] =
+    useState(0);
+
+  const [copied, setCopied] =
+    useState("");
 
   const liveResult = useMemo(
-    () => (product.title.trim() ? generateResult(product) : null),
+    () =>
+      product.title.trim()
+        ? generateResult(product)
+        : null,
     [product]
   );
+
+  const active = result ?? liveResult;
 
   const update = <K extends keyof Product>(
     key: K,
     value: Product[K]
-  ) => setProduct((current) => ({ ...current, [key]: value }));
+  ) =>
+    setProduct((current) => ({
+      ...current,
+      [key]: value,
+    }));
 
-  async function uploadImages(e: ChangeEvent<HTMLInputElement>) {
-    const files = Array.from(e.target.files ?? [])
-      .filter((file) => file.type.startsWith("image/"))
+  async function getShopifySessionToken() {
+    if (
+      typeof window === "undefined" ||
+      !window.shopify?.idToken
+    ) {
+      throw new Error(
+        "Shopify App Bridge session token is unavailable. Open Virello from Shopify Admin."
+      );
+    }
+
+    return window.shopify.idToken();
+  }
+
+  async function loadShopifyProducts() {
+    setLoadingProducts(true);
+    setConnectionMessage("");
+
+    try {
+      const token =
+        await getShopifySessionToken();
+
+      const shop = getShopFromToken(token);
+
+      if (!shop) {
+        throw new Error(
+          "Could not determine the Shopify store."
+        );
+      }
+
+      const response = await fetch(
+        "/api/shopify/products",
+        {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "x-shopify-shop": shop,
+          },
+          cache: "no-store",
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(
+          data.error ||
+            "Unable to load Shopify products."
+        );
+      }
+
+      setProducts(data.products || []);
+      setShopifyConnected(true);
+
+      setConnectionMessage(
+        `${data.products?.length || 0} Shopify products loaded.`
+      );
+    } catch (error) {
+      setShopifyConnected(false);
+
+      setConnectionMessage(
+        error instanceof Error
+          ? error.message
+          : "Shopify connection failed."
+      );
+    } finally {
+      setLoadingProducts(false);
+    }
+  }
+
+  useEffect(() => {
+    loadShopifyProducts();
+  }, []);
+
+  function selectShopifyProduct(
+    productId: string
+  ) {
+    const selected = products.find(
+      (item) => item.id === productId
+    );
+
+    if (!selected) {
+      return;
+    }
+
+    const images = selected.images.length
+      ? selected.images.map((image) => image.url)
+      : selected.featuredImage
+        ? [selected.featuredImage]
+        : [];
+
+    setSelectedProductId(productId);
+
+    setProduct({
+      id: selected.id,
+      title: selected.title,
+      description: selected.description,
+      price: selected.price,
+      images,
+      productType:
+        selected.productType || "Watch",
+      tags: selected.tags.join(", "),
+      audience:
+        /women|female/i.test(
+          selected.title
+        )
+          ? "Women"
+          : /unisex/i.test(selected.title)
+            ? "Unisex"
+            : "Men",
+      style:
+        /luxury|premium|chronograph/i.test(
+          selected.title
+        )
+          ? "Premium / Luxury"
+          : "Professional",
+      vendor: selected.vendor || "",
+    });
+
+    setActiveImage(0);
+    setGenerated(false);
+    setResult(null);
+  }
+
+  async function uploadImages(
+    e: ChangeEvent<HTMLInputElement>
+  ) {
+    const files = Array.from(
+      e.target.files ?? []
+    )
+      .filter((file) =>
+        file.type.startsWith("image/")
+      )
       .slice(0, 6);
 
     if (!files.length) return;
 
-    const images = await Promise.all(files.map(readImage));
+    const images = await Promise.all(
+      files.map(readImage)
+    );
+
     update("images", images);
     setActiveImage(0);
     e.target.value = "";
   }
 
   function removeImage(index: number) {
-    const images = product.images.filter((_, i) => i !== index);
+    const images = product.images.filter(
+      (_, i) => i !== index
+    );
+
     update("images", images);
-    setActiveImage(Math.max(0, Math.min(activeImage, images.length - 1)));
+
+    setActiveImage(
+      Math.max(
+        0,
+        Math.min(
+          activeImage,
+          images.length - 1
+        )
+      )
+    );
   }
 
   function generate() {
     if (!product.title.trim()) {
-      alert("Enter the original product title first.");
+      alert(
+        "Select a Shopify product or enter a product title first."
+      );
       return;
     }
 
-    setResult(liveResult);
+    const generatedResult =
+      generateResult(product);
+
+    setResult(generatedResult);
     setGenerated(true);
 
-    window.setTimeout(
-      () =>
-        document
-          .getElementById("preview")
-          ?.scrollIntoView({ behavior: "smooth" }),
-      50
-    );
+    window.setTimeout(() => {
+      document
+        .getElementById("preview")
+        ?.scrollIntoView({
+          behavior: "smooth",
+        });
+    }, 50);
   }
 
-  async function copyText(label: string, text: string) {
+  async function copyText(
+    label: string,
+    text: string
+  ) {
     await navigator.clipboard.writeText(text);
     setCopied(label);
-    window.setTimeout(() => setCopied(""), 1500);
+
+    window.setTimeout(
+      () => setCopied(""),
+      1500
+    );
   }
 
   function reset() {
     setGenerated(false);
     setResult(null);
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  }
 
-  const active = result ?? liveResult;
+    window.scrollTo({
+      top: 0,
+      behavior: "smooth",
+    });
+  }
 
   return (
     <main className="app">
       <header className="topbar">
         <div>
-          <div className="logo">VIRELLO</div>
-          <div className="micro">AI PRODUCT OPTIMIZER</div>
+          <div className="logo">
+            VIRELLO
+          </div>
+
+          <div className="micro">
+            AI PRODUCT OPTIMIZER
+          </div>
         </div>
 
         <div className="status">
-          <span /> Optimizer Ready
+          <span
+            className={
+              shopifyConnected
+                ? "connected"
+                : ""
+            }
+          />
+
+          {shopifyConnected
+            ? "Shopify Connected"
+            : "Optimizer Ready"}
         </div>
       </header>
 
       {!generated ? (
         <section className="workspace">
           <div className="hero">
-            <div className="eyebrow">PRODUCT OPTIMIZATION</div>
+            <div className="eyebrow">
+              PRODUCT OPTIMIZATION
+            </div>
 
             <h1>
-              Build product pages shoppers understand and want.
+              Build product pages shoppers
+              understand and want.
             </h1>
 
             <p>
-              Turn raw product information into polished titles, persuasive
-              descriptions, benefits, specifications, FAQs and SEO-ready copy.
+              Turn real Shopify product
+              information into polished titles,
+              persuasive descriptions, benefits,
+              specifications, FAQs and
+              SEO-ready copy.
             </p>
           </div>
+
+          <section className="card shopify-card">
+            <div className="shopify-head">
+              <div>
+                <div className="eyebrow">
+                  SHOPIFY CONNECTION
+                </div>
+
+                <h2>
+                  Your Shopify products
+                </h2>
+
+                <p>
+                  Virello uses the product
+                  information and images already
+                  stored in Shopify.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                className="secondary"
+                onClick={loadShopifyProducts}
+                disabled={loadingProducts}
+              >
+                {loadingProducts
+                  ? "Loading..."
+                  : "Refresh Products"}
+              </button>
+            </div>
+
+            {connectionMessage && (
+              <div
+                className={
+                  shopifyConnected
+                    ? "connection success"
+                    : "connection"
+                }
+              >
+                {connectionMessage}
+              </div>
+            )}
+
+            <div className="productPicker">
+              <select
+                className="input"
+                value={selectedProductId}
+                onChange={(e) =>
+                  selectShopifyProduct(
+                    e.target.value
+                  )
+                }
+                disabled={
+                  loadingProducts ||
+                  products.length === 0
+                }
+              >
+                <option value="">
+                  {products.length
+                    ? "Select a Shopify product..."
+                    : "No Shopify products loaded"}
+                </option>
+
+                {products.map((item) => (
+                  <option
+                    key={item.id}
+                    value={item.id}
+                  >
+                    {item.title}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </section>
 
           <div className="layout">
             <section className="card form-card">
               <div className="section-head">
                 <div>
-                  <div className="eyebrow">01 / PRODUCT</div>
-                  <h2>Product information</h2>
+                  <div className="eyebrow">
+                    01 / PRODUCT
+                  </div>
+
+                  <h2>
+                    Product information
+                  </h2>
                 </div>
 
-                <span className="badge">6 images max</span>
+                <span className="badge">
+                  Shopify ready
+                </span>
               </div>
 
-              <label>Original Product Title</label>
+              <label>
+                Product Title
+              </label>
 
               <textarea
                 value={product.title}
-                onChange={(e) => update("title", e.target.value)}
-                placeholder="Paste the original product title"
+                onChange={(e) =>
+                  update(
+                    "title",
+                    e.target.value
+                  )
+                }
+                placeholder="Select a Shopify product"
               />
 
               <label>
                 Original Description{" "}
-                <span className="optional">Optional</span>
+                <span className="optional">
+                  From Shopify
+                </span>
               </label>
 
               <textarea
-                value={product.description}
+                value={stripHtml(
+                  product.description
+                )}
                 onChange={(e) =>
-                  update("description", e.target.value)
+                  update(
+                    "description",
+                    e.target.value
+                  )
                 }
-                placeholder="Paste the current product description if you have one"
+                placeholder="Shopify product description"
               />
 
               <div className="grid2">
                 <div>
-                  <label>Price</label>
+                  <label>
+                    Price
+                  </label>
 
                   <div className="input money">
                     <span>$</span>
@@ -291,7 +844,10 @@ export default function Home() {
                     <input
                       value={product.price}
                       onChange={(e) =>
-                        update("price", e.target.value)
+                        update(
+                          "price",
+                          e.target.value
+                        )
                       }
                       inputMode="decimal"
                     />
@@ -299,48 +855,80 @@ export default function Home() {
                 </div>
 
                 <div>
-                  <label>Product Type</label>
+                  <label>
+                    Product Type
+                  </label>
 
                   <input
                     className="input"
-                    value={product.productType}
-                    onChange={(e) =>
-                      update("productType", e.target.value)
+                    value={
+                      product.productType
                     }
-                    placeholder="Watch"
+                    onChange={(e) =>
+                      update(
+                        "productType",
+                        e.target.value
+                      )
+                    }
                   />
                 </div>
               </div>
 
               <label>
-                Product Tags{" "}
-                <span className="optional">Optional</span>
+                Product Tags
               </label>
 
               <input
                 className="input"
                 value={product.tags}
                 onChange={(e) =>
-                  update("tags", e.target.value)
+                  update(
+                    "tags",
+                    e.target.value
+                  )
                 }
-                placeholder="luxury, watch, men's watch"
+                placeholder="Shopify product tags"
               />
+
+              {product.vendor && (
+                <>
+                  <label>
+                    Vendor
+                  </label>
+
+                  <input
+                    className="input"
+                    value={product.vendor}
+                    readOnly
+                  />
+                </>
+              )}
 
               <div className="grid2">
                 <div>
-                  <label>Target Audience</label>
+                  <label>
+                    Target Audience
+                  </label>
 
                   <div className="pills">
-                    {["Women", "Men", "Unisex"].map((item) => (
+                    {[
+                      "Women",
+                      "Men",
+                      "Unisex",
+                    ].map((item) => (
                       <button
                         type="button"
                         className={
-                          product.audience === item
+                          product.audience ===
+                          item
                             ? "pill selected"
                             : "pill"
                         }
                         onClick={() =>
-                          update("audience", item)
+                          update(
+                            "audience",
+                            item
+                          )
                         }
                         key={item}
                       >
@@ -351,86 +939,155 @@ export default function Home() {
                 </div>
 
                 <div>
-                  <label>Writing Style</label>
+                  <label>
+                    Writing Style
+                  </label>
 
                   <select
                     className="input select"
                     value={product.style}
                     onChange={(e) =>
-                      update("style", e.target.value)
+                      update(
+                        "style",
+                        e.target.value
+                      )
                     }
                   >
-                    <option>Premium / Luxury</option>
-                    <option>Professional</option>
-                    <option>Everyday</option>
-                    <option>Casual</option>
-                    <option>Sport</option>
-                    <option>Gift</option>
+                    <option>
+                      Premium / Luxury
+                    </option>
+                    <option>
+                      Professional
+                    </option>
+                    <option>
+                      Everyday
+                    </option>
+                    <option>
+                      Casual
+                    </option>
+                    <option>
+                      Sport
+                    </option>
+                    <option>
+                      Gift
+                    </option>
                   </select>
                 </div>
               </div>
 
-              <label>Product Images</label>
+              <label>
+                Product Images
+              </label>
 
-              <div className="upload">
-                <input
-                  id="images"
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  onChange={uploadImages}
-                />
-
-                <label
-                  htmlFor="images"
-                  className="uploadButton"
-                >
-                  + Add Product Images
-                </label>
-
-                <p>
-                  Testing mode: add up to 6 images. Shopify will supply
-                  these automatically after integration.
-                </p>
+              <div className="shopify-images">
+                {product.images.length ? (
+                  product.images.map(
+                    (image, index) => (
+                      <div
+                        className="shop-image"
+                        key={`${image}-${index}`}
+                      >
+                        <img
+                          src={image}
+                          alt={`Product ${
+                            index + 1
+                          }`}
+                        />
+                      </div>
+                    )
+                  )
+                ) : (
+                  <div className="no-image">
+                    No Shopify product images
+                    found.
+                  </div>
+                )}
               </div>
 
-              {product.images.length > 0 && (
-                <div className="thumbGrid">
-                  {product.images.map((image, index) => (
-                    <div
-                      className="thumb"
-                      key={`${image}-${index}`}
-                    >
-                      <img
-                        src={image}
-                        alt={`Product ${index + 1}`}
-                      />
+              <details className="manual">
+                <summary>
+                  Manual image upload
+                </summary>
 
-                      <button
-                        type="button"
-                        onClick={() => removeImage(index)}
-                      >
-                        ×
-                      </button>
-                    </div>
-                  ))}
+                <div className="upload">
+                  <input
+                    id="images"
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    onChange={uploadImages}
+                  />
+
+                  <label
+                    htmlFor="images"
+                    className="uploadButton"
+                  >
+                    + Add Product Images
+                  </label>
+
+                  <p>
+                    Optional testing fallback.
+                    Shopify products do not
+                    require manual image uploads.
+                  </p>
                 </div>
-              )}
+
+                {product.images.length >
+                  0 && (
+                  <div className="thumbGrid">
+                    {product.images.map(
+                      (
+                        image,
+                        index
+                      ) => (
+                        <div
+                          className="thumb"
+                          key={`${image}-${index}`}
+                        >
+                          <img
+                            src={image}
+                            alt={`Product ${
+                              index + 1
+                            }`}
+                          />
+
+                          <button
+                            type="button"
+                            onClick={() =>
+                              removeImage(
+                                index
+                              )
+                            }
+                          >
+                            ×
+                          </button>
+                        </div>
+                      )
+                    )}
+                  </div>
+                )}
+              </details>
 
               <button
                 type="button"
                 className="primary"
                 onClick={generate}
               >
-                Generate Optimized Product Page <span>→</span>
+                Generate Optimized Product
+                Page <span>→</span>
               </button>
             </section>
 
             <aside className="card live-card">
               <div className="section-head">
                 <div>
-                  <div className="eyebrow">LIVE PREVIEW</div>
-                  <h2>Product preview</h2>
+                  <div className="eyebrow">
+                    LIVE PREVIEW
+                  </div>
+
+                  <h2>
+                    Product preview
+                  </h2>
                 </div>
               </div>
 
@@ -438,11 +1095,15 @@ export default function Home() {
                 <div className="mini-image">
                   {product.images[0] ? (
                     <img
-                      src={product.images[0]}
-                      alt="Preview"
+                      src={
+                        product.images[0]
+                      }
+                      alt="Product"
                     />
                   ) : (
-                    <span>Product Image</span>
+                    <span>
+                      Shopify Product Image
+                    </span>
                   )}
                 </div>
 
@@ -452,29 +1113,46 @@ export default function Home() {
 
                 <h3>
                   {liveResult?.title ||
-                    "Your optimized title will appear here"}
+                    "Select a Shopify product"}
                 </h3>
 
                 <strong>
-                  ${product.price || "0.00"}
+                  $
+                  {product.price ||
+                    "0.00"}
                 </strong>
 
                 <p>
                   {liveResult?.description ||
-                    "Enter your product information to preview optimized copy."}
+                    "Your Shopify product information will appear here."}
                 </p>
 
                 <div className="mini-checks">
-                  <span>✓ Benefits</span>
-                  <span>✓ SEO</span>
-                  <span>✓ FAQ</span>
+                  <span>
+                    ✓ Product Data
+                  </span>
+
+                  <span>
+                    ✓ Product Images
+                  </span>
+
+                  <span>
+                    ✓ SEO
+                  </span>
+
+                  <span>
+                    ✓ FAQ
+                  </span>
                 </div>
               </div>
             </aside>
           </div>
         </section>
       ) : (
-        <section id="preview" className="preview">
+        <section
+          id="preview"
+          className="preview"
+        >
           <div className="previewTop">
             <button
               type="button"
@@ -492,37 +1170,59 @@ export default function Home() {
           <div className="productHero">
             <div className="gallery">
               <div className="mainPhoto">
-                {product.images[activeImage] ? (
+                {product.images[
+                  activeImage
+                ] ? (
                   <img
-                    src={product.images[activeImage]}
-                    alt={active?.title || "Product"}
+                    src={
+                      product.images[
+                        activeImage
+                      ]
+                    }
+                    alt={
+                      active?.title ||
+                      "Product"
+                    }
                   />
                 ) : (
-                  <span>Product Image</span>
+                  <span>
+                    Shopify Product Image
+                  </span>
                 )}
               </div>
 
-              {product.images.length > 0 && (
+              {product.images.length >
+                0 && (
                 <div className="galleryThumbs">
-                  {product.images.map((image, index) => (
-                    <button
-                      type="button"
-                      key={`${image}-${index}`}
-                      className={
-                        index === activeImage
-                          ? "galleryThumb active"
-                          : "galleryThumb"
-                      }
-                      onClick={() =>
-                        setActiveImage(index)
-                      }
-                    >
-                      <img
-                        src={image}
-                        alt={`View ${index + 1}`}
-                      />
-                    </button>
-                  ))}
+                  {product.images.map(
+                    (
+                      image,
+                      index
+                    ) => (
+                      <button
+                        type="button"
+                        key={`${image}-${index}`}
+                        className={
+                          index ===
+                          activeImage
+                            ? "galleryThumb active"
+                            : "galleryThumb"
+                        }
+                        onClick={() =>
+                          setActiveImage(
+                            index
+                          )
+                        }
+                      >
+                        <img
+                          src={image}
+                          alt={`View ${
+                            index + 1
+                          }`}
+                        />
+                      </button>
+                    )
+                  )}
                 </div>
               )}
             </div>
@@ -532,7 +1232,9 @@ export default function Home() {
                 PREMIUM COLLECTION
               </div>
 
-              <h2>{active?.title}</h2>
+              <h2>
+                {active?.title}
+              </h2>
 
               <div className="priceLarge">
                 ${product.price}
@@ -543,11 +1245,13 @@ export default function Home() {
               </p>
 
               <div className="benefits">
-                {active?.bullets.map((item) => (
-                  <div key={item}>
-                    ✓ {item}
-                  </div>
-                ))}
+                {active?.bullets.map(
+                  (item) => (
+                    <div key={item}>
+                      ✓ {item}
+                    </div>
+                  )
+                )}
               </div>
 
               <button
@@ -558,9 +1262,13 @@ export default function Home() {
               </button>
 
               <div className="trust">
-                <span>Secure Checkout</span>
-                <span>Easy Returns</span>
-                <span>Customer Support</span>
+                <span>
+                  Product data from Shopify
+                </span>
+
+                <span>
+                  Real product images
+                </span>
               </div>
             </div>
           </div>
@@ -571,33 +1279,38 @@ export default function Home() {
             </div>
 
             <h3>
-              Clear reasons to keep reading.
+              Clear reasons to keep
+              reading.
             </h3>
 
             <div className="fourCards">
-              {active?.bullets.map((item, index) => (
-                <article
-                  className="feature"
-                  key={item}
-                >
-                  <small>
-                    0{index + 1}
-                  </small>
+              {active?.bullets.map(
+                (item, index) => (
+                  <article
+                    className="feature"
+                    key={item}
+                  >
+                    <small>
+                      0{index + 1}
+                    </small>
 
-                  <h4>
-                    {
-                      [
-                        "Refined Design",
-                        "Versatile Styling",
-                        "Everyday Appeal",
-                        "Gift Ready",
-                      ][index]
-                    }
-                  </h4>
+                    <h4>
+                      {
+                        [
+                          "Refined Design",
+                          "Versatile Styling",
+                          "Product Presentation",
+                          "Considered Choice",
+                        ][index]
+                      }
+                    </h4>
 
-                  <p>{item}</p>
-                </article>
-              ))}
+                    <p>
+                      {item}
+                    </p>
+                  </article>
+                )
+              )}
             </div>
           </section>
 
@@ -607,27 +1320,37 @@ export default function Home() {
             </div>
 
             <h3>
-              Simple, useful specifications.
+              Simple, useful
+              specifications.
             </h3>
 
             <div className="specList">
-              {active?.specs.map((spec) => {
-                const [key, ...rest] =
-                  spec.split(":");
+              {active?.specs.map(
+                (spec) => {
+                  const [
+                    key,
+                    ...rest
+                  ] =
+                    spec.split(":");
 
-                return (
-                  <div
-                    className="spec"
-                    key={spec}
-                  >
-                    <span>{key}</span>
+                  return (
+                    <div
+                      className="spec"
+                      key={spec}
+                    >
+                      <span>
+                        {key}
+                      </span>
 
-                    <strong>
-                      {rest.join(":").trim()}
-                    </strong>
-                  </div>
-                );
-              })}
+                      <strong>
+                        {rest
+                          .join(":")
+                          .trim()}
+                      </strong>
+                    </div>
+                  );
+                }
+              )}
             </div>
           </section>
 
@@ -637,19 +1360,26 @@ export default function Home() {
             </div>
 
             <h3>
-              Questions shoppers may have.
+              Questions shoppers
+              may have.
             </h3>
 
             <div className="faq">
-              {active?.faq.map((item) => (
-                <details key={item.q}>
-                  <summary>
-                    {item.q}
-                  </summary>
+              {active?.faq.map(
+                (item) => (
+                  <details
+                    key={item.q}
+                  >
+                    <summary>
+                      {item.q}
+                    </summary>
 
-                  <p>{item.a}</p>
-                </details>
-              ))}
+                    <p>
+                      {item.a}
+                    </p>
+                  </details>
+                )
+              )}
             </div>
           </section>
 
@@ -674,11 +1404,13 @@ export default function Home() {
                     onClick={() =>
                       copyText(
                         "title",
-                        active?.seoTitle || ""
+                        active?.seoTitle ||
+                          ""
                       )
                     }
                   >
-                    {copied === "title"
+                    {copied ===
+                    "title"
                       ? "Copied"
                       : "Copy"}
                   </button>
@@ -689,8 +1421,11 @@ export default function Home() {
                 </p>
 
                 <small>
-                  {active?.seoTitle.length}/60
-                  {" "}characters
+                  {
+                    active
+                      ?.seoTitle.length
+                  }
+                  /60 characters
                 </small>
               </div>
 
@@ -705,23 +1440,31 @@ export default function Home() {
                     onClick={() =>
                       copyText(
                         "meta",
-                        active?.metaDescription || ""
+                        active?.metaDescription ||
+                          ""
                       )
                     }
                   >
-                    {copied === "meta"
+                    {copied ===
+                    "meta"
                       ? "Copied"
                       : "Copy"}
                   </button>
                 </div>
 
                 <p>
-                  {active?.metaDescription}
+                  {
+                    active?.metaDescription
+                  }
                 </p>
 
                 <small>
-                  {active?.metaDescription.length}/160
-                  {" "}characters
+                  {
+                    active
+                      ?.metaDescription
+                      .length
+                  }
+                  /160 characters
                 </small>
               </div>
             </div>
@@ -729,27 +1472,29 @@ export default function Home() {
 
           <section className="resultSection finalCallout">
             <div className="eyebrow">
-              VIRELLO
+              SHOPIFY
             </div>
 
             <h3>
-              From raw product data to a clearer
-              buying decision.
+              Your product data came
+              directly from Shopify.
             </h3>
 
             <p>
-              This preview is designed as the
-              optimizer layer. In the Shopify
-              version, the product data and images
-              will be supplied directly by the
-              connected store.
+              Virello used the selected
+              Shopify product title,
+              description, price, vendor,
+              tags and product images as
+              the source for this
+              optimization.
             </p>
 
             <button
               type="button"
               className="primary"
+              onClick={reset}
             >
-              READY FOR SHOPIFY INTEGRATION →
+              OPTIMIZE ANOTHER PRODUCT →
             </button>
           </section>
         </section>
@@ -828,8 +1573,12 @@ export default function Home() {
           width: 7px;
           height: 7px;
           border-radius: 50%;
-          background: #111;
+          background: #999;
           display: inline-block;
+        }
+
+        .status span.connected {
+          background: #111;
         }
 
         .workspace,
@@ -866,6 +1615,7 @@ export default function Home() {
           display: grid;
           grid-template-columns: 1.35fr .65fr;
           gap: 22px;
+          margin-top: 22px;
         }
 
         .card {
@@ -873,6 +1623,59 @@ export default function Home() {
           border: 1px solid #deded9;
           border-radius: 22px;
           padding: 32px;
+        }
+
+        .shopify-card {
+          margin-bottom: 22px;
+        }
+
+        .shopify-head {
+          display: flex;
+          justify-content: space-between;
+          gap: 25px;
+          align-items: flex-start;
+        }
+
+        .shopify-head h2 {
+          margin: 9px 0 5px;
+          font-size: 25px;
+        }
+
+        .shopify-head p {
+          margin: 0;
+          color: #777;
+          font-size: 14px;
+        }
+
+        .secondary {
+          border: 1px solid #d5d5d0;
+          background: #fff;
+          border-radius: 9px;
+          padding: 12px 16px;
+          font-weight: 650;
+        }
+
+        .secondary:disabled {
+          opacity: .5;
+          cursor: wait;
+        }
+
+        .connection {
+          margin-top: 20px;
+          padding: 12px 14px;
+          border-radius: 9px;
+          background: #f1f1ed;
+          color: #666;
+          font-size: 13px;
+        }
+
+        .connection.success {
+          background: #f0f0ec;
+          color: #222;
+        }
+
+        .productPicker {
+          margin-top: 18px;
         }
 
         .section-head {
@@ -978,12 +1781,53 @@ export default function Home() {
           border-color: #151515;
         }
 
+        .shopify-images {
+          display: grid;
+          grid-template-columns: repeat(3, 1fr);
+          gap: 8px;
+        }
+
+        .shop-image {
+          aspect-ratio: 1;
+          border-radius: 10px;
+          overflow: hidden;
+          background: #eee;
+          border: 1px solid #ddd;
+        }
+
+        .shop-image img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+        }
+
+        .no-image {
+          grid-column: 1 / -1;
+          border: 1px dashed #ccc;
+          padding: 25px;
+          text-align: center;
+          color: #888;
+          border-radius: 10px;
+        }
+
+        .manual {
+          margin-top: 18px;
+          border-top: 1px solid #ddd;
+          padding-top: 16px;
+        }
+
+        .manual summary {
+          font-size: 13px;
+          font-weight: 700;
+        }
+
         .upload {
           border: 1px dashed #c9c9c3;
           background: #fafaf8;
           border-radius: 14px;
           text-align: center;
           padding: 22px;
+          margin-top: 14px;
         }
 
         .upload input {
@@ -1363,6 +2207,10 @@ export default function Home() {
           .fourCards {
             grid-template-columns: 1fr 1fr;
           }
+
+          .shopify-head {
+            flex-direction: column;
+          }
         }
 
         @media (max-width: 600px) {
@@ -1390,6 +2238,10 @@ export default function Home() {
 
           .thumbGrid {
             grid-template-columns: repeat(3, 1fr);
+          }
+
+          .shopify-images {
+            grid-template-columns: 1fr 1fr;
           }
 
           .productHero {
