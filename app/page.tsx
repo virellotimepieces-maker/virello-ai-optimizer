@@ -1,397 +1,2433 @@
-import { NextRequest, NextResponse } from "next/server";
+"use client";
 
-const SHOPIFY_API_VERSION = "2026-07";
+import {
+  ChangeEvent,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 
-type ShopifyProductNode = {
+declare global {
+  interface Window {
+    shopify?: {
+      idToken?: () => Promise<string>;
+    };
+  }
+}
+
+type ShopifyImage = {
+  url: string;
+  altText: string | null;
+};
+
+type ShopifyProduct = {
   id: string;
   title: string;
   description: string;
   productType: string;
   tags: string[];
-  vendor: string;
   status: string;
-
-  featuredImage: {
-    url: string;
-    altText: string | null;
-  } | null;
-
-  images: {
-    nodes: {
-      url: string;
-      altText: string | null;
-    }[];
-  };
-
-  variants: {
-    nodes: {
-      price: string;
-    }[];
-  };
+  vendor: string;
+  price: string;
+  images: ShopifyImage[];
+  featuredImage: string | null;
 };
 
-type ShopifyGraphQLResponse = {
-  data?: {
-    products?: {
-      nodes: ShopifyProductNode[];
-    };
-  };
-  errors?: unknown;
+type Product = {
+  id: string;
+  title: string;
+  description: string;
+  price: string;
+  images: string[];
+  productType: string;
+  tags: string;
+  audience: "Women" | "Men" | "Unisex";
+  style:
+    | "Premium / Luxury"
+    | "Professional"
+    | "Everyday"
+    | "Casual"
+    | "Sport"
+    | "Gift";
+  vendor: string;
 };
 
-function errorResponse(
-  error: string,
-  status: number,
-  details?: unknown
+type Result = {
+  title: string;
+  description: string;
+  bullets: string[];
+  specs: string[];
+  faq: {
+    q: string;
+    a: string;
+  }[];
+  seoTitle: string;
+  metaDescription: string;
+};
+
+const clean = (value: string) =>
+  value.replace(/\s+/g, " ").trim();
+
+const stripHtml = (value: string) =>
+  value
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/\s+/g, " ")
+    .trim();
+
+const limit = (value: string, max: number) => {
+  const text = clean(value);
+
+  if (text.length <= max) {
+    return text;
+  }
+
+  const cut = text.slice(0, max + 1);
+  const end = cut.lastIndexOf(" ");
+
+  return cut
+    .slice(0, end > 0 ? end : max)
+    .replace(/[.,;:!?-]+$/, "");
+};
+
+function uniqueWords(value: string) {
+  const words = clean(value)
+    .split(/\s+/)
+    .filter(Boolean);
+
+  const result: string[] = [];
+  const seen = new Set<string>();
+
+  for (const word of words) {
+    const normalized = word
+      .toLowerCase()
+      .replace(/[^a-z0-9']/g, "");
+
+    if (!normalized || seen.has(normalized)) {
+      continue;
+    }
+
+    seen.add(normalized);
+    result.push(word);
+  }
+
+  return result;
+}
+
+function buildTitle(
+  sourceTitle: string,
+  audience: Product["audience"],
+  productType: string
 ) {
-  return NextResponse.json(
+  const isWatch =
+    /watch|timepiece|chronograph|automatic|quartz/i.test(
+      `${sourceTitle} ${productType}`
+    );
+
+  let source = clean(sourceTitle)
+    .replace(
+      /\b(official|wholesale|dropshipping|free shipping|cheap|hot sale|new arrival|2024|2025|2026)\b/gi,
+      ""
+    )
+    .replace(/[|,:;()[\]{}]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  const words = uniqueWords(source);
+
+  if (isWatch) {
+    const gender =
+      audience === "Women"
+        ? "Women's"
+        : audience === "Men"
+          ? "Men's"
+          : "Unisex";
+
+    const filtered = words.filter(
+      (word) =>
+        !/\b(men|men's|women|women's|unisex|watch|timepiece)\b/i.test(
+          word
+        )
+    );
+
+    const base = filtered
+      .slice(0, 6)
+      .join(" ");
+
+    return clean(
+      `${base} ${gender} Watch`
+    );
+  }
+
+  return clean(words.slice(0, 8).join(" "));
+}
+
+function extractSpecs(description: string) {
+  const text = stripHtml(description);
+  const specs: string[] = [];
+
+  const patterns = [
     {
-      success: false,
-      error,
-      ...(details !== undefined
-        ? { details }
-        : {}),
+      label: "Movement",
+      regex:
+        /\b(?:movement|mechanism)\s*[:\-]\s*([^.;,\n]+)/i,
     },
-    { status }
+    {
+      label: "Case Material",
+      regex:
+        /\bcase material\s*[:\-]\s*([^.;,\n]+)/i,
+    },
+    {
+      label: "Case Size",
+      regex:
+        /\b(?:case size|dial diameter|diameter)\s*[:\-]\s*([^.;,\n]+)/i,
+    },
+    {
+      label: "Water Resistance",
+      regex:
+        /\b(?:water resistance|water resistant)\s*[:\-]?\s*([^.;,\n]+)/i,
+    },
+    {
+      label: "Strap",
+      regex:
+        /\b(?:strap|band|bracelet)(?: material)?\s*[:\-]\s*([^.;,\n]+)/i,
+    },
+    {
+      label: "Crystal",
+      regex:
+        /\b(?:crystal|glass)\s*[:\-]\s*([^.;,\n]+)/i,
+    },
+    {
+      label: "Power Reserve",
+      regex:
+        /\bpower reserve\s*[:\-]\s*([^.;,\n]+)/i,
+    },
+  ];
+
+  for (const item of patterns) {
+    const match = text.match(item.regex);
+
+    if (match?.[1]) {
+      specs.push(
+        `${item.label}: ${clean(match[1])}`
+      );
+    }
+  }
+
+  return specs;
+}
+
+function generateResult(product: Product): Result {
+  const title = buildTitle(
+    product.title,
+    product.audience,
+    product.productType
+  );
+
+  const originalDescription = stripHtml(
+    product.description
+  );
+
+  const isWatch =
+    /watch|timepiece|chronograph|automatic|quartz/i.test(
+      `${product.title} ${product.productType}`
+    );
+
+  const audiencePhrase =
+    product.audience === "Unisex"
+      ? "men and women"
+      : product.audience.toLowerCase();
+
+  const factualSpecs = extractSpecs(
+    product.description
+  );
+
+  const bullets = isWatch
+    ? [
+        "Refined styling for everyday wear",
+        "Versatile design suited to casual and dressier looks",
+        "Product details presented from the available Shopify information",
+        "Suitable for personal wear or gifting",
+      ]
+    : [
+        "Clean presentation for easier product discovery",
+        "Versatile styling for everyday use",
+        "Product information presented without unsupported claims",
+        "Suitable for personal use or gifting",
+      ];
+
+  const descriptionSource =
+    originalDescription.length > 40
+      ? originalDescription
+      : `A ${product.style.toLowerCase()} option designed for ${audiencePhrase}.`;
+
+  const description = limit(
+    `${title}. ${descriptionSource}`,
+    520
+  );
+
+  const specs = [
+    `Product Type: ${
+      product.productType || "Not specified"
+    }`,
+    `Audience: ${product.audience}`,
+    `Style: ${product.style}`,
+  ];
+
+  if (product.vendor) {
+    specs.push(`Vendor: ${product.vendor}`);
+  }
+
+  if (product.price) {
+    specs.push(`Price: $${product.price}`);
+  }
+
+  if (factualSpecs.length) {
+    specs.push(...factualSpecs);
+  }
+
+  const faq = [
+    {
+      q: "What is the product type?",
+      a: product.productType
+        ? `This product is listed as ${product.productType}.`
+        : "The product type has not been specified.",
+    },
+    {
+      q: "Who is this product for?",
+      a: `The selected target audience is ${audiencePhrase}.`,
+    },
+    {
+      q: "What style is this product?",
+      a: `The selected presentation style is ${product.style}.`,
+    },
+    {
+      q: "Where do the specifications come from?",
+      a: factualSpecs.length
+        ? "The listed specifications are based on information found in the Shopify product description."
+        : "No additional technical specifications were found in the Shopify product description.",
+    },
+  ];
+
+  const seoTitle = limit(
+    title || "Product",
+    70
+  );
+
+  const metaDescription = limit(
+    `Shop ${title}. View product details, available specifications and styling information for ${audiencePhrase}.`,
+    160
+  );
+
+  return {
+    title,
+    description,
+    bullets,
+    specs,
+    faq,
+    seoTitle,
+    metaDescription,
+  };
+}
+
+function getShopFromToken(token: string) {
+  try {
+    const parts = token.split(".");
+
+    if (parts.length !== 3) {
+      return "";
+    }
+
+    const base64 = parts[1]
+      .replace(/-/g, "+")
+      .replace(/_/g, "/");
+
+    const padded =
+      base64 +
+      "=".repeat(
+        (4 - (base64.length % 4)) % 4
+      );
+
+    const payload = JSON.parse(
+      atob(padded)
+    );
+
+    if (
+      typeof payload.dest !== "string"
+    ) {
+      return "";
+    }
+
+    return new URL(payload.dest)
+      .hostname;
+  } catch {
+    return "";
+  }
+}
+
+function readImage(file: File): Promise<string> {
+  return new Promise(
+    (resolve, reject) => {
+      const reader =
+        new FileReader();
+
+      reader.onload = () => {
+        if (
+          typeof reader.result ===
+          "string"
+        ) {
+          resolve(reader.result);
+        } else {
+          reject(
+            new Error(
+              "Could not read image."
+            )
+          );
+        }
+      };
+
+      reader.onerror = () =>
+        reject(
+          new Error(
+            "Could not read image."
+          )
+        );
+
+      reader.readAsDataURL(file);
+    }
   );
 }
 
-function getSessionToken(
-  request: NextRequest
-) {
-  const authorization =
-    request.headers.get("authorization");
+const emptyProduct: Product = {
+  id: "",
+  title: "",
+  description: "",
+  price: "",
+  images: [],
+  productType: "Watch",
+  tags: "",
+  audience: "Men",
+  style: "Premium / Luxury",
+  vendor: "",
+};
 
-  if (authorization) {
-    return authorization
-      .replace(/^Bearer\s+/i, "")
-      .trim();
+export default function Home() {
+  const [products, setProducts] =
+    useState<ShopifyProduct[]>([]);
+
+  const [
+    loadingProducts,
+    setLoadingProducts,
+  ] = useState(false);
+
+  const [
+    shopifyConnected,
+    setShopifyConnected,
+  ] = useState(false);
+
+  const [
+    connectionMessage,
+    setConnectionMessage,
+  ] = useState("");
+
+  const [
+    selectedProductId,
+    setSelectedProductId,
+  ] = useState("");
+
+  const [product, setProduct] =
+    useState<Product>(emptyProduct);
+
+  const [result, setResult] =
+    useState<Result | null>(null);
+
+  const [generated, setGenerated] =
+    useState(false);
+
+  const [activeImage, setActiveImage] =
+    useState(0);
+
+  const [copied, setCopied] =
+    useState("");
+
+  const liveResult = useMemo(
+    () =>
+      product.title.trim()
+        ? generateResult(product)
+        : null,
+    [product]
+  );
+
+  const active =
+    result ?? liveResult;
+
+  const update = <
+    K extends keyof Product
+  >(
+    key: K,
+    value: Product[K]
+  ) => {
+    setProduct((current) => ({
+      ...current,
+      [key]: value,
+    }));
+  };
+
+  async function getShopifySessionToken() {
+    if (
+      typeof window ===
+        "undefined" ||
+      !window.shopify?.idToken
+    ) {
+      throw new Error(
+        "Shopify session token is unavailable. Open Virello from Shopify Admin."
+      );
+    }
+
+    return window.shopify.idToken();
+  }
+
+  async function loadShopifyProducts() {
+    setLoadingProducts(true);
+    setConnectionMessage("");
+
+    try {
+      const token =
+        await getShopifySessionToken();
+
+      const shop =
+        getShopFromToken(token);
+
+      if (!shop) {
+        throw new Error(
+          "Could not determine the Shopify store."
+        );
+      }
+
+      const response =
+        await fetch(
+          "/api/shopify/products",
+          {
+            method: "GET",
+            headers: {
+              Authorization:
+                `Bearer ${token}`,
+              "x-shopify-shop": shop,
+            },
+            cache: "no-store",
+          }
+        );
+
+      const data =
+        await response.json();
+
+      if (
+        !response.ok ||
+        data.success !== true
+      ) {
+        throw new Error(
+          data.error ||
+            "Unable to load Shopify products."
+        );
+      }
+
+      const loadedProducts =
+        Array.isArray(data.products)
+          ? data.products
+          : [];
+
+      setProducts(
+        loadedProducts
+      );
+
+      setShopifyConnected(true);
+
+      setConnectionMessage(
+        `${loadedProducts.length} Shopify product${
+          loadedProducts.length === 1
+            ? ""
+            : "s"
+        } loaded.`
+      );
+    } catch (error) {
+      setShopifyConnected(false);
+
+      setConnectionMessage(
+        error instanceof Error
+          ? error.message
+          : "Shopify connection failed."
+      );
+    } finally {
+      setLoadingProducts(false);
+    }
+  }
+
+  useEffect(() => {
+    void loadShopifyProducts();
+  }, []);
+
+  function selectShopifyProduct(
+    productId: string
+  ) {
+    const selected =
+      products.find(
+        (item) =>
+          item.id === productId
+      );
+
+    if (!selected) {
+      return;
+    }
+
+    const images =
+      selected.images?.length
+        ? selected.images.map(
+            (image) => image.url
+          )
+        : selected.featuredImage
+          ? [selected.featuredImage]
+          : [];
+
+    let audience:
+      Product["audience"] =
+      "Men";
+
+    if (
+      /women|female/i.test(
+        selected.title
+      )
+    ) {
+      audience = "Women";
+    } else if (
+      /unisex/i.test(
+        selected.title
+      )
+    ) {
+      audience = "Unisex";
+    }
+
+    let style:
+      Product["style"] =
+      "Professional";
+
+    if (
+      /luxury|premium|chronograph/i.test(
+        selected.title
+      )
+    ) {
+      style =
+        "Premium / Luxury";
+    }
+
+    setSelectedProductId(
+      productId
+    );
+
+    setProduct({
+      id: selected.id,
+      title: selected.title || "",
+      description:
+        selected.description || "",
+      price: selected.price || "",
+      images,
+      productType:
+        selected.productType ||
+        "Watch",
+      tags:
+        Array.isArray(
+          selected.tags
+        )
+          ? selected.tags.join(
+              ", "
+            )
+          : "",
+      audience,
+      style,
+      vendor:
+        selected.vendor || "",
+    });
+
+    setActiveImage(0);
+    setGenerated(false);
+    setResult(null);
+  }
+
+  async function uploadImages(
+    e: ChangeEvent<HTMLInputElement>
+  ) {
+    const files = Array.from(
+      e.target.files ?? []
+    )
+      .filter((file) =>
+        file.type.startsWith(
+          "image/"
+        )
+      )
+      .slice(0, 6);
+
+    if (!files.length) {
+      return;
+    }
+
+    try {
+      const images =
+        await Promise.all(
+          files.map(readImage)
+        );
+
+      update(
+        "images",
+        images
+      );
+
+      setActiveImage(0);
+    } catch {
+      alert(
+        "Unable to read one or more images."
+      );
+    } finally {
+      e.target.value = "";
+    }
+  }
+
+  function removeImage(
+    index: number
+  ) {
+    const images =
+      product.images.filter(
+        (_, i) => i !== index
+      );
+
+    update(
+      "images",
+      images
+    );
+
+    setActiveImage(
+      Math.max(
+        0,
+        Math.min(
+          activeImage,
+          Math.max(
+            images.length - 1,
+            0
+          )
+        )
+      )
+    );
+  }
+
+  function generate() {
+    if (!product.title.trim()) {
+      alert(
+        "Select a Shopify product first."
+      );
+      return;
+    }
+
+    const generatedResult =
+      generateResult(product);
+
+    setResult(
+      generatedResult
+    );
+
+    setGenerated(true);
+
+    window.setTimeout(() => {
+      document
+        .getElementById(
+          "preview"
+        )
+        ?.scrollIntoView({
+          behavior: "smooth",
+        });
+    }, 50);
+  }
+
+  async function copyText(
+    label: string,
+    text: string
+  ) {
+    try {
+      await navigator.clipboard.writeText(
+        text
+      );
+
+      setCopied(label);
+
+      window.setTimeout(
+        () => setCopied(""),
+        1500
+      );
+    } catch {
+      setCopied("");
+    }
+  }
+
+  function reset() {
+    setGenerated(false);
+    setResult(null);
+    setActiveImage(0);
+
+    window.scrollTo({
+      top: 0,
+      behavior: "smooth",
+    });
   }
 
   return (
-    request.headers
-      .get("x-shopify-session-token")
-      ?.trim() || ""
-  );
-}
+    <main className="app">
+      <header className="topbar">
+        <div>
+          <div className="logo">
+            VIRELLO
+          </div>
 
-function decodeSessionToken(
-  token: string
-) {
-  const parts = token.split(".");
+          <div className="micro">
+            AI PRODUCT OPTIMIZER
+          </div>
+        </div>
 
-  if (parts.length !== 3) {
-    throw new Error(
-      "Invalid Shopify session token."
-    );
-  }
+        <div className="status">
+          <span
+            className={
+              shopifyConnected
+                ? "connected"
+                : ""
+            }
+          />
 
-  try {
-    return JSON.parse(
-      Buffer.from(
-        parts[1],
-        "base64url"
-      ).toString("utf8")
-    );
-  } catch {
-    throw new Error(
-      "Unable to decode Shopify session token."
-    );
-  }
-}
+          {shopifyConnected
+            ? "Shopify Connected"
+            : "Shopify Not Connected"}
+        </div>
+      </header>
 
-export async function GET(
-  request: NextRequest
-) {
-  try {
-    /*
-     * 1. Get Shopify session token
-     */
-    const sessionToken =
-      getSessionToken(request);
+      {!generated ? (
+        <section className="workspace">
+          <div className="hero">
+            <div className="eyebrow">
+              PRODUCT OPTIMIZATION
+            </div>
 
-    if (!sessionToken) {
-      return errorResponse(
-        "Missing Shopify session token.",
-        401
-      );
-    }
+            <h1>
+              Build product pages shoppers
+              understand and want.
+            </h1>
 
-    /*
-     * 2. Get Shopify app credentials
-     */
-    const shopifyApiKey =
-      process.env.SHOPIFY_API_KEY;
+            <p>
+              Turn your Shopify product
+              information into clear,
+              persuasive and
+              search-ready product copy
+              without inventing
+              specifications.
+            </p>
+          </div>
 
-    const shopifyApiSecret =
-      process.env.SHOPIFY_API_SECRET;
+          <section className="card shopify-card">
+            <div className="shopify-head">
+              <div>
+                <div className="eyebrow">
+                  SHOPIFY CONNECTION
+                </div>
 
-    if (
-      !shopifyApiKey ||
-      !shopifyApiSecret
-    ) {
-      return errorResponse(
-        "Shopify API credentials are not configured.",
-        500
-      );
-    }
+                <h2>
+                  Your Shopify products
+                </h2>
 
-    /*
-     * 3. Detect the Shopify store
-     */
-    const payload =
-      decodeSessionToken(sessionToken);
+                <p>
+                  Select a product directly
+                  from your Shopify store.
+                </p>
+              </div>
 
-    const destination =
-      typeof payload.dest === "string"
-        ? payload.dest
-        : "";
+              <button
+                type="button"
+                className="secondary"
+                onClick={() =>
+                  void loadShopifyProducts()
+                }
+                disabled={
+                  loadingProducts
+                }
+              >
+                {loadingProducts
+                  ? "Loading..."
+                  : "Refresh Products"}
+              </button>
+            </div>
 
-    if (!destination) {
-      return errorResponse(
-        "Shopify shop could not be detected.",
-        400
-      );
-    }
+            {connectionMessage && (
+              <div
+                className={
+                  shopifyConnected
+                    ? "connection success"
+                    : "connection"
+                }
+              >
+                {connectionMessage}
+              </div>
+            )}
 
-    const shop =
-      new URL(destination).hostname;
+            <div className="productPicker">
+              <select
+                className="input"
+                value={
+                  selectedProductId
+                }
+                onChange={(e) =>
+                  selectShopifyProduct(
+                    e.target.value
+                  )
+                }
+                disabled={
+                  loadingProducts ||
+                  products.length ===
+                    0
+                }
+              >
+                <option value="">
+                  {products.length
+                    ? "Select a Shopify product..."
+                    : "No Shopify products loaded"}
+                </option>
 
-    /*
-     * 4. Exchange Shopify session token
-     *    for Admin API access token
-     */
-    const tokenResponse =
-      await fetch(
-        `https://${shop}/admin/oauth/access_token`,
-        {
-          method: "POST",
+                {products.map(
+                  (item) => (
+                    <option
+                      key={item.id}
+                      value={item.id}
+                    >
+                      {item.title}
+                    </option>
+                  )
+                )}
+              </select>
+            </div>
+          </section>
 
-          headers: {
-            "Content-Type":
-              "application/x-www-form-urlencoded",
-            Accept: "application/json",
-          },
+          <div className="layout">
+            <section className="card form-card">
+              <div className="section-head">
+                <div>
+                  <div className="eyebrow">
+                    01 / PRODUCT
+                  </div>
 
-          body: new URLSearchParams({
-            client_id: shopifyApiKey,
+                  <h2>
+                    Product information
+                  </h2>
+                </div>
 
-            client_secret:
-              shopifyApiSecret,
+                <span className="badge">
+                  Shopify ready
+                </span>
+              </div>
 
-            grant_type:
-              "urn:ietf:params:oauth:grant-type:token-exchange",
+              <label>
+                Product Title
+              </label>
 
-            subject_token:
-              sessionToken,
+              <textarea
+                value={
+                  product.title
+                }
+                onChange={(e) =>
+                  update(
+                    "title",
+                    e.target.value
+                  )
+                }
+                placeholder="Select a Shopify product"
+              />
 
-            subject_token_type:
-              "urn:ietf:params:oauth:token-type:id_token",
+              <label>
+                Original Description{" "}
+                <span className="optional">
+                  From Shopify
+                </span>
+              </label>
 
-            requested_token_type:
-              "urn:shopify:params:oauth:token-type:online-access-token",
-          }).toString(),
+              <textarea
+                value={stripHtml(
+                  product.description
+                )}
+                onChange={(e) =>
+                  update(
+                    "description",
+                    e.target.value
+                  )
+                }
+                placeholder="Shopify product description"
+              />
 
-          cache: "no-store",
+              <div className="grid2">
+                <div>
+                  <label>
+                    Price
+                  </label>
+
+                  <div className="input money">
+                    <span>
+                      $
+                    </span>
+
+                    <input
+                      value={
+                        product.price
+                      }
+                      onChange={(e) =>
+                        update(
+                          "price",
+                          e.target
+                            .value
+                        )
+                      }
+                      inputMode="decimal"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label>
+                    Product Type
+                  </label>
+
+                  <input
+                    className="input"
+                    value={
+                      product.productType
+                    }
+                    onChange={(e) =>
+                      update(
+                        "productType",
+                        e.target
+                          .value
+                      )
+                    }
+                  />
+                </div>
+              </div>
+
+              <label>
+                Product Tags
+              </label>
+
+              <input
+                className="input"
+                value={
+                  product.tags
+                }
+                onChange={(e) =>
+                  update(
+                    "tags",
+                    e.target.value
+                  )
+                }
+                placeholder="Shopify product tags"
+              />
+
+              {product.vendor && (
+                <>
+                  <label>
+                    Vendor
+                  </label>
+
+                  <input
+                    className="input"
+                    value={
+                      product.vendor
+                    }
+                    readOnly
+                  />
+                </>
+              )}
+
+              <div className="grid2">
+                <div>
+                  <label>
+                    Target Audience
+                  </label>
+
+                  <div className="pills">
+                    {[
+                      "Women",
+                      "Men",
+                      "Unisex",
+                    ].map(
+                      (item) => (
+                        <button
+                          type="button"
+                          className={
+                            product.audience ===
+                            item
+                              ? "pill selected"
+                              : "pill"
+                          }
+                          onClick={() =>
+                            update(
+                              "audience",
+                              item as Product["audience"]
+                            )
+                          }
+                          key={item}
+                        >
+                          {item}
+                        </button>
+                      )
+                    )}
+                  </div>
+                </div>
+
+                <div>
+                  <label>
+                    Writing Style
+                  </label>
+
+                  <select
+                    className="input select"
+                    value={
+                      product.style
+                    }
+                    onChange={(e) =>
+                      update(
+                        "style",
+                        e.target
+                          .value as Product["style"]
+                      )
+                    }
+                  >
+                    <option>
+                      Premium / Luxury
+                    </option>
+                    <option>
+                      Professional
+                    </option>
+                    <option>
+                      Everyday
+                    </option>
+                    <option>
+                      Casual
+                    </option>
+                    <option>
+                      Sport
+                    </option>
+                    <option>
+                      Gift
+                    </option>
+                  </select>
+                </div>
+              </div>
+
+              <label>
+                Product Images
+              </label>
+
+              <div className="shopify-images">
+                {product.images
+                  .length ? (
+                  product.images.map(
+                    (
+                      image,
+                      index
+                    ) => (
+                      <div
+                        className="shop-image"
+                        key={`${image}-${index}`}
+                      >
+                        <img
+                          src={image}
+                          alt={`Product ${
+                            index + 1
+                          }`}
+                        />
+                      </div>
+                    )
+                  )
+                ) : (
+                  <div className="no-image">
+                    No Shopify product
+                    images found.
+                  </div>
+                )}
+              </div>
+
+              <details className="manual">
+                <summary>
+                  Manual image upload
+                </summary>
+
+                <div className="upload">
+                  <input
+                    id="images"
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    onChange={
+                      uploadImages
+                    }
+                  />
+
+                  <label
+                    htmlFor="images"
+                    className="uploadButton"
+                  >
+                    + Add Product Images
+                  </label>
+
+                  <p>
+                    Optional fallback for
+                    testing images locally.
+                  </p>
+                </div>
+
+                {product.images
+                  .length > 0 && (
+                  <div className="thumbGrid">
+                    {product.images.map(
+                      (
+                        image,
+                        index
+                      ) => (
+                        <div
+                          className="thumb"
+                          key={`${image}-${index}`}
+                        >
+                          <img
+                            src={image}
+                            alt={`Product ${
+                              index + 1
+                            }`}
+                          />
+
+                          <button
+                            type="button"
+                            onClick={() =>
+                              removeImage(
+                                index
+                              )
+                            }
+                            aria-label={`Remove image ${
+                              index + 1
+                            }`}
+                          >
+                            ×
+                          </button>
+                        </div>
+                      )
+                    )}
+                  </div>
+                )}
+              </details>
+
+              <button
+                type="button"
+                className="primary"
+                onClick={generate}
+              >
+                Generate Optimized Product
+                Page <span>→</span>
+              </button>
+            </section>
+
+            <aside className="card live-card">
+              <div className="section-head">
+                <div>
+                  <div className="eyebrow">
+                    LIVE PREVIEW
+                  </div>
+
+                  <h2>
+                    Product preview
+                  </h2>
+                </div>
+              </div>
+
+              <div className="mini-product">
+                <div className="mini-image">
+                  {product.images[
+                    0
+                  ] ? (
+                    <img
+                      src={
+                        product
+                          .images[0]
+                      }
+                      alt="Product"
+                    />
+                  ) : (
+                    <span>
+                      Shopify Product Image
+                    </span>
+                  )}
+                </div>
+
+                <div className="mini-kicker">
+                  PRODUCT PREVIEW
+                </div>
+
+                <h3>
+                  {liveResult?.title ||
+                    "Select a Shopify product"}
+                </h3>
+
+                <strong>
+                  $
+                  {product.price ||
+                    "0.00"}
+                </strong>
+
+                <p>
+                  {liveResult?.description ||
+                    "Your Shopify product information will appear here."}
+                </p>
+
+                <div className="mini-checks">
+                  <span>
+                    ✓ Product Data
+                  </span>
+
+                  <span>
+                    ✓ Product Images
+                  </span>
+
+                  <span>
+                    ✓ SEO Copy
+                  </span>
+
+                  <span>
+                    ✓ FAQ
+                  </span>
+                </div>
+              </div>
+            </aside>
+          </div>
+        </section>
+      ) : (
+        <section
+          id="preview"
+          className="preview"
+        >
+          <div className="previewTop">
+            <button
+              type="button"
+              className="back"
+              onClick={reset}
+            >
+              ← Edit Product
+            </button>
+
+            <div className="eyebrow">
+              OPTIMIZED PRODUCT PAGE
+            </div>
+          </div>
+
+          <div className="productHero">
+            <div className="gallery">
+              <div className="mainPhoto">
+                {product.images[
+                  activeImage
+                ] ? (
+                  <img
+                    src={
+                      product
+                        .images[
+                        activeImage
+                      ]
+                    }
+                    alt={
+                      active?.title ||
+                      "Product"
+                    }
+                  />
+                ) : (
+                  <span>
+                    Shopify Product Image
+                  </span>
+                )}
+              </div>
+
+              {product.images
+                .length > 0 && (
+                <div className="galleryThumbs">
+                  {product.images.map(
+                    (
+                      image,
+                      index
+                    ) => (
+                      <button
+                        type="button"
+                        key={`${image}-${index}`}
+                        className={
+                          index ===
+                          activeImage
+                            ? "galleryThumb active"
+                            : "galleryThumb"
+                        }
+                        onClick={() =>
+                          setActiveImage(
+                            index
+                          )
+                        }
+                      >
+                        <img
+                          src={image}
+                          alt={`View ${
+                            index + 1
+                          }`}
+                        />
+                      </button>
+                    )
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div className="heroCopy">
+              <div className="eyebrow">
+                PRODUCT COLLECTION
+              </div>
+
+              <h2>
+                {active?.title}
+              </h2>
+
+              <div className="priceLarge">
+                ${product.price}
+              </div>
+
+              <p className="lead">
+                {active?.description}
+              </p>
+
+              <div className="benefits">
+                {active?.bullets.map(
+                  (item) => (
+                    <div key={item}>
+                      ✓ {item}
+                    </div>
+                  )
+                )}
+              </div>
+
+              <div className="trust">
+                <span>
+                  Product data from
+                  Shopify
+                </span>
+
+                <span>
+                  Original product
+                  images
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <section className="resultSection">
+            <div className="eyebrow">
+              PRODUCT BENEFITS
+            </div>
+
+            <h3>
+              Clear reasons to keep
+              reading.
+            </h3>
+
+            <div className="fourCards">
+              {active?.bullets.map(
+                (item, index) => (
+                  <article
+                    className="feature"
+                    key={item}
+                  >
+                    <small>
+                      0{index + 1}
+                    </small>
+
+                    <h4>
+                      {
+                        [
+                          "Refined Design",
+                          "Versatile Styling",
+                          "Clear Presentation",
+                          "Considered Choice",
+                        ][index]
+                      }
+                    </h4>
+
+                    <p>
+                      {item}
+                    </p>
+                  </article>
+                )
+              )}
+            </div>
+          </section>
+
+          <section className="resultSection">
+            <div className="eyebrow">
+              PRODUCT INFORMATION
+            </div>
+
+            <h3>
+              Simple, useful
+              specifications.
+            </h3>
+
+            <div className="specList">
+              {active?.specs.map(
+                (spec) => {
+                  const [
+                    key,
+                    ...rest
+                  ] =
+                    spec.split(":");
+
+                  return (
+                    <div
+                      className="spec"
+                      key={spec}
+                    >
+                      <span>
+                        {key}
+                      </span>
+
+                      <strong>
+                        {rest
+                          .join(":")
+                          .trim()}
+                      </strong>
+                    </div>
+                  );
+                }
+              )}
+            </div>
+          </section>
+
+          <section className="resultSection">
+            <div className="eyebrow">
+              FREQUENTLY ASKED QUESTIONS
+            </div>
+
+            <h3>
+              Questions shoppers
+              may have.
+            </h3>
+
+            <div className="faq">
+              {active?.faq.map(
+                (item) => (
+                  <details
+                    key={item.q}
+                  >
+                    <summary>
+                      {item.q}
+                    </summary>
+
+                    <p>
+                      {item.a}
+                    </p>
+                  </details>
+                )
+              )}
+            </div>
+          </section>
+
+          <section className="resultSection">
+            <div className="eyebrow">
+              SEO
+            </div>
+
+            <h3>
+              Search-ready content.
+            </h3>
+
+            <div className="seoGrid">
+              <div className="seoBox">
+                <div className="seoTop">
+                  <strong>
+                    SEO Title
+                  </strong>
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      copyText(
+                        "title",
+                        active?.seoTitle ||
+                          ""
+                      )
+                    }
+                  >
+                    {copied ===
+                    "title"
+                      ? "Copied"
+                      : "Copy"}
+                  </button>
+                </div>
+
+                <p>
+                  {active?.seoTitle}
+                </p>
+
+                <small>
+                  {
+                    active?.seoTitle
+                      .length
+                  }
+                  /70 characters
+                </small>
+              </div>
+
+              <div className="seoBox">
+                <div className="seoTop">
+                  <strong>
+                    Meta Description
+                  </strong>
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      copyText(
+                        "meta",
+                        active?.metaDescription ||
+                          ""
+                      )
+                    }
+                  >
+                    {copied ===
+                    "meta"
+                      ? "Copied"
+                      : "Copy"}
+                  </button>
+                </div>
+
+                <p>
+                  {
+                    active?.metaDescription
+                  }
+                </p>
+
+                <small>
+                  {
+                    active
+                      ?.metaDescription
+                      .length
+                  }
+                  /160 characters
+                </small>
+              </div>
+            </div>
+          </section>
+
+          <section className="resultSection finalCallout">
+            <div className="eyebrow">
+              SHOPIFY
+            </div>
+
+            <h3>
+              Product information
+              sourced from Shopify.
+            </h3>
+
+            <p>
+              Virello uses the selected
+              Shopify product information
+              as the source for its
+              optimization. Specifications
+              are only displayed when
+              available in the supplied
+              product data.
+            </p>
+
+            <button
+              type="button"
+              className="primary"
+              onClick={reset}
+            >
+              OPTIMIZE ANOTHER PRODUCT →
+            </button>
+          </section>
+        </section>
+      )}
+
+      <style jsx global>{`
+        * {
+          box-sizing: border-box;
         }
-      );
 
-    if (!tokenResponse.ok) {
-      const errorText =
-        await tokenResponse.text();
+        body {
+          margin: 0;
+          background: #f5f5f2;
+          color: #151515;
+          font-family:
+            Inter,
+            -apple-system,
+            BlinkMacSystemFont,
+            "Segoe UI",
+            sans-serif;
+        }
 
-      return errorResponse(
-        "Shopify token exchange failed.",
-        401,
-        errorText
-      );
-    }
+        button,
+        input,
+        textarea,
+        select {
+          font: inherit;
+        }
 
-    const tokenData =
-      await tokenResponse.json();
+        button {
+          cursor: pointer;
+        }
 
-    const accessToken =
-      tokenData?.access_token;
+        .app {
+          min-height: 100vh;
+        }
 
-    if (
-      typeof accessToken !== "string" ||
-      !accessToken
-    ) {
-      return errorResponse(
-        "Shopify did not return an access token.",
-        401
-      );
-    }
+        .topbar {
+          height: 82px;
+          padding: 0 5vw;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          border-bottom: 1px solid #deded9;
+          background: #fff;
+        }
 
-    /*
-     * 5. Get Shopify products
-     *
-     * We get:
-     * - title
-     * - description
-     * - product type
-     * - tags
-     * - vendor
-     * - status
-     * - featured image
-     * - up to 6 images
-     * - first variant price
-     */
-    const query = `
-      query GetProducts {
-        products(first: 50) {
-          nodes {
-            id
-            title
-            description
-            productType
-            tags
-            vendor
-            status
+        .logo {
+          font-weight: 800;
+          letter-spacing: .12em;
+          font-size: 19px;
+        }
 
-            featuredImage {
-              url
-              altText
-            }
+        .micro,
+        .eyebrow {
+          font-size: 11px;
+          letter-spacing: .13em;
+          font-weight: 700;
+          color: #777;
+        }
 
-            images(first: 6) {
-              nodes {
-                url
-                altText
-              }
-            }
+        .micro {
+          margin-top: 3px;
+          font-weight: 500;
+        }
 
-            variants(first: 1) {
-              nodes {
-                price
-              }
-            }
+        .status {
+          font-size: 13px;
+          color: #666;
+          display: flex;
+          gap: 8px;
+          align-items: center;
+        }
+
+        .status span {
+          width: 7px;
+          height: 7px;
+          border-radius: 50%;
+          background: #999;
+          display: inline-block;
+        }
+
+        .status span.connected {
+          background: #111;
+        }
+
+        .workspace,
+        .preview {
+          width: min(1220px, 90vw);
+          margin: auto;
+        }
+
+        .workspace {
+          padding: 70px 0 100px;
+        }
+
+        .hero {
+          max-width: 900px;
+          margin-bottom: 52px;
+        }
+
+        .hero h1 {
+          font-size: clamp(48px, 7vw, 86px);
+          line-height: .96;
+          letter-spacing: -.055em;
+          margin: 22px 0;
+        }
+
+        .hero p {
+          max-width: 720px;
+          font-size: 19px;
+          line-height: 1.55;
+          color: #555;
+          margin: 0;
+        }
+
+        .layout {
+          display: grid;
+          grid-template-columns: 1.35fr .65fr;
+          gap: 22px;
+          margin-top: 22px;
+        }
+
+        .card {
+          background: #fff;
+          border: 1px solid #deded9;
+          border-radius: 22px;
+          padding: 32px;
+        }
+
+        .shopify-card {
+          margin-bottom: 22px;
+        }
+
+        .shopify-head {
+          display: flex;
+          justify-content: space-between;
+          gap: 25px;
+          align-items: flex-start;
+        }
+
+        .shopify-head h2 {
+          margin: 9px 0 5px;
+          font-size: 25px;
+        }
+
+        .shopify-head p {
+          margin: 0;
+          color: #777;
+          font-size: 14px;
+        }
+
+        .secondary {
+          border: 1px solid #d5d5d0;
+          background: #fff;
+          border-radius: 9px;
+          padding: 12px 16px;
+          font-weight: 650;
+        }
+
+        .secondary:disabled {
+          opacity: .5;
+          cursor: wait;
+        }
+
+        .connection {
+          margin-top: 20px;
+          padding: 12px 14px;
+          border-radius: 9px;
+          background: #f1f1ed;
+          color: #666;
+          font-size: 13px;
+        }
+
+        .connection.success {
+          background: #f0f0ec;
+          color: #222;
+        }
+
+        .productPicker {
+          margin-top: 18px;
+        }
+
+        .section-head {
+          display: flex;
+          align-items: flex-start;
+          justify-content: space-between;
+          gap: 15px;
+          margin-bottom: 30px;
+        }
+
+        .section-head h2 {
+          font-size: 25px;
+          margin: 9px 0 0;
+          letter-spacing: -.03em;
+        }
+
+        .badge {
+          border: 1px solid #ddd;
+          border-radius: 99px;
+          padding: 8px 11px;
+          font-size: 11px;
+          color: #666;
+        }
+
+        label {
+          display: block;
+          font-size: 13px;
+          font-weight: 700;
+          margin: 22px 0 8px;
+        }
+
+        .optional {
+          font-weight: 400;
+          color: #999;
+        }
+
+        textarea,
+        .input {
+          width: 100%;
+          border: 1px solid #d7d7d2;
+          background: #fafaf8;
+          border-radius: 11px;
+          outline: none;
+        }
+
+        textarea {
+          min-height: 105px;
+          padding: 14px;
+          resize: vertical;
+        }
+
+        textarea:focus,
+        .input:focus {
+          border-color: #111;
+          background: #fff;
+        }
+
+        .input {
+          height: 48px;
+          padding: 0 13px;
+        }
+
+        .money {
+          display: flex;
+          align-items: center;
+          gap: 7px;
+        }
+
+        .money input {
+          border: 0;
+          outline: 0;
+          background: transparent;
+          width: 100%;
+          height: 100%;
+        }
+
+        .select {
+          appearance: auto;
+        }
+
+        .grid2 {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 18px;
+        }
+
+        .pills {
+          display: flex;
+          gap: 7px;
+          flex-wrap: wrap;
+        }
+
+        .pill {
+          border: 1px solid #d7d7d2;
+          background: #fff;
+          border-radius: 99px;
+          padding: 11px 14px;
+        }
+
+        .pill.selected {
+          background: #151515;
+          color: #fff;
+          border-color: #151515;
+        }
+
+        .shopify-images {
+          display: grid;
+          grid-template-columns: repeat(3, 1fr);
+          gap: 8px;
+        }
+
+        .shop-image {
+          aspect-ratio: 1;
+          border-radius: 10px;
+          overflow: hidden;
+          background: #eee;
+          border: 1px solid #ddd;
+        }
+
+        .shop-image img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+        }
+
+        .no-image {
+          grid-column: 1 / -1;
+          border: 1px dashed #ccc;
+          padding: 25px;
+          text-align: center;
+          color: #888;
+          border-radius: 10px;
+        }
+
+        .manual {
+          margin-top: 18px;
+          border-top: 1px solid #ddd;
+          padding-top: 16px;
+        }
+
+        .manual summary {
+          font-size: 13px;
+          font-weight: 700;
+        }
+
+        .upload {
+          border: 1px dashed #c9c9c3;
+          background: #fafaf8;
+          border-radius: 14px;
+          text-align: center;
+          padding: 22px;
+          margin-top: 14px;
+        }
+
+        .upload input {
+          display: none;
+        }
+
+        .uploadButton {
+          display: inline-flex !important;
+          margin: 0 !important;
+          align-items: center;
+          justify-content: center;
+          background: #151515;
+          color: #fff;
+          border-radius: 9px;
+          padding: 13px 17px;
+          cursor: pointer;
+        }
+
+        .upload p {
+          font-size: 12px;
+          color: #888;
+          margin: 10px 0 0;
+        }
+
+        .thumbGrid {
+          display: grid;
+          grid-template-columns: repeat(6, 1fr);
+          gap: 8px;
+          margin-top: 12px;
+        }
+
+        .thumb {
+          position: relative;
+          aspect-ratio: 1;
+          border-radius: 9px;
+          overflow: hidden;
+          border: 1px solid #ddd;
+        }
+
+        .thumb img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+        }
+
+        .thumb button {
+          position: absolute;
+          right: 4px;
+          top: 4px;
+          border: 0;
+          border-radius: 50%;
+          width: 23px;
+          height: 23px;
+          background: #111;
+          color: #fff;
+          line-height: 1;
+        }
+
+        .primary {
+          width: 100%;
+          min-height: 56px;
+          border: 0;
+          border-radius: 10px;
+          background: #151515;
+          color: #fff;
+          font-weight: 750;
+          margin-top: 28px;
+        }
+
+        .primary span {
+          margin-left: 7px;
+        }
+
+        .live-card {
+          height: max-content;
+          position: sticky;
+          top: 20px;
+        }
+
+        .mini-product {
+          border: 1px solid #e1e1dc;
+          border-radius: 16px;
+          padding: 16px;
+        }
+
+        .mini-image {
+          aspect-ratio: 1;
+          background: #eee;
+          border-radius: 12px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: #999;
+          overflow: hidden;
+        }
+
+        .mini-image img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+        }
+
+        .mini-kicker {
+          font-size: 10px;
+          letter-spacing: .12em;
+          color: #777;
+          margin-top: 20px;
+        }
+
+        .mini-product h3 {
+          font-size: 25px;
+          line-height: 1.05;
+          letter-spacing: -.035em;
+          margin: 10px 0 13px;
+        }
+
+        .mini-product > strong {
+          font-size: 18px;
+        }
+
+        .mini-product p {
+          font-size: 13px;
+          line-height: 1.55;
+          color: #666;
+        }
+
+        .mini-checks {
+          display: grid;
+          gap: 7px;
+          font-size: 12px;
+          color: #555;
+        }
+
+        .preview {
+          padding: 35px 0 100px;
+        }
+
+        .previewTop {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          margin-bottom: 38px;
+        }
+
+        .back {
+          background: #fff;
+          border: 1px solid #d7d7d2;
+          border-radius: 9px;
+          padding: 11px 14px;
+        }
+
+        .productHero {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 70px;
+        }
+
+        .mainPhoto {
+          aspect-ratio: 1;
+          background: #eee;
+          border-radius: 18px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          overflow: hidden;
+          color: #999;
+        }
+
+        .mainPhoto img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+        }
+
+        .galleryThumbs {
+          display: grid;
+          grid-template-columns: repeat(6, 1fr);
+          gap: 8px;
+          margin-top: 9px;
+        }
+
+        .galleryThumb {
+          border: 1px solid #ddd;
+          background: #fff;
+          border-radius: 8px;
+          overflow: hidden;
+          padding: 0;
+          aspect-ratio: 1;
+        }
+
+        .galleryThumb.active {
+          border: 2px solid #111;
+        }
+
+        .galleryThumb img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+        }
+
+        .heroCopy {
+          padding-top: 25px;
+        }
+
+        .heroCopy h2 {
+          font-size: clamp(42px, 5vw, 70px);
+          line-height: 1;
+          letter-spacing: -.055em;
+          margin: 18px 0;
+        }
+
+        .priceLarge {
+          font-size: 24px;
+          font-weight: 700;
+          margin: 24px 0;
+        }
+
+        .lead {
+          font-size: 18px;
+          line-height: 1.65;
+          color: #4d4d4d;
+          max-width: 650px;
+        }
+
+        .benefits {
+          display: grid;
+          gap: 10px;
+          margin-top: 28px;
+          line-height: 1.45;
+        }
+
+        .trust {
+          display: flex;
+          gap: 17px;
+          flex-wrap: wrap;
+          color: #777;
+          font-size: 12px;
+          margin-top: 14px;
+        }
+
+        .resultSection {
+          border-top: 1px solid #d4d4cf;
+          margin-top: 100px;
+          padding-top: 44px;
+        }
+
+        .resultSection h3 {
+          font-size: clamp(40px, 5vw, 64px);
+          line-height: 1;
+          letter-spacing: -.05em;
+          max-width: 850px;
+          margin: 18px 0 34px;
+        }
+
+        .fourCards {
+          display: grid;
+          grid-template-columns: repeat(4, 1fr);
+          gap: 13px;
+        }
+
+        .feature {
+          background: #fff;
+          border: 1px solid #deded9;
+          border-radius: 17px;
+          padding: 23px;
+        }
+
+        .feature small {
+          color: #888;
+        }
+
+        .feature h4 {
+          font-size: 19px;
+          margin: 28px 0 9px;
+        }
+
+        .feature p {
+          font-size: 13px;
+          line-height: 1.55;
+          color: #666;
+          margin: 0;
+        }
+
+        .specList {
+          border-top: 1px solid #ccc;
+        }
+
+        .spec {
+          display: flex;
+          justify-content: space-between;
+          padding: 18px 0;
+          border-bottom: 1px solid #ccc;
+          gap: 20px;
+        }
+
+        .spec span {
+          color: #777;
+        }
+
+        .spec strong {
+          text-align: right;
+        }
+
+        .faq details {
+          border-top: 1px solid #ccc;
+          padding: 21px 0;
+        }
+
+        .faq details:last-child {
+          border-bottom: 1px solid #ccc;
+        }
+
+        summary {
+          font-weight: 700;
+          cursor: pointer;
+        }
+
+        .faq p {
+          max-width: 700px;
+          color: #666;
+          line-height: 1.6;
+        }
+
+        .seoGrid {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 15px;
+        }
+
+        .seoBox {
+          background: #fff;
+          border: 1px solid #deded9;
+          border-radius: 17px;
+          padding: 22px;
+        }
+
+        .seoTop {
+          display: flex;
+          justify-content: space-between;
+        }
+
+        .seoTop button {
+          border: 0;
+          background: transparent;
+          text-decoration: underline;
+        }
+
+        .seoBox p {
+          line-height: 1.5;
+        }
+
+        .seoBox small {
+          color: #38805a;
+        }
+
+        .finalCallout {
+          padding-bottom: 20px;
+        }
+
+        .finalCallout p {
+          max-width: 720px;
+          color: #666;
+          line-height: 1.6;
+          font-size: 18px;
+        }
+
+        @media (max-width: 900px) {
+          .layout,
+          .productHero {
+            grid-template-columns: 1fr;
+          }
+
+          .live-card {
+            position: static;
+          }
+
+          .fourCards {
+            grid-template-columns: 1fr 1fr;
+          }
+
+          .shopify-head {
+            flex-direction: column;
           }
         }
-      }
-    `;
 
-    const productsResponse =
-      await fetch(
-        `https://${shop}/admin/api/${SHOPIFY_API_VERSION}/graphql.json`,
-        {
-          method: "POST",
+        @media (max-width: 600px) {
+          .topbar {
+            padding: 0 4vw;
+          }
 
-          headers: {
-            "Content-Type":
-              "application/json",
+          .workspace,
+          .preview {
+            width: 92vw;
+          }
 
-            Accept:
-              "application/json",
+          .workspace {
+            padding-top: 40px;
+          }
 
-            "X-Shopify-Access-Token":
-              accessToken,
-          },
+          .grid2,
+          .seoGrid {
+            grid-template-columns: 1fr;
+          }
 
-          body: JSON.stringify({
-            query,
-          }),
+          .card {
+            padding: 21px;
+          }
 
-          cache: "no-store",
+          .thumbGrid {
+            grid-template-columns: repeat(3, 1fr);
+          }
+
+          .shopify-images {
+            grid-template-columns: 1fr 1fr;
+          }
+
+          .productHero {
+            gap: 35px;
+          }
+
+          .heroCopy {
+            padding-top: 0;
+          }
+
+          .fourCards {
+            grid-template-columns: 1fr;
+          }
+
+          .spec {
+            flex-direction: column;
+          }
+
+          .spec strong {
+            text-align: left;
+          }
+
+          .previewTop {
+            align-items: flex-start;
+            gap: 15px;
+            flex-direction: column;
+          }
         }
-      );
-
-    const productsData =
-      (await productsResponse.json()) as ShopifyGraphQLResponse;
-
-    if (
-      !productsResponse.ok ||
-      productsData.errors
-    ) {
-      return errorResponse(
-        "Shopify products request failed.",
-        500,
-        productsData.errors ||
-          productsData
-      );
-    }
-
-    /*
-     * 6. Make sure the product response exists
-     */
-    const nodes =
-      productsData.data?.products?.nodes;
-
-    if (!Array.isArray(nodes)) {
-      return errorResponse(
-        "Shopify returned an invalid products response.",
-        500
-      );
-    }
-
-    /*
-     * 7. Convert Shopify data into the
-     *    exact structure expected by page.tsx
-     */
-    const products = nodes.map(
-      (item) => {
-        const images =
-          item.images?.nodes || [];
-
-        const featuredImage =
-          item.featuredImage?.url ||
-          images[0]?.url ||
-          null;
-
-        const price =
-          item.variants?.nodes?.[0]
-            ?.price || "";
-
-        return {
-          id: item.id,
-
-          title:
-            item.title || "",
-
-          description:
-            item.description || "",
-
-          productType:
-            item.productType || "",
-
-          tags: Array.isArray(item.tags)
-            ? item.tags
-            : [],
-
-          status:
-            item.status || "",
-
-          vendor:
-            item.vendor || "",
-
-          price,
-
-          images,
-
-          featuredImage,
-        };
-      }
-    );
-
-    /*
-     * 8. Return exactly what the frontend expects
-     */
-    return NextResponse.json({
-      success: true,
-      shop,
-      products,
-    });
-  } catch (error) {
-    console.error(
-      "Shopify products error:",
-      error
-    );
-
-    return errorResponse(
-      error instanceof Error
-        ? error.message
-        : "Unable to connect to Shopify.",
-      500
-    );
-  }
+      `}</style>
+    </main>
+  );
 }
