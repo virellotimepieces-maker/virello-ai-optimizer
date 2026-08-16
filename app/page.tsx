@@ -50,9 +50,10 @@ type OptimizedProduct = {
   productType: string;
   tags: string[];
   description: string;
+  features: string[];
+  specifications: string[];
   seoTitle: string;
   metaDescription: string;
-  specifications: string[];
 };
 
 /* =========================================================
@@ -233,9 +234,6 @@ function toProduct(product: ShopifyProduct): Product {
 function buildProductType(product: Product) {
   const existing = clean(product.productType);
 
-  /*
-   * Preserve a useful existing Shopify product type.
-   */
   if (
     existing &&
     !/^product$/i.test(existing) &&
@@ -280,7 +278,7 @@ function buildProductType(product: Product) {
 }
 
 /* =========================================================
-   TITLE CLEANUP
+   BAD WORD CLEANUP
 ========================================================= */
 
 function removeBadWords(value: string) {
@@ -322,10 +320,6 @@ function buildProductTitle(product: Product) {
     return true;
   });
 
-  /*
-   * Product title is kept concise, but there is
-   * no character max restriction in the editor.
-   */
   let title = limitWords(
     filtered.join(" "),
     8,
@@ -407,9 +401,6 @@ function buildTags(product: Product) {
     add("unisex");
   }
 
-  /*
-   * Preserve useful original Shopify tags.
-   */
   for (const tag of product.tags) {
     const cleanedTag = clean(tag);
 
@@ -462,7 +453,6 @@ const SPEC_LABELS = [
   "Functions",
   "Features",
   "Closure Type",
-  "Style",
 ] as const;
 
 /* =========================================================
@@ -492,12 +482,6 @@ function extractSpecifications(
 
   const specs: string[] = [];
 
-  /*
-   * Traditional specification format:
-   *
-   * Movement: Quartz
-   * Case Material: Stainless Steel
-   */
   const labelPattern =
     /(Material|Movement|Case Material|Case Size|Case Diameter|Case Thickness|Water Resistance|Strap Material|Band Material|Strap Width|Band Width|Crystal|Dial Color|Case Color|Band Color|Power Reserve|Battery|Dimensions|Weight|Capacity|Size|Color|Finish|Clasp Type|Dial Type|Display Type|Functions|Features|Closure Type)\s*[:：-]\s*([^,.;\n]{1,100})/gi;
 
@@ -512,16 +496,13 @@ function extractSpecifications(
     if (
       label &&
       value &&
-      value.length <= 120
+      value.length <= 120 &&
+      !/^features?$/i.test(label)
     ) {
       specs.push(`${label}: ${value}`);
     }
   }
 
-  /*
-   * Inspect Shopify product title,
-   * tags and product type for explicit information.
-   */
   const productText = getProductText(product);
   const lower = productText.toLowerCase();
 
@@ -547,19 +528,149 @@ function extractSpecifications(
     );
   }
 
-  if (/water resistant/.test(lower)) {
-    const waterMatch = lower.match(
-      /(\d+\s*(?:m|meter|meters|atm|bar))\s*(?:water resistant|water resistance)/i,
-    );
+  const waterMatch = lower.match(
+    /(\d+\s*(?:m|meter|meters|atm|bar))\s*(?:water resistant|water resistance)/i,
+  );
 
-    if (waterMatch) {
-      specs.push(
-        `Water Resistance: ${waterMatch[1]}`,
-      );
-    }
+  if (waterMatch) {
+    specs.push(
+      `Water Resistance: ${waterMatch[1]}`,
+    );
   }
 
   return unique(specs).slice(0, 20);
+}
+
+/* =========================================================
+   FEATURES
+========================================================= */
+
+function buildFeatures(
+  product: Product,
+  specifications: string[],
+) {
+  const text =
+    getProductText(product).toLowerCase();
+
+  const features: string[] = [];
+
+  const add = (value: string) => {
+    const feature = clean(value);
+
+    if (feature) {
+      features.push(feature);
+    }
+  };
+
+  const isWatch =
+    /watch|timepiece|chronograph|quartz|automatic|mechanical/.test(
+      text,
+    );
+
+  if (isWatch) {
+    if (/chronograph/.test(text)) {
+      add(
+        "Chronograph-inspired dial for a distinctive look",
+      );
+    }
+
+    if (/quartz/.test(text)) {
+      add(
+        "Quartz movement for dependable everyday timekeeping",
+      );
+    }
+
+    if (/automatic/.test(text)) {
+      add(
+        "Automatic movement for a classic mechanical experience",
+      );
+    }
+
+    if (/mechanical/.test(text)) {
+      add(
+        "Mechanical movement for traditional watchmaking appeal",
+      );
+    }
+
+    if (/stainless steel/.test(text)) {
+      add(
+        "Stainless steel construction",
+      );
+    }
+
+    if (
+      /luxury|premium|elegant|refined/.test(
+        text,
+      )
+    ) {
+      add(
+        "Refined finish suited to elevated everyday styling",
+      );
+    }
+
+    if (
+      /sport|racing|diving|diver/.test(
+        text,
+      )
+    ) {
+      add(
+        "Sport-inspired design for active styling",
+      );
+    }
+
+    add(
+      "Versatile design for professional, casual, and evening wear",
+    );
+
+    add(
+      "Suitable for everyday wear and special occasions",
+    );
+  } else {
+    add(
+      "Refined design for everyday use",
+    );
+
+    add(
+      "Versatile styling for different occasions",
+    );
+
+    add(
+      "Designed with practicality and presentation in mind",
+    );
+  }
+
+  /*
+   * Do not duplicate information already represented
+   * as an exact specification.
+   */
+  const specText = specifications
+    .join(" ")
+    .toLowerCase();
+
+  return unique(features)
+    .filter((feature) => {
+      const lowerFeature =
+        feature.toLowerCase();
+
+      if (
+        lowerFeature.startsWith(
+          "movement:",
+        )
+      ) {
+        return false;
+      }
+
+      if (
+        specText.includes(
+          lowerFeature,
+        )
+      ) {
+        return false;
+      }
+
+      return true;
+    })
+    .slice(0, 8);
 }
 
 /* =========================================================
@@ -634,13 +745,14 @@ function cleanOriginalDescription(
 }
 
 /* =========================================================
-   DESCRIPTION
+   PRODUCT DESCRIPTION
+   IMPORTANT:
+   FEATURES AND SPECIFICATIONS ARE NOT INCLUDED HERE.
 ========================================================= */
 
 function buildDescription(
   product: Product,
   title: string,
-  specifications: string[],
 ) {
   const productText =
     getProductText(product).toLowerCase();
@@ -707,84 +819,21 @@ function buildDescription(
       `Thoughtfully designed for versatility, this piece is easy to incorporate into everyday use while maintaining a polished appearance.`;
   }
 
-  let features: string[] = [];
-
-  if (isWatch) {
-    if (isChronograph) {
-      features.push(
-        "Chronograph-inspired dial for a distinctive look",
-      );
-    }
-
-    if (isQuartz) {
-      features.push(
-        "Quartz movement for dependable everyday timekeeping",
-      );
-    }
-
-    if (isAutomatic) {
-      features.push(
-        "Automatic movement for a classic mechanical experience",
-      );
-    }
-
-    if (/stainless steel/.test(productText)) {
-      features.push(
-        "Stainless steel construction",
-      );
-    }
-
-    features.push(
-      "Refined design suited to professional and casual styling",
-    );
-
-    features.push(
-      "Versatile choice for everyday wear and special occasions",
-    );
-  } else {
-    features.push(
-      "Refined design for everyday use",
-    );
-
-    features.push(
-      "Versatile styling for different occasions",
-    );
-
-    features.push(
-      "Designed with practicality and presentation in mind",
-    );
-  }
-
-  features = unique(features);
-
-  const sections: string[] = [];
-
-  sections.push(intro);
-  sections.push(body);
-
-  if (features.length > 0) {
-    sections.push(
-      `Key Features\n${features
-        .map(
-          (feature) =>
-            `• ${feature}`,
-        )
-        .join("\n")}`,
-    );
-  }
-
-  if (specifications.length > 0) {
-    sections.push(
-      `Specifications\n${specifications
-        .map(
-          (specification) =>
-            `• ${specification}`,
-        )
-        .join("\n")}`,
-    );
-  }
-
-  return sections
+  /*
+   * IMPORTANT:
+   * Only description paragraphs are returned.
+   *
+   * NO:
+   * Key Features
+   * Specifications
+   *
+   * inside this function.
+   */
+  return [
+    intro,
+    body,
+  ]
+    .filter(Boolean)
     .join("\n\n")
     .trim();
 }
@@ -811,40 +860,6 @@ function descriptionToHtml(
   const htmlParts: string[] = [];
 
   for (const lines of paragraphs) {
-    if (
-      lines.length > 0 &&
-      /^(Key Features|Specifications)$/i.test(
-        lines[0],
-      )
-    ) {
-      const heading =
-        escapeHtml(lines[0]);
-
-      const items = lines
-        .slice(1)
-        .map((line) =>
-          line
-            .replace(/^•\s*/, "")
-            .trim(),
-        )
-        .filter(Boolean);
-
-      if (items.length > 0) {
-        htmlParts.push(
-          `<h3>${heading}</h3><ul>${items
-            .map(
-              (item) =>
-                `<li>${escapeHtml(
-                  item,
-                )}</li>`,
-            )
-            .join("")}</ul>`,
-        );
-      }
-
-      continue;
-    }
-
     const paragraphText =
       lines
         .join(" ")
@@ -865,7 +880,7 @@ function descriptionToHtml(
 
 /* =========================================================
    SEO TITLE
-   MAXIMUM = 50 CHARACTERS
+   MAX 50 CHARACTERS
 ========================================================= */
 
 function buildSeoTitle(
@@ -893,9 +908,6 @@ function buildSeoTitle(
   const candidate =
     `${keyword} - ${title}`;
 
-  /*
-   * SEO title target is 50 characters.
-   */
   return limitCharacters(
     candidate,
     50,
@@ -904,14 +916,13 @@ function buildSeoTitle(
 
 /* =========================================================
    META DESCRIPTION
-   MAXIMUM = 150 CHARACTERS
-   NEVER INTENTIONALLY CUT A SENTENCE
+   MAX 150 CHARACTERS
+   COMPLETE SENTENCES ONLY
 ========================================================= */
 
 function buildMetaDescription(
   product: Product,
   title: string,
-  specifications: string[],
 ) {
   const audience =
     product.audience === "Unisex"
@@ -921,95 +932,41 @@ function buildMetaDescription(
   const productText =
     getProductText(product).toLowerCase();
 
-  /*
-   * Keep the title reasonably short inside
-   * the meta description.
-   */
   const shortTitle =
-    limitCharacters(title, 48);
+    limitCharacters(title, 40);
 
   const candidates: string[] = [];
 
-  /*
-   * Chronograph
-   */
   if (/chronograph/.test(productText)) {
     candidates.push(
-      `Shop the ${shortTitle} for ${audience}. Distinctive chronograph styling with versatile appeal for everyday wear and special occasions.`,
+      `Shop the ${shortTitle} for ${audience}. Distinctive chronograph styling for everyday wear and special occasions.`,
     );
   }
 
-  /*
-   * Automatic
-   */
   if (/automatic/.test(productText)) {
     candidates.push(
-      `Shop the ${shortTitle} for ${audience}. Classic automatic movement and refined styling for everyday wear and special occasions.`,
+      `Shop the ${shortTitle} for ${audience}. Classic automatic movement with refined styling for everyday wear.`,
     );
   }
 
-  /*
-   * Quartz
-   */
   if (/quartz/.test(productText)) {
     candidates.push(
-      `Shop the ${shortTitle} for ${audience}. Dependable quartz movement and refined styling for everyday wear and special occasions.`,
+      `Shop the ${shortTitle} for ${audience}. Reliable quartz movement with refined styling for everyday wear.`,
     );
   }
 
-  /*
-   * Specification-aware option.
-   *
-   * Only use the specification when it is
-   * short enough to keep the sentence complete.
-   */
-  if (specifications.length > 0) {
-    const firstSpec = clean(
-      specifications[0]
-        .replace(/^[^:]+:\s*/, ""),
-    );
-
-    if (
-      firstSpec &&
-      firstSpec.length <= 28
-    ) {
-      candidates.push(
-        `Shop the ${shortTitle} for ${audience}. Refined design with ${firstSpec.toLowerCase()} for versatile everyday wear.`,
-      );
-    }
-  }
-
-  /*
-   * General option.
-   */
   candidates.push(
-    `Shop the ${shortTitle} for ${audience}. Refined design and versatile styling for everyday wear and special occasions.`,
+    `Shop the ${shortTitle} for ${audience}. Refined design and versatile styling for everyday wear.`,
   );
 
-  /*
-   * Shorter general option.
-   */
   candidates.push(
-    `Discover the ${shortTitle}, designed for ${audience} with refined style and versatile everyday appeal.`,
+    `Discover the ${shortTitle} for ${audience}. Refined style for everyday wear and special occasions.`,
   );
 
-  /*
-   * Shortest complete option.
-   */
   candidates.push(
     `Discover the ${shortTitle} for ${audience}. Refined style for everyday wear.`,
   );
 
-  /*
-   * Select the longest useful COMPLETE sentence
-   * that fits within 150 characters.
-   *
-   * This prevents:
-   *
-   * "Features quartz"
-   *
-   * from being left at the end.
-   */
   const validCandidates =
     candidates.filter(
       (candidate) =>
@@ -1025,16 +982,10 @@ function buildMetaDescription(
     );
   }
 
-  /*
-   * If the product title itself is unusually long,
-   * progressively shorten only the title.
-   *
-   * We do NOT cut the completed sentence.
-   */
   for (
-    let titleLength = 45;
-    titleLength >= 20;
-    titleLength -= 5
+    let titleLength = 35;
+    titleLength >= 18;
+    titleLength -= 3
   ) {
     const shorterTitle =
       limitCharacters(
@@ -1043,9 +994,8 @@ function buildMetaDescription(
       );
 
     const fallbackCandidates = [
-      `Shop the ${shorterTitle} for ${audience}. Refined style for everyday wear and special occasions.`,
-      `Discover the ${shorterTitle} for ${audience}. Refined style for everyday wear.`,
-      `Shop the ${shorterTitle}. Refined style for everyday wear.`,
+      `Shop the ${shorterTitle} for ${audience}. Refined style for everyday wear.`,
+      `Discover the ${shorterTitle}. Refined style for everyday wear.`,
     ];
 
     const fitting =
@@ -1064,9 +1014,6 @@ function buildMetaDescription(
     }
   }
 
-  /*
-   * Extremely safe fallback.
-   */
   return "Discover refined style designed for everyday wear.";
 }
 
@@ -1092,11 +1039,20 @@ function optimizeProduct(
       product,
     );
 
+  const features =
+    buildFeatures(
+      product,
+      specifications,
+    );
+
+  /*
+   * Description is deliberately generated
+   * WITHOUT features and specifications.
+   */
   const description =
     buildDescription(
       product,
       title,
-      specifications,
     );
 
   const seoTitle =
@@ -1110,7 +1066,6 @@ function optimizeProduct(
     buildMetaDescription(
       product,
       title,
-      specifications,
     );
 
   return {
@@ -1118,9 +1073,10 @@ function optimizeProduct(
     productType,
     tags,
     description,
+    features,
+    specifications,
     seoTitle,
     metaDescription,
-    specifications,
   };
 }
 
@@ -1169,6 +1125,14 @@ export default function Page() {
 
   const [description, setDescription] =
     useState("");
+
+  const [features, setFeatures] =
+    useState<string[]>([]);
+
+  const [
+    specifications,
+    setSpecifications,
+  ] = useState<string[]>([]);
 
   const [seoTitle, setSeoTitle] =
     useState("");
@@ -1378,15 +1342,14 @@ export default function Page() {
       selected.tags.join(", "),
     );
 
-    /*
-     * Always show clean text in textarea.
-     */
     setDescription(
       stripHtml(
         selected.description,
       ),
     );
 
+    setFeatures([]);
+    setSpecifications([]);
     setSeoTitle("");
     setMetaDescription("");
     setOptimized(null);
@@ -1429,8 +1392,21 @@ export default function Page() {
         result.tags.join(", "),
       );
 
+      /*
+       * ONLY description.
+       * Features and specifications are
+       * NOT inserted here.
+       */
       setDescription(
         result.description,
+      );
+
+      setFeatures(
+        result.features,
+      );
+
+      setSpecifications(
+        result.specifications,
       );
 
       setSeoTitle(
@@ -1479,15 +1455,13 @@ export default function Page() {
       );
 
     /*
-     * Textarea contains plain text.
+     * IMPORTANT:
+     * Product description contains ONLY
+     * the actual description.
      */
     const finalDescription =
       description.trim();
 
-    /*
-     * Convert plain text to Shopify HTML
-     * only when saving.
-     */
     const finalDescriptionHtml =
       descriptionToHtml(
         finalDescription,
@@ -1538,9 +1512,6 @@ export default function Page() {
       return;
     }
 
-    /*
-     * SEO Title = MAX 50.
-     */
     if (
       finalSeoTitle.length >
       50
@@ -1551,9 +1522,6 @@ export default function Page() {
       return;
     }
 
-    /*
-     * Meta Description = MAX 150.
-     */
     if (
       finalMetaDescription.length >
       150
@@ -1612,6 +1580,13 @@ export default function Page() {
               tags:
                 finalTags,
 
+              /*
+               * ONLY the clean description
+               * is sent as Shopify description.
+               *
+               * Features and specifications
+               * are NOT merged into it.
+               */
               description:
                 finalDescriptionHtml,
 
@@ -1640,9 +1615,6 @@ export default function Page() {
         );
       }
 
-      /*
-       * Keep local editor state as plain text.
-       */
       setProducts(
         (current) =>
           current.map(
@@ -1979,7 +1951,11 @@ export default function Page() {
         }
 
         .description-textarea {
-          min-height: 330px;
+          min-height: 300px;
+        }
+
+        .list-textarea {
+          min-height: 180px;
         }
 
         .counter {
@@ -1999,6 +1975,46 @@ export default function Page() {
           font-size: 20px;
           font-weight: 800;
           margin-bottom: 16px;
+        }
+
+        /*
+         * FEATURES + SPECIFICATIONS
+         * ARE NOW TWO SEPARATE COLUMNS.
+         */
+
+        .details-grid {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 16px;
+        }
+
+        .detail-card {
+          border: 1px solid #dedede;
+          border-radius: 14px;
+          padding: 18px;
+          background: #fafafa;
+        }
+
+        .detail-title {
+          font-size: 18px;
+          font-weight: 800;
+          margin-bottom: 13px;
+        }
+
+        .detail-list {
+          margin: 0;
+          padding-left: 20px;
+          line-height: 1.7;
+        }
+
+        .detail-list li {
+          margin-bottom: 5px;
+        }
+
+        .empty-detail {
+          color: #777;
+          font-size: 14px;
+          line-height: 1.5;
         }
 
         .generated {
@@ -2049,6 +2065,12 @@ export default function Page() {
 
           .products {
             max-height: 300px;
+          }
+        }
+
+        @media (max-width: 700px) {
+          .details-grid {
+            grid-template-columns: 1fr;
           }
         }
 
@@ -2444,7 +2466,8 @@ export default function Page() {
                 </div>
 
                 {/* -----------------------------------------
-                    DESCRIPTION
+                    PRODUCT DESCRIPTION
+                    ONLY DESCRIPTION
                 ----------------------------------------- */}
 
                 <div className="field">
@@ -2469,11 +2492,94 @@ export default function Page() {
                   />
 
                   <div className="small-note">
-                    The editor uses
-                    clean text. HTML
-                    formatting is added
-                    automatically when
-                    you save to Shopify.
+                    Features and
+                    specifications are
+                    kept separate and
+                    are never inserted
+                    into this description.
+                  </div>
+                </div>
+
+                {/* -----------------------------------------
+                    FEATURES + SPECIFICATIONS
+                    SEPARATE COLUMNS
+                ----------------------------------------- */}
+
+                <div className="section">
+                  <div className="section-title">
+                    Product Details
+                  </div>
+
+                  <div className="details-grid">
+                    {/* FEATURES */}
+
+                    <div className="detail-card">
+                      <div className="detail-title">
+                        Key Features
+                      </div>
+
+                      {features.length >
+                      0 ? (
+                        <ul className="detail-list">
+                          {features.map(
+                            (
+                              feature,
+                              index,
+                            ) => (
+                              <li
+                                key={`${feature}-${index}`}
+                              >
+                                {
+                                  feature
+                                }
+                              </li>
+                            ),
+                          )}
+                        </ul>
+                      ) : (
+                        <div className="empty-detail">
+                          Features will
+                          appear here
+                          after
+                          optimization.
+                        </div>
+                      )}
+                    </div>
+
+                    {/* SPECIFICATIONS */}
+
+                    <div className="detail-card">
+                      <div className="detail-title">
+                        Specifications
+                      </div>
+
+                      {specifications.length >
+                      0 ? (
+                        <ul className="detail-list">
+                          {specifications.map(
+                            (
+                              specification,
+                              index,
+                            ) => (
+                              <li
+                                key={`${specification}-${index}`}
+                              >
+                                {
+                                  specification
+                                }
+                              </li>
+                            ),
+                          )}
+                        </ul>
+                      ) : (
+                        <div className="empty-detail">
+                          Specifications
+                          will appear
+                          here after
+                          optimization.
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
 
@@ -2486,7 +2592,7 @@ export default function Page() {
                     Google SEO
                   </div>
 
-                  {/* SEO TITLE MAX 50 */}
+                  {/* SEO TITLE */}
 
                   <div className="field">
                     <label>
@@ -2516,7 +2622,7 @@ export default function Page() {
                     </div>
                   </div>
 
-                  {/* META DESCRIPTION MAX 150 */}
+                  {/* META DESCRIPTION */}
 
                   <div className="field">
                     <label>
@@ -2606,7 +2712,7 @@ export default function Page() {
                       </div>
                     </div>
 
-                    {/* DESCRIPTION */}
+                    {/* DESCRIPTION ONLY */}
 
                     <div className="generated">
                       <div className="generated-head">
@@ -2621,6 +2727,44 @@ export default function Page() {
                           optimized.description
                         }
                       </div>
+                    </div>
+
+                    {/* FEATURES */}
+
+                    <div className="generated">
+                      <div className="generated-head">
+                        <strong>
+                          Key Features
+                        </strong>
+                      </div>
+
+                      {optimized
+                        .features
+                        .length >
+                      0 ? (
+                        <ul className="specs">
+                          {optimized.features.map(
+                            (
+                              feature,
+                              index,
+                            ) => (
+                              <li
+                                key={`${feature}-${index}`}
+                              >
+                                {
+                                  feature
+                                }
+                              </li>
+                            ),
+                          )}
+                        </ul>
+                      ) : (
+                        <div className="generated-content">
+                          No features
+                          were
+                          generated.
+                        </div>
+                      )}
                     </div>
 
                     {/* SPECIFICATIONS */}
@@ -2639,15 +2783,14 @@ export default function Page() {
                         <ul className="specs">
                           {optimized.specifications.map(
                             (
-                              spec,
+                              specification,
+                              index,
                             ) => (
                               <li
-                                key={
-                                  spec
-                                }
+                                key={`${specification}-${index}`}
                               >
                                 {
-                                  spec
+                                  specification
                                 }
                               </li>
                             ),
