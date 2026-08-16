@@ -9,7 +9,7 @@ function jsonResponse(data: any, status = 200) {
   return NextResponse.json(data, { status });
 }
 
-function getShopDomain() {
+function getShopDomain(): string {
   const raw = process.env.SHOPIFY_STORE_DOMAIN?.trim();
 
   if (!raw) return "";
@@ -19,7 +19,7 @@ function getShopDomain() {
     .replace(/\/+$/, "");
 }
 
-async function getShopifyAccessToken() {
+async function getShopifyAccessToken(): Promise<string> {
   if (cachedToken && Date.now() < tokenExpiresAt - 60_000) {
     return cachedToken;
   }
@@ -29,7 +29,9 @@ async function getShopifyAccessToken() {
   const clientSecret = process.env.SHOPIFY_API_SECRET;
 
   if (!shop || !clientId || !clientSecret) {
-    throw new Error("Missing Shopify credentials in Vercel Environment Variables.");
+    throw new Error(
+      "Missing Shopify credentials in Vercel Environment Variables."
+    );
   }
 
   const response = await fetch(
@@ -59,10 +61,11 @@ async function getShopifyAccessToken() {
   }
 
   cachedToken = result.access_token;
+
   tokenExpiresAt =
     Date.now() + Number(result.expires_in || 86399) * 1000;
 
-  return cachedToken;
+  return result.access_token;
 }
 
 export async function GET(_request: NextRequest) {
@@ -95,10 +98,12 @@ export async function GET(_request: NextRequest) {
             tags
             createdAt
             updatedAt
+
             featuredImage {
               url
               altText
             }
+
             variants(first: 10) {
               nodes {
                 id
@@ -159,7 +164,9 @@ export async function GET(_request: NextRequest) {
     return jsonResponse(
       {
         success: false,
-        error: error?.message || "Failed to connect to Shopify.",
+        error:
+          error?.message ||
+          "Failed to connect to Shopify.",
       },
       500
     );
