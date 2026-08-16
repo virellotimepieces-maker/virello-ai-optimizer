@@ -64,14 +64,7 @@ async function getProducts(shop: string, accessToken: string) {
   }
 
   if (!response.ok || data?.errors) {
-    console.error("Shopify products request failed:", {
-      status: response.status,
-      data,
-    });
-
-    throw new Error(
-      data?.errors?.[0]?.message || "Shopify products request failed."
-    );
+    throw new Error(data?.errors?.[0]?.message || "Shopify products request failed.");
   }
 
   return data?.data?.products?.nodes ?? [];
@@ -80,41 +73,17 @@ async function getProducts(shop: string, accessToken: string) {
 export async function GET(request: NextRequest) {
   try {
     const shop = process.env.SHOPIFY_STORE_DOMAIN;
-    const accessToken =
-      process.env.SHOPIFY_ADMIN_ACCESS_TOKEN || process.env.SHOPIFY_API_SECRET;
+    const accessToken = process.env.SHOPIFY_ADMIN_ACCESS_TOKEN || process.env.SHOPIFY_API_SECRET;
 
     if (!shop || !accessToken) {
-      return jsonResponse(
-        {
-          success: false,
-          error:
-            "Missing SHOPIFY_STORE_DOMAIN or Access Token in Environment Variables.",
-        },
-        400
-      );
+      return jsonResponse({ success: false, error: "Missing env vars" }, 400);
     }
 
     const cleanShop = shop.replace(/^https?:\/\//, "").replace(/\/$/, "");
-
     const products = await getProducts(cleanShop, accessToken);
 
-    return jsonResponse({
-      success: true,
-      shop: cleanShop,
-      products,
-    });
+    return jsonResponse({ success: true, shop: cleanShop, products });
   } catch (error) {
-    console.error("Shopify products route error:", error);
-
-    return jsonResponse(
-      {
-        success: false,
-        error:
-          error instanceof Error
-            ? error.message
-            : "Unable to connect to Shopify.",
-      },
-      500
-    );
+    return jsonResponse({ success: false, error: "Error" }, 500);
   }
 }
