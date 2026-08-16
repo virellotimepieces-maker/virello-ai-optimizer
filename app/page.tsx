@@ -75,7 +75,6 @@ const stripHtml = (value: string) =>
     .replace(/&amp;/gi, "&")
     .replace(/&quot;/gi, '"')
     .replace(/&#39;/gi, "'")
-    .replace(/&#x27;/gi, "'")
     .replace(/\s+/g, " ")
     .trim();
 
@@ -89,14 +88,12 @@ const limit = (value: string, max: number) => {
   const cut = text.slice(0, max + 1);
   const end = cut.lastIndexOf(" ");
 
-  const result = cut.slice(
-    0,
-    end > 0 ? end : max
+  return (
+    cut
+      .slice(0, end > 0 ? end : max)
+      .replace(/[.,;:!?-]+$/, "")
+      .trim()
   );
-
-  return result
-    .replace(/[.,;:!?-]+$/, "")
-    .trim();
 };
 
 function uniqueWords(value: string) {
@@ -123,230 +120,163 @@ function uniqueWords(value: string) {
   return result;
 }
 
-function cleanProductSource(value: string) {
-  return clean(value)
+/**
+ * Creates a short, specific product title.
+ * The customer-facing title is intentionally kept compact.
+ */
+function buildTitle(
+  sourceTitle: string,
+  audience: Product["audience"],
+  productType: string
+) {
+  const isWatch =
+    /watch|timepiece|chronograph|automatic|quartz|mechanical/i.test(
+      `${sourceTitle} ${productType}`
+    );
+
+  let source = clean(sourceTitle)
     .replace(
-      /\b(official|wholesale|dropshipping|free shipping|cheap|hot sale|new arrival|best seller|top quality|2024|2025|2026)\b/gi,
-      ""
-    )
-    .replace(
-      /\b(men's|mens|men|women's|womens|women|unisex)\b/gi,
-      ""
-    )
-    .replace(
-      /\b(watch|watches|timepiece|timepieces)\b/gi,
+      /\b(
+        official|
+        wholesale|
+        dropshipping|
+        free shipping|
+        cheap|
+        hot sale|
+        sale|
+        new arrival|
+        new|
+        fashion|
+        trendy|
+        2023|
+        2024|
+        2025|
+        2026
+      )\b/gi,
       ""
     )
     .replace(/[|,:;()[\]{}]+/g, " ")
     .replace(/\s+/g, " ")
     .trim();
-}
 
-function detectWatchType(
-  sourceTitle: string,
-  productType: string,
-  description: string
-) {
-  const text =
-    `${sourceTitle} ${productType} ${description}`.toLowerCase();
+  let words = uniqueWords(source);
 
-  if (/\bchronograph\b/.test(text)) {
-    return "Chronograph";
-  }
-
-  if (/\bautomatic\b/.test(text)) {
-    return "Automatic";
-  }
-
-  if (/\bmechanical\b/.test(text)) {
-    return "Mechanical";
-  }
-
-  if (/\bquartz\b/.test(text)) {
-    return "Quartz";
-  }
-
-  if (/\bsmart\s*watch|smartwatch\b/.test(text)) {
-    return "Smart";
-  }
-
-  return "Watch";
-}
-
-function buildTitle(
-  sourceTitle: string,
-  audience: Product["audience"],
-  productType: string,
-  description = ""
-) {
-  const cleaned = cleanProductSource(sourceTitle);
-
-  const type = detectWatchType(
-    sourceTitle,
-    productType,
-    description
-  );
-
-  const words = uniqueWords(cleaned);
-
-  const blocked = new Set([
-    "for",
-    "the",
-    "with",
-    "and",
-    "men",
-    "mens",
-    "men's",
-    "women",
-    "womens",
-    "women's",
-    "unisex",
+  const removeWords = new Set([
     "watch",
     "watches",
     "timepiece",
     "timepieces",
-    "fashion",
+    "men",
+    "men's",
+    "women",
+    "women's",
+    "unisex",
+    "for",
+    "the",
+    "and",
+    "with",
     "style",
-    "luxury",
-    "new",
-    "classic",
-    "sale",
-    "brand",
-    "official",
-    "original",
+    "style",
   ]);
 
-  const useful = words.filter(
+  if (isWatch) {
+    words = words.filter(
+      (word) =>
+        !removeWords.has(
+          word.toLowerCase()
+        )
+    );
+
+    /*
+     * Keep the strongest identifying words:
+     * brand, model, movement, material,
+     * collection/model code, etc.
+     */
+    const core = words.slice(0, 5);
+
+    const gender =
+      audience === "Women"
+        ? "Women's"
+        : audience === "Men"
+          ? "Men's"
+          : "Unisex";
+
+    const generated = clean(
+      `${core.join(" ")} ${gender} Watch`
+    );
+
+    return limit(
+      generated || `${gender} Watch`,
+      65
+    );
+  }
+
+  const genericWords = new Set([
+    "product",
+    "item",
+    "best",
+    "new",
+    "hot",
+    "sale",
+    "fashion",
+    "style",
+    "design",
+  ]);
+
+  words = words.filter(
     (word) =>
-      !blocked.has(
+      !genericWords.has(
         word.toLowerCase()
       )
   );
 
-  const selected = useful
-    .slice(0, 5)
-    .join(" ");
-
-  let result = selected;
-
-  if (type === "Chronograph") {
-    result = `${selected} Chronograph`;
-  } else if (type === "Automatic") {
-    result = `${selected} Automatic Watch`;
-  } else if (type === "Mechanical") {
-    result = `${selected} Mechanical Watch`;
-  } else if (type === "Quartz") {
-    result = `${selected} Quartz Watch`;
-  } else if (type === "Smart") {
-    result = `${selected} Smart Watch`;
-  } else {
-    result = `${selected} Watch`;
-  }
-
-  if (audience === "Women") {
-    result = `${result} Women's`;
-  } else if (audience === "Men") {
-    result = `${result} Men's`;
-  }
-
-  result = clean(result);
-
-  if (!result || result === "Watch") {
-    return "Classic Watch";
-  }
-
-  return result;
+  return limit(
+    words.slice(0, 7).join(" ") ||
+      productType ||
+      "Product",
+    65
+  );
 }
 
 function extractSpecs(description: string) {
   const text = stripHtml(description);
   const specs: string[] = [];
 
-  const addSpec = (
-    label: string,
-    value: string | undefined
-  ) => {
-    if (!value) {
-      return;
-    }
-
-    const cleaned = clean(value)
-      .replace(/^[:\-–—]\s*/, "")
-      .replace(/\s+/g, " ")
-      .trim();
-
-    if (
-      !cleaned ||
-      cleaned.length < 2 ||
-      cleaned.length > 120
-    ) {
-      return;
-    }
-
-    const finalValue =
-      `${label}: ${cleaned}`;
-
-    if (
-      !specs.some(
-        (item) =>
-          item.toLowerCase() ===
-          finalValue.toLowerCase()
-      )
-    ) {
-      specs.push(finalValue);
-    }
-  };
-
   const patterns = [
     {
       label: "Movement",
       regex:
-        /(?:movement|mechanism|movement type)\s*[:：\-–—]?\s*([^\n|;]{2,120})/i,
+        /\b(?:movement|mechanism)\s*[:\-]\s*([^.;,\n]+)/i,
     },
     {
       label: "Case Material",
       regex:
-        /(?:case material|case)\s*[:：\-–—]\s*([^\n|;]{2,120})/i,
+        /\bcase material\s*[:\-]\s*([^.;,\n]+)/i,
     },
     {
       label: "Case Size",
       regex:
-        /(?:case size|dial diameter|diameter|dial size)\s*[:：\-–—]?\s*([^\n|;]{2,120})/i,
+        /\b(?:case size|dial diameter|diameter)\s*[:\-]\s*([^.;,\n]+)/i,
     },
     {
       label: "Water Resistance",
       regex:
-        /(?:water resistance|water resistant|waterproof)\s*[:：\-–—]?\s*([^\n|;]{2,120})/i,
+        /\b(?:water resistance|water resistant)\s*[:\-]?\s*([^.;,\n]+)/i,
     },
     {
       label: "Strap",
       regex:
-        /(?:strap material|band material|bracelet material|strap|band|bracelet)\s*[:：\-–—]\s*([^\n|;]{2,120})/i,
+        /\b(?:strap|band|bracelet)(?: material)?\s*[:\-]\s*([^.;,\n]+)/i,
     },
     {
       label: "Crystal",
       regex:
-        /(?:crystal|glass material|watch glass|glass)\s*[:：\-–—]?\s*([^\n|;]{2,120})/i,
+        /\b(?:crystal|glass)\s*[:\-]\s*([^.;,\n]+)/i,
     },
     {
       label: "Power Reserve",
       regex:
-        /(?:power reserve|reserve time)\s*[:：\-–—]?\s*([^\n|;]{2,120})/i,
-    },
-    {
-      label: "Dial Color",
-      regex:
-        /(?:dial color|dial colour)\s*[:：\-–—]?\s*([^\n|;]{2,120})/i,
-    },
-    {
-      label: "Case Color",
-      regex:
-        /(?:case color|case colour)\s*[:：\-–—]?\s*([^\n|;]{2,120})/i,
-    },
-    {
-      label: "Clasp",
-      regex:
-        /(?:clasp type|clasp)\s*[:：\-–—]?\s*([^\n|;]{2,120})/i,
+        /\bpower reserve\s*[:\-]\s*([^.;,\n]+)/i,
     },
   ];
 
@@ -354,78 +284,80 @@ function extractSpecs(description: string) {
     const match = text.match(item.regex);
 
     if (match?.[1]) {
-      addSpec(
-        item.label,
-        match[1]
+      specs.push(
+        `${item.label}: ${clean(match[1])}`
       );
     }
   }
 
-  const linePatterns = [
-    {
-      label: "Movement",
-      regex:
-        /\bMovement\s+Type\s+([A-Za-z0-9 .\/-]{2,80})/i,
-    },
-    {
-      label: "Band Material",
-      regex:
-        /\bBand\s+Material\s+Type\s+([A-Za-z0-9 .\/-]{2,80})/i,
-    },
-    {
-      label: "Case Material",
-      regex:
-        /\bCase\s+Material\s+([A-Za-z0-9 .\/-]{2,80})/i,
-    },
-    {
-      label: "Water Resistance",
-      regex:
-        /\bWater\s+Resistance\s+Depth\s+([A-Za-z0-9 .\/-]{2,80})/i,
-    },
-    {
-      label: "Dial Window",
-      regex:
-        /\bDial\s+Window\s+Material\s+Type\s+([A-Za-z0-9 .\/-]{2,80})/i,
-    },
-    {
-      label: "Clasp",
-      regex:
-        /\bClasp\s+Type\s+([A-Za-z0-9 .\/-]{2,80})/i,
-    },
-  ];
+  return specs;
+}
 
-  for (const item of linePatterns) {
-    const match = text.match(item.regex);
+function detectWatchFeatures(
+  product: Product
+) {
+  const text = `${product.title} ${product.description} ${product.tags}`;
 
-    if (match?.[1]) {
-      addSpec(
-        item.label,
-        match[1]
-      );
-    }
+  const features: string[] = [];
+
+  if (/automatic|mechanical/i.test(text)) {
+    features.push(
+      "Automatic movement"
+    );
   }
 
-  return specs.slice(0, 12);
+  if (/chronograph/i.test(text)) {
+    features.push(
+      "Chronograph styling"
+    );
+  }
+
+  if (/stainless steel/i.test(text)) {
+    features.push(
+      "Stainless steel construction"
+    );
+  }
+
+  if (/sapphire/i.test(text)) {
+    features.push(
+      "Sapphire crystal"
+    );
+  } else if (/mineral crystal|mineral glass/i.test(text)) {
+    features.push(
+      "Mineral crystal"
+    );
+  }
+
+  if (/water resistant|water resistance/i.test(text)) {
+    features.push(
+      "Water-resistant design"
+    );
+  }
+
+  if (/quartz/i.test(text)) {
+    features.push(
+      "Quartz movement"
+    );
+  }
+
+  return features;
 }
 
 function generateResult(
   product: Product
 ): Result {
-  const originalDescription =
-    stripHtml(
-      product.description
-    );
-
   const title = buildTitle(
     product.title,
     product.audience,
-    product.productType,
-    product.description
+    product.productType
   );
 
-  const factualSpecs =
-    extractSpecs(
-      product.description
+  const originalDescription =
+    stripHtml(product.description);
+
+  const isWatch =
+    /watch|timepiece|chronograph|automatic|quartz|mechanical/i.test(
+      `${product.title} ${product.productType}`
     );
 
   const audiencePhrase =
@@ -433,114 +365,54 @@ function generateResult(
       ? "men and women"
       : product.audience.toLowerCase();
 
-  const sourceText =
-    `${product.title} ${product.productType} ${product.description}`.toLowerCase();
+  const factualSpecs =
+    extractSpecs(product.description);
 
-  const hasAutomatic =
-    /\bautomatic\b/.test(
-      sourceText
-    );
+  const detectedFeatures =
+    detectWatchFeatures(product);
 
-  const hasChronograph =
-    /\bchronograph\b/.test(
-      sourceText
-    );
+  /*
+   * More specific benefits when actual
+   * product information supports them.
+   */
+  const bullets = isWatch
+    ? detectedFeatures.length
+      ? [
+          ...detectedFeatures.slice(
+            0,
+            3
+          ),
+          "Designed for versatile everyday and occasion wear",
+        ]
+      : [
+          "Refined design for everyday wear",
+          "Easy to pair with casual and dressier looks",
+          "A versatile choice for personal wear or gifting",
+          "Designed for a polished finish",
+        ]
+    : [
+        "Designed around practical everyday use",
+        "Easy to pair with a range of settings",
+        "Clean, versatile presentation",
+        "A practical choice for personal use or gifting",
+      ];
 
-  const hasQuartz =
-    /\bquartz\b/.test(
-      sourceText
-    );
-
-  const hasStainless =
-    /stainless steel/.test(
-      sourceText
-    );
-
-  const hasWaterResistance =
-    /water resistant|water resistance|waterproof/.test(
-      sourceText
-    );
-
-  const hasLeather =
-    /leather|genuine leather/.test(
-      sourceText
-    );
-
-  const bullets: string[] = [];
-
-  if (hasAutomatic) {
-    bullets.push(
-      "Automatic movement for a traditional mechanical feel"
-    );
-  }
-
-  if (hasChronograph) {
-    bullets.push(
-      "Chronograph styling with a sport-inspired profile"
-    );
-  }
-
-  if (hasQuartz) {
-    bullets.push(
-      "Quartz movement suited to dependable everyday wear"
-    );
-  }
-
-  if (hasStainless) {
-    bullets.push(
-      "Stainless steel detailing for a polished finish"
-    );
-  }
-
-  if (hasWaterResistance) {
-    bullets.push(
-      "Water-resistance details are presented from the supplied product information"
-    );
-  }
-
-  if (hasLeather) {
-    bullets.push(
-      "Leather strap styling for a refined everyday look"
-    );
-  }
-
-  if (bullets.length === 0) {
-    bullets.push(
-      `Designed for ${audiencePhrase} with a distinctive product profile`,
-      "Versatile styling for everyday outfits and occasions",
-      "Product details are presented from the available Shopify information",
-      "A considered option for personal wear or gifting"
-    );
-  }
-
-  const finalBullets =
-    bullets
-      .filter(
-        (item, index, array) =>
-          array.indexOf(item) ===
-          index
-      )
-      .slice(0, 4);
-
-  let descriptionText =
+  const descriptionSource =
     originalDescription.length > 40
       ? originalDescription
-      : `${title} is designed for ${audiencePhrase} who want a distinctive watch with a refined everyday presence.`;
+      : `A ${product.style.toLowerCase()} design created for ${audiencePhrase}.`;
 
-  descriptionText = clean(
-    descriptionText
+  /*
+   * Keep the description persuasive but factual.
+   */
+  const description = limit(
+    `${title}. ${descriptionSource}`,
+    520
   );
-
-  const description =
-    limit(
-      `${title}. ${descriptionText}`,
-      520
-    );
 
   const specs = [
     `Product Type: ${
-      product.productType ||
-      "Not specified"
+      product.productType || "Not specified"
     }`,
     `Audience: ${product.audience}`,
     `Style: ${product.style}`,
@@ -548,7 +420,7 @@ function generateResult(
 
   if (product.vendor) {
     specs.push(
-      `Vendor: ${product.vendor}`
+      `Brand: ${product.vendor}`
     );
   }
 
@@ -566,67 +438,47 @@ function generateResult(
 
   const faq = [
     {
-      q: "What type of product is this?",
+      q: "What is this product?",
       a: product.productType
         ? `This product is listed as ${product.productType}.`
         : "The product type has not been specified.",
     },
     {
-      q: "Who is this product designed for?",
-      a: `The selected audience is ${audiencePhrase}.`,
+      q: "Who is it designed for?",
+      a: `This design is presented for ${audiencePhrase}.`,
     },
     {
-      q: "What details are included?",
-      a: factualSpecs.length
-        ? "The available specifications are taken from the Shopify product information supplied to Virello."
-        : "No additional technical specifications were found in the supplied Shopify description.",
+      q: "What style does it have?",
+      a: `The product is presented in a ${product.style.toLowerCase()} style.`,
     },
     {
-      q: "Are the specifications verified?",
+      q: "What specifications are available?",
       a: factualSpecs.length
-        ? "Virello displays specifications found in the supplied product information and does not intentionally add unsupported technical claims."
-        : "No technical specifications were added because they were not found in the supplied product information.",
+        ? "Available specifications are listed above based on the product information provided."
+        : "No additional technical specifications were provided.",
     },
   ];
 
-  const seoCandidates = [
-    title,
-    `${title} | Shop Online`,
-    `${title} for ${product.audience}`,
-  ];
-
-  let seoTitle =
-    seoCandidates.find(
-      (candidate) =>
-        clean(candidate).length <= 50
-    ) ||
-    limit(title, 50);
-
-  seoTitle = clean(
-    seoTitle
+  /*
+   * SEO title: MAXIMUM 50 CHARACTERS.
+   */
+  const seoTitle = limit(
+    title || "Product",
+    50
   );
 
-  let metaDescription =
-    limit(
-      `Shop ${title}. Explore key details, specifications and a refined design made for ${audiencePhrase}.`,
-      150
-    );
-
-  if (
-    metaDescription.length >
+  /*
+   * Meta description: MAXIMUM 150 CHARACTERS.
+   */
+  const metaDescription = limit(
+    `Shop ${seoTitle}. Explore key details, specifications and styling for ${audiencePhrase}.`,
     150
-  ) {
-    metaDescription =
-      limit(
-        `Shop ${title}. View key features, specifications and product details for ${audiencePhrase}.`,
-        150
-      );
-  }
+  );
 
   return {
     title,
     description,
-    bullets: finalBullets,
+    bullets,
     specs,
     faq,
     seoTitle,
@@ -638,30 +490,25 @@ function getShopFromToken(
   token: string
 ) {
   try {
-    const parts =
-      token.split(".");
+    const parts = token.split(".");
 
     if (parts.length !== 3) {
       return "";
     }
 
-    const base64 =
-      parts[1]
-        .replace(/-/g, "+")
-        .replace(/_/g, "/");
+    const base64 = parts[1]
+      .replace(/-/g, "+")
+      .replace(/_/g, "/");
 
     const padded =
       base64 +
       "=".repeat(
-        (4 -
-          (base64.length % 4)) %
-          4
+        (4 - (base64.length % 4)) % 4
       );
 
-    const payload =
-      JSON.parse(
-        atob(padded)
-      );
+    const payload = JSON.parse(
+      atob(padded)
+    );
 
     if (
       typeof payload.dest !==
@@ -710,9 +557,7 @@ function readImage(
           )
         );
 
-      reader.readAsDataURL(
-        file
-      );
+      reader.readAsDataURL(file);
     }
   );
 }
@@ -731,12 +576,10 @@ const emptyProduct: Product = {
 };
 
 export default function Home() {
-  const [
-    products,
-    setProducts,
-  ] = useState<
-    ShopifyProduct[]
-  >([]);
+  const [products, setProducts] =
+    useState<ShopifyProduct[]>(
+      []
+    );
 
   const [
     loadingProducts,
@@ -758,46 +601,32 @@ export default function Home() {
     setSelectedProductId,
   ] = useState("");
 
-  const [
-    product,
-    setProduct,
-  ] =
+  const [product, setProduct] =
     useState<Product>(
       emptyProduct
     );
 
-  const [
-    result,
-    setResult,
-  ] = useState<Result | null>(
-    null
-  );
-
-  const [
-    generated,
-    setGenerated,
-  ] = useState(false);
-
-  const [
-    activeImage,
-    setActiveImage,
-  ] = useState(0);
-
-  const [
-    copied,
-    setCopied,
-  ] = useState("");
-
-  const liveResult =
-    useMemo(
-      () =>
-        product.title.trim()
-          ? generateResult(
-              product
-            )
-          : null,
-      [product]
+  const [result, setResult] =
+    useState<Result | null>(
+      null
     );
+
+  const [generated, setGenerated] =
+    useState(false);
+
+  const [activeImage, setActiveImage] =
+    useState(0);
+
+  const [copied, setCopied] =
+    useState("");
+
+  const liveResult = useMemo(
+    () =>
+      product.title.trim()
+        ? generateResult(product)
+        : null,
+    [product]
+  );
 
   const active =
     result ?? liveResult;
@@ -831,13 +660,8 @@ export default function Home() {
   }
 
   async function loadShopifyProducts() {
-    setLoadingProducts(
-      true
-    );
-
-    setConnectionMessage(
-      ""
-    );
+    setLoadingProducts(true);
+    setConnectionMessage("");
 
     try {
       const token =
@@ -875,8 +699,7 @@ export default function Home() {
 
       if (
         !response.ok ||
-        data.success !==
-          true
+        data.success !== true
       ) {
         throw new Error(
           data.error ||
@@ -900,7 +723,7 @@ export default function Home() {
       );
 
       setConnectionMessage(
-        `${loadedProducts.length} Shopify product${
+        `${loadedProducts.length} product${
           loadedProducts.length ===
           1
             ? ""
@@ -914,9 +737,9 @@ export default function Home() {
 
       setConnectionMessage(
         error instanceof
-          Error
+        Error
           ? error.message
-          : "Shopify connection failed."
+          : "Connection failed."
       );
     } finally {
       setLoadingProducts(
@@ -944,8 +767,7 @@ export default function Home() {
     }
 
     const images =
-      selected.images
-        ?.length
+      selected.images?.length
         ? selected.images.map(
             (image) =>
               image.url
@@ -996,14 +818,12 @@ export default function Home() {
     setProduct({
       id: selected.id,
       title:
-        selected.title ||
-        "",
+        selected.title || "",
       description:
         selected.description ||
         "",
       price:
-        selected.price ||
-        "",
+        selected.price || "",
       images,
       productType:
         selected.productType ||
@@ -1019,8 +839,7 @@ export default function Home() {
       audience,
       style,
       vendor:
-        selected.vendor ||
-        "",
+        selected.vendor || "",
     });
 
     setActiveImage(0);
@@ -1031,17 +850,15 @@ export default function Home() {
   async function uploadImages(
     e: ChangeEvent<HTMLInputElement>
   ) {
-    const files =
-      Array.from(
-        e.target.files ??
-          []
-      )
-        .filter((file) =>
-          file.type.startsWith(
-            "image/"
-          )
+    const files = Array.from(
+      e.target.files ?? []
+    )
+      .filter((file) =>
+        file.type.startsWith(
+          "image/"
         )
-        .slice(0, 6);
+      )
+      .slice(0, 6);
 
     if (!files.length) {
       return;
@@ -1050,9 +867,7 @@ export default function Home() {
     try {
       const images =
         await Promise.all(
-          files.map(
-            readImage
-          )
+          files.map(readImage)
         );
 
       update(
@@ -1066,8 +881,7 @@ export default function Home() {
         "Unable to read one or more images."
       );
     } finally {
-      e.target.value =
-        "";
+      e.target.value = "";
     }
   }
 
@@ -1105,7 +919,7 @@ export default function Home() {
       !product.title.trim()
     ) {
       alert(
-        "Select a Shopify product first."
+        "Select a product first."
       );
       return;
     }
@@ -1119,9 +933,7 @@ export default function Home() {
       generatedResult
     );
 
-    setGenerated(
-      true
-    );
+    setGenerated(true);
 
     window.setTimeout(
       () => {
@@ -1151,9 +963,7 @@ export default function Home() {
 
       window.setTimeout(
         () =>
-          setCopied(
-            ""
-          ),
+          setCopied(""),
         1500
       );
     } catch {
@@ -1208,16 +1018,19 @@ export default function Home() {
             </div>
 
             <h1>
-              Build product pages shoppers
-              understand and want.
+              Build product pages
+              shoppers understand
+              and want.
             </h1>
 
             <p>
-              Turn your Shopify product
-              information into clear,
-              persuasive and search-ready
+              Turn your product
+              information into
+              clear, persuasive
+              and search-ready
               product copy without
-              inventing specifications.
+              inventing
+              specifications.
             </p>
           </div>
 
@@ -1229,12 +1042,13 @@ export default function Home() {
                 </div>
 
                 <h2>
-                  Your Shopify products
+                  Your products
                 </h2>
 
                 <p>
-                  Select a product directly
-                  from your Shopify store.
+                  Select a product
+                  directly from your
+                  store.
                 </p>
               </div>
 
@@ -1285,8 +1099,8 @@ export default function Home() {
               >
                 <option value="">
                   {products.length
-                    ? "Select a Shopify product..."
-                    : "No Shopify products loaded"}
+                    ? "Select a product..."
+                    : "No products loaded"}
                 </option>
 
                 {products.map(
@@ -1317,7 +1131,7 @@ export default function Home() {
                 </div>
 
                 <span className="badge">
-                  Shopify ready
+                  Ready
                 </span>
               </div>
 
@@ -1335,13 +1149,13 @@ export default function Home() {
                     e.target.value
                   )
                 }
-                placeholder="Select a Shopify product"
+                placeholder="Select a product"
               />
 
               <label>
                 Original Description{" "}
                 <span className="optional">
-                  From Shopify
+                  From product
                 </span>
               </label>
 
@@ -1355,7 +1169,7 @@ export default function Home() {
                     e.target.value
                   )
                 }
-                placeholder="Shopify product description"
+                placeholder="Product description"
               />
 
               <div className="grid2">
@@ -1419,13 +1233,13 @@ export default function Home() {
                     e.target.value
                   )
                 }
-                placeholder="Shopify product tags"
+                placeholder="Product tags"
               />
 
               {product.vendor && (
                 <>
                   <label>
-                    Vendor
+                    Brand / Vendor
                   </label>
 
                   <input
@@ -1518,7 +1332,8 @@ export default function Home() {
               </label>
 
               <div className="shopify-images">
-                {product.images.length ? (
+                {product.images
+                  .length ? (
                   product.images.map(
                     (
                       image,
@@ -1539,8 +1354,8 @@ export default function Home() {
                   )
                 ) : (
                   <div className="no-image">
-                    No Shopify product
-                    images found.
+                    No product images
+                    found.
                   </div>
                 )}
               </div>
@@ -1569,13 +1384,13 @@ export default function Home() {
                   </label>
 
                   <p>
-                    Optional fallback for
-                    testing images locally.
+                    Optional image
+                    upload for testing.
                   </p>
                 </div>
 
-                {product.images.length >
-                  0 && (
+                {product.images
+                  .length > 0 && (
                   <div className="thumbGrid">
                     {product.images.map(
                       (
@@ -1618,8 +1433,9 @@ export default function Home() {
                 className="primary"
                 onClick={generate}
               >
-                Generate Optimized Product
-                Page <span>→</span>
+                Generate Optimized
+                Product Page
+                <span>→</span>
               </button>
             </section>
 
@@ -1638,7 +1454,9 @@ export default function Home() {
 
               <div className="mini-product">
                 <div className="mini-image">
-                  {product.images[0] ? (
+                  {product.images[
+                    0
+                  ] ? (
                     <img
                       src={
                         product.images[0]
@@ -1647,7 +1465,7 @@ export default function Home() {
                     />
                   ) : (
                     <span>
-                      Shopify Product Image
+                      Product Image
                     </span>
                   )}
                 </div>
@@ -1658,7 +1476,7 @@ export default function Home() {
 
                 <h3>
                   {liveResult?.title ||
-                    "Select a Shopify product"}
+                    "Select a product"}
                 </h3>
 
                 <strong>
@@ -1669,12 +1487,12 @@ export default function Home() {
 
                 <p>
                   {liveResult?.description ||
-                    "Your Shopify product information will appear here."}
+                    "Your product information will appear here."}
                 </p>
 
                 <div className="mini-checks">
                   <span>
-                    ✓ Product Data
+                    ✓ Product Details
                   </span>
 
                   <span>
@@ -1731,13 +1549,13 @@ export default function Home() {
                   />
                 ) : (
                   <span>
-                    Shopify Product Image
+                    Product Image
                   </span>
                 )}
               </div>
 
-              {product.images.length >
-                0 && (
+              {product.images
+                .length > 0 && (
                 <div className="galleryThumbs">
                   {product.images.map(
                     (
@@ -1801,13 +1619,12 @@ export default function Home() {
 
               <div className="trust">
                 <span>
-                  Product data from
-                  Shopify
+                  Detailed product
+                  information
                 </span>
 
                 <span>
-                  Original product
-                  images
+                  Product images
                 </span>
               </div>
             </div>
@@ -1819,13 +1636,16 @@ export default function Home() {
             </div>
 
             <h3>
-              Clear reasons to keep
-              reading.
+              Reasons shoppers
+              can keep reading.
             </h3>
 
             <div className="fourCards">
               {active?.bullets.map(
-                (item, index) => (
+                (
+                  item,
+                  index
+                ) => (
                   <article
                     className="feature"
                     key={item}
@@ -1837,10 +1657,10 @@ export default function Home() {
                     <h4>
                       {
                         [
-                          "Refined Design",
-                          "Versatile Styling",
-                          "Clear Details",
-                          "Considered Choice",
+                          "Design",
+                          "Versatility",
+                          "Key Detail",
+                          "Everyday Appeal",
                         ][index]
                       }
                     </h4>
@@ -2010,24 +1830,29 @@ export default function Home() {
             </div>
           </section>
 
+          {/*
+           * IMPORTANT:
+           * The previous Shopify-source
+           * callout has intentionally been
+           * removed from the customer-facing
+           * product page.
+           */}
+
           <section className="resultSection finalCallout">
             <div className="eyebrow">
-              SHOPIFY
+              READY
             </div>
 
             <h3>
-              Product information
-              sourced from Shopify.
+              Your product page is
+              ready to refine.
             </h3>
 
             <p>
-              Virello uses the selected
-              Shopify product information
-              as the source for its
-              optimization. Specifications
-              are only displayed when
-              available in the supplied
-              product data.
+              Review the product title,
+              description, benefits,
+              specifications and SEO
+              content before publishing.
             </p>
 
             <button
@@ -2074,7 +1899,7 @@ export default function Home() {
         }
 
         .topbar {
-          height: 82px;
+          min-height: 82px;
           padding: 0 5vw;
           display: flex;
           align-items: center;
@@ -2138,7 +1963,11 @@ export default function Home() {
         }
 
         .hero h1 {
-          font-size: clamp(48px, 7vw, 86px);
+          font-size: clamp(
+            48px,
+            7vw,
+            86px
+          );
           line-height: .96;
           letter-spacing: -.055em;
           margin: 22px 0;
@@ -2324,7 +2153,10 @@ export default function Home() {
 
         .shopify-images {
           display: grid;
-          grid-template-columns: repeat(3, 1fr);
+          grid-template-columns: repeat(
+            3,
+            1fr
+          );
           gap: 8px;
         }
 
@@ -2395,7 +2227,10 @@ export default function Home() {
 
         .thumbGrid {
           display: grid;
-          grid-template-columns: repeat(6, 1fr);
+          grid-template-columns: repeat(
+            6,
+            1fr
+          );
           gap: 8px;
           margin-top: 12px;
         }
@@ -2545,7 +2380,10 @@ export default function Home() {
 
         .galleryThumbs {
           display: grid;
-          grid-template-columns: repeat(6, 1fr);
+          grid-template-columns: repeat(
+            6,
+            1fr
+          );
           gap: 8px;
           margin-top: 9px;
         }
@@ -2574,7 +2412,11 @@ export default function Home() {
         }
 
         .heroCopy h2 {
-          font-size: clamp(42px, 5vw, 70px);
+          font-size: clamp(
+            42px,
+            5vw,
+            70px
+          );
           line-height: 1;
           letter-spacing: -.055em;
           margin: 18px 0;
@@ -2616,7 +2458,11 @@ export default function Home() {
         }
 
         .resultSection h3 {
-          font-size: clamp(40px, 5vw, 64px);
+          font-size: clamp(
+            40px,
+            5vw,
+            64px
+          );
           line-height: 1;
           letter-spacing: -.05em;
           max-width: 850px;
@@ -2625,7 +2471,10 @@ export default function Home() {
 
         .fourCards {
           display: grid;
-          grid-template-columns: repeat(4, 1fr);
+          grid-template-columns: repeat(
+            4,
+            1fr
+          );
           gap: 13px;
         }
 
@@ -2778,7 +2627,10 @@ export default function Home() {
           }
 
           .thumbGrid {
-            grid-template-columns: repeat(3, 1fr);
+            grid-template-columns: repeat(
+              3,
+              1fr
+            );
           }
 
           .shopify-images {
@@ -2809,6 +2661,14 @@ export default function Home() {
             align-items: flex-start;
             gap: 15px;
             flex-direction: column;
+          }
+
+          .hero h1 {
+            font-size: 48px;
+          }
+
+          .hero p {
+            font-size: 17px;
           }
         }
       `}</style>
