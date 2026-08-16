@@ -1,23 +1,103 @@
+import { NextRequest, NextResponse } from "next/server";
+
+const SHOPIFY_API_VERSION = "2024-01";
+
+function jsonResponse(data: any, status = 200) {
+  return NextResponse.json(data, { status });
+}
+
+async function getProducts(shop: string, accessToken: string) {
+  const query = `
+    query GetProducts {
+      products(first: 100) {
+        nodes {
+          id
+          title
+          handle
+          descriptionHtml
+          vendor
+          productType
+          status
+          tags
+          createdAt
+          updatedAt
+          featuredImage {
+            url
+            altText
+          }
+          variants(first: 10) {
+            nodes {
+              id
+              title
+              price
+              compareAtPrice
+              sku
+              inventoryQuantity
+            }
+          }
+        }
+      }
+    }
+  `;
+
+  const response = await fetch(
+    `https://${shop}/admin/api/${SHOPIFY_API_VERSION}/graphql.json`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+        "X-Shopify-Access-Token": accessToken,
+      },
+      body: JSON.stringify({ query }),
+      cache: "no-store",
+    }
+  );
+
+  const text = await response.text();
+  let data: any;
+
+  try {
+    data = JSON.parse(text);
+  } catch {
+    data = { raw: text };
+  }
+
+  if (!response.ok || data?.errors) {
+    console.error("Shopify products request failed:", {
+      status: response.status,
+      data,
+    });
+
+    throw new Error(
+      data?.errors?.[0]?.message || "Shopify products request failed."
+    );
+  }
+
+  return data?.data?.products?.nodes ?? [];
+}
+
 export async function GET(request: NextRequest) {
   try {
-    // 1. Kunin ang shop at access token mula sa Vercel Environment Variables
+    // Kunin ang credentials sa Vercel Environment Variables
     const shop = process.env.SHOPIFY_STORE_DOMAIN;
-    const accessToken = process.env.SHOPIFY_ADMIN_ACCESS_TOKEN || process.env.SHOPIFY_API_SECRET;
+    const accessToken =
+      process.env.SHOPIFY_ADMIN_ACCESS_TOKEN || process.env.SHOPIFY_API_SECRET;
 
     if (!shop || !accessToken) {
       return jsonResponse(
         {
           success: false,
-          error: "Missing SHOPIFY_STORE_DOMAIN or Access Token in Environment Variables.",
+          error:
+            "Missing SHOPIFY_STORE_DOMAIN or Access Token in Environment Variables.",
         },
         400
       );
     }
 
-    // Siguraduhin na malinis ang domain (walang https://)
-    const cleanShop = shop.replace(/^https?:\/\//, "");
+    // Linisin ang domain para maging format na 'gfd1cp-1y.myshopify.com'
+    const cleanShop = shop.replace(/^https?:\/\//, "").replace(/\/$/, "");
 
-    // 2. I-fetch ang products mula sa Shopify GraphQL API
     const products = await getProducts(cleanShop, accessToken);
 
     return jsonResponse({
@@ -31,7 +111,10 @@ export async function GET(request: NextRequest) {
     return jsonResponse(
       {
         success: false,
-        error: error instanceof Error ? error.message : "Unable to connect to Shopify.",
+        error:
+          error instanceof Error
+            ? error.message
+            : "Unable to connect to Shopify.",
       },
       500
     );
