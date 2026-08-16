@@ -2,35 +2,51 @@ import { NextRequest, NextResponse } from "next/server";
 
 const SHOPIFY_API_VERSION = "2026-07";
 
-let cachedToken: string | null = null;
-let tokenExpiresAt = 0;
-
-function jsonResponse(data: any, status = 200) {
-  return NextResponse.json(data, { status });
-}
-
-function getShopDomain(): string {
-  const raw = process.env.SHOPIFY_STORE_DOMAIN?.trim();
-
-  if (!raw) return "";
-
-  return raw
+function normalizeShopDomain(value: string): string {
+  return value
     .replace(/^https?:\/\//i, "")
     .replace(/\/+$/, "");
 }
 
-async function getShopifyAccessToken(): Promise<string> {
-  if (cachedToken && Date.now() < tokenExpiresAt - 60_000) {
-    return cachedToken;
+function getShopFromToken(token: string): string {
+  try {
+    const parts = token.split(".");
+
+    if (parts.length !== 3) {
+      return "";
+    }
+
+    const base64 = parts[1]
+      .replace(/-/g, "+")
+      .replace(/_/g, "/");
+
+    const padded =
+      base64 + "=".repeat((4 - (base64.length % 4)) % 4);
+
+    const payload = JSON.parse(
+      Buffer.from(padded, "base64").toString("utf8")
+    );
+
+    if (typeof payload.dest !== "string") {
+      return "";
+    }
+
+    return new URL(payload.dest).hostname;
+  } catch {
+    return "";
   }
+}
 
-  const shop = getShopDomain();
-  const clientId = process.env.SHOPIFY_API_KEY;
-  const clientSecret = process.env.SHOPIFY_API_SECRET;
+async function exchangeSessionToken(
+  shop: string,
+  sessionToken: string
+): Promise<string> {
+  const apiKey = process.env.SHOPIFY_API_KEY;
+  const apiSecret = process.env.SHOPIFY_API_SECRET;
 
-  if (!shop || !clientId || !clientSecret) {
+  if (!apiKey || !apiSecret) {
     throw new Error(
-      "Missing Shopify credentials in Vercel Environment Variables."
+      "SHOPIFY_API_KEY or SHOPIFY_API_SECRET is missing"
     );
   }
 
@@ -39,50 +55,81 @@ async function getShopifyAccessToken(): Promise<string> {
     {
       method: "POST",
       headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
+        "Content-Type": "application/json",
       },
-      body: new URLSearchParams({
-        grant_type: "client_credentials",
-        client_id: clientId,
-        client_secret: clientSecret,
-      }).toString(),
+      body: JSON.stringify({
+        client_id: apiKey,
+        client_secret: apiSecret,
+        grant_type:
+          "urn:ietf:params:oauth:grant-type:token-exchange",
+        subject_token: sessionToken,
+        subject_token_type:
+          "urn:ietf:params:oauth:token-type:id_token",
+        requested_token_type:
+          "urn:shopify:params:oauth:token-type:online-access-token",
+      }),
       cache: "no-store",
     }
   );
 
-  const result = await response.json();
+  const data = await response.json();
 
-  if (!response.ok || !result.access_token) {
+  if (!response.ok) {
     throw new Error(
-      result.error_description ||
-        result.error ||
-        `Shopify token request failed (${response.status})`
+      `Shopify token exchange failed: ${JSON.stringify(data)}`
     );
   }
 
-  cachedToken = result.access_token;
+  const accessToken = data?.access_token;
 
-  tokenExpiresAt =
-    Date.now() + Number(result.expires_in || 86399) * 1000;
+  if (typeof accessToken !== "string" || !accessToken) {
+    throw new Error("Shopify did not return an access token");
+  }
 
-  return result.access_token;
+  return accessToken;
 }
 
-export async function GET(_request: NextRequest) {
-  const shop = getShopDomain();
-
-  if (!shop) {
-    return jsonResponse(
-      {
-        success: false,
-        error: "Shopify store domain is not configured.",
-      },
-      500
-    );
-  }
-
+export async function GET(request: NextRequest) {
   try {
-    const accessToken = await getShopifyAccessToken();
+    const sessionToken =
+      request.headers
+        .get("authorization")
+        ?.replace(/^Bearer\s+/i, "") ||
+      request.headers.get("x-shopify-session-token") ||
+      "";
+
+    if (!sessionToken) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Shopify session token is unavailable.",
+        },
+        { status: 401 }
+      );
+    }
+
+    const tokenShop = getShopFromToken(sessionToken);
+
+    const configuredShop = process.env.SHOPIFY_STORE_DOMAIN
+      ? normalizeShopDomain(process.env.SHOPIFY_STORE_DOMAIN)
+      : "";
+
+    const shop = tokenShop || configuredShop;
+
+    if (!shop) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Shopify store domain could not be determined.",
+        },
+        { status: 400 }
+      );
+    }
+
+    const accessToken = await exchangeSessionToken(
+      shop,
+      sessionToken
+    );
 
     const query = `
       query GetProducts {
@@ -135,40 +182,40 @@ export async function GET(_request: NextRequest) {
     const result = await response.json();
 
     if (!response.ok) {
-      return jsonResponse(
+      return NextResponse.json(
         {
           success: false,
           error: "Shopify API request failed.",
           details: result,
         },
-        response.status
+        { status: response.status }
       );
     }
 
-    if (result.errors) {
-      return jsonResponse(
+    if (result?.errors) {
+      return NextResponse.json(
         {
           success: false,
           error: "Shopify GraphQL error.",
           details: result.errors,
         },
-        500
+        { status: 500 }
       );
     }
 
-    return jsonResponse({
-      success: true,
-      data: result.data,
-    });
-  } catch (error: any) {
-    return jsonResponse(
+    return NextResponse.json(result.data);
+  } catch (error) {
+    console.error("Shopify products error:", error);
+
+    return NextResponse.json(
       {
         success: false,
         error:
-          error?.message ||
-          "Failed to connect to Shopify.",
+          error instanceof Error
+            ? error.message
+            : "Failed to fetch Shopify products.",
       },
-      500
+      { status: 500 }
     );
   }
 }
