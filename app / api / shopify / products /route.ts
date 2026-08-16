@@ -1,42 +1,70 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from "next/server";
+
+const SHOPIFY_API_VERSION = "2024-01";
+
+function jsonResponse(data: any, status = 200) {
+  return NextResponse.json(data, { status });
+}
 
 export async function GET(request: NextRequest) {
-  try {
-    const shop = process.env.SHOPIFY_STORE_DOMAIN;
-    const accessToken = process.env.SHOPIFY_ADMIN_ACCESS_TOKEN;
+  const shop = process.env.SHOPIFY_STORE_DOMAIN;
+  const accessToken = process.env.SHOPIFY_ADMIN_ACCESS_TOKEN;
 
-    if (!shop || !accessToken) {
-      return NextResponse.json(
-        { error: 'Missing Shopify credentials in environment variables' },
-        { status: 500 }
-      );
+  if (!shop || !accessToken) {
+    return jsonResponse({ error: "Shopify Not Connected" }, 400);
+  }
+
+  const query = `
+    query GetProducts {
+      products(first: 50) {
+        nodes {
+          id
+          title
+          handle
+          descriptionHtml
+          vendor
+          productType
+          status
+          tags
+          createdAt
+          updatedAt
+          featuredImage {
+            url
+            altText
+          }
+          variants(first: 10) {
+            nodes {
+              id
+              title
+              price
+              compareAtPrice
+              sku
+              inventoryQuantity
+            }
+          }
+        }
+      }
     }
+  `;
 
-    const response = await fetch(`https://${shop}/admin/api/2024-01/products.json`, {
-      method: 'GET',
+  try {
+    const response = await fetch(`https://${shop}/admin/api/${SHOPIFY_API_VERSION}/graphql.json`, {
+      method: "POST",
       headers: {
-        'Content-Type': 'application/json',
-        'X-Shopify-Access-Token': accessToken,
+        "Content-Type": "application/json",
+        "X-Shopify-Access-Token": accessToken,
       },
-      cache: 'no-store', 
+      body: JSON.stringify({ query }),
     });
 
-    if (!response.ok) {
-      const errorData = await response.text();
-      return NextResponse.json(
-        { error: `Shopify API Error: ${response.statusText}`, details: errorData },
-        { status: response.status }
-      );
+    const result = await response.json();
+
+    if (result.errors) {
+      return jsonResponse({ error: result.errors }, 500);
     }
 
-    const data = await response.json();
-    return NextResponse.json(data);
-
+    return jsonResponse(result.data);
   } catch (error: any) {
-    console.error('Fetch error:', error);
-    return NextResponse.json(
-      { error: 'Internal Server Error', details: error.message },
-      { status: 500 }
-    );
+    return jsonResponse({ error: error.message || "Failed to fetch products" }, 500);
   }
 }
