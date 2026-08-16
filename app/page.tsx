@@ -94,7 +94,9 @@ function stripHtml(value: string) {
 function limit(value: string, max: number) {
   const text = clean(value);
 
-  if (text.length <= max) return text;
+  if (text.length <= max) {
+    return text;
+  }
 
   const cut = text.slice(0, max + 1);
   const lastSpace = cut.lastIndexOf(" ");
@@ -370,7 +372,9 @@ function addSpec(
 ) {
   const value = parseSpecValue(label, rawValue);
 
-  if (!value) return;
+  if (!value) {
+    return;
+  }
 
   const item = `${label}: ${value}`;
 
@@ -398,11 +402,15 @@ function extractSpecs(description: string) {
       /^([A-Za-z][A-Za-z /_-]{1,35})\s*[:：-]\s*(.+)$/i,
     );
 
-    if (!match) continue;
+    if (!match) {
+      continue;
+    }
 
     const label = normalizeSpecLabel(match[1]);
 
-    if (!label) continue;
+    if (!label) {
+      continue;
+    }
 
     addSpec(specs, label, match[2]);
   }
@@ -546,7 +554,9 @@ function buildTags(product: Product) {
   const add = (tag: string) => {
     const value = clean(tag);
 
-    if (!value) return;
+    if (!value) {
+      return;
+    }
 
     if (
       !tags.some(
@@ -558,13 +568,33 @@ function buildTags(product: Product) {
     }
   };
 
-  if (/watch|timepiece/.test(source)) add("watches");
-  if (/chronograph/.test(source)) add("chronograph");
-  if (/automatic/.test(source)) add("automatic watch");
-  if (/mechanical/.test(source)) add("mechanical watch");
-  if (/quartz/.test(source)) add("quartz watch");
-  if (/sport|racing/.test(source)) add("sport watch");
-  if (/dress|elegant|formal/.test(source)) add("dress watch");
+  if (/watch|timepiece/.test(source)) {
+    add("watches");
+  }
+
+  if (/chronograph/.test(source)) {
+    add("chronograph");
+  }
+
+  if (/automatic/.test(source)) {
+    add("automatic watch");
+  }
+
+  if (/mechanical/.test(source)) {
+    add("mechanical watch");
+  }
+
+  if (/quartz/.test(source)) {
+    add("quartz watch");
+  }
+
+  if (/sport|racing/.test(source)) {
+    add("sport watch");
+  }
+
+  if (/dress|elegant|formal/.test(source)) {
+    add("dress watch");
+  }
 
   if (product.audience === "Men") {
     add("men's watches");
@@ -764,9 +794,7 @@ function buildFaq(
   ];
 }
 
-function buildSeoTitle(
-  title: string,
-) {
+function buildSeoTitle(title: string) {
   const candidates = [
     `${title} | Horizon Timepieces`,
     `${title} - Horizon Timepieces`,
@@ -916,7 +944,7 @@ export default function Page() {
   }
 
   /* =======================================================
-     LOAD
+     LOAD PRODUCTS
   ======================================================= */
 
   async function loadProducts() {
@@ -940,23 +968,37 @@ export default function Page() {
           },
         );
 
-      const data =
+      const data: unknown =
         await response.json();
+
+      const result = data as {
+        success?: boolean;
+        error?: string;
+        products?: ShopifyProduct[];
+      };
 
       if (
         !response.ok ||
-        !data?.success
+        !result.success
       ) {
         throw new Error(
-          data?.error ||
+          result.error ||
             "Unable to load Shopify products.",
         );
       }
 
-      const normalized =
-        Array.isArray(data.products)
-          ? data.products.map(
-              (product: ShopifyProduct) =>
+      /*
+       * FIX:
+       * Explicitly type the Shopify response
+       * before mapping. This prevents the
+       * implicit-any error from Vercel.
+       */
+      const normalized: Product[] =
+        Array.isArray(result.products)
+          ? result.products.map(
+              (
+                product: ShopifyProduct,
+              ): Product =>
                 toProduct(product),
             )
           : [];
@@ -967,7 +1009,9 @@ export default function Page() {
         setSelectedId((current) =>
           current &&
           normalized.some(
-            (product) =>
+            (
+              product: Product,
+            ) =>
               product.id === current,
           )
             ? current
@@ -990,14 +1034,16 @@ export default function Page() {
   }, []);
 
   /* =======================================================
-     SELECTED
+     SELECTED PRODUCT
   ======================================================= */
 
   const selected =
     useMemo(
       () =>
         products.find(
-          (product) =>
+          (
+            product: Product,
+          ) =>
             product.id === selectedId,
         ) || null,
       [products, selectedId],
@@ -1013,7 +1059,9 @@ export default function Page() {
       }
 
       return products.filter(
-        (product) =>
+        (
+          product: Product,
+        ) =>
           product.title
             .toLowerCase()
             .includes(query) ||
@@ -1023,10 +1071,13 @@ export default function Page() {
           product.productType
             .toLowerCase()
             .includes(query) ||
-          product.tags.some((tag) =>
-            tag
-              .toLowerCase()
-              .includes(query),
+          product.tags.some(
+            (
+              tag: string,
+            ) =>
+              tag
+                .toLowerCase()
+                .includes(query),
           ),
       );
     }, [products, search]);
@@ -1036,7 +1087,9 @@ export default function Page() {
   ======================================================= */
 
   useEffect(() => {
-    if (!selected) return;
+    if (!selected) {
+      return;
+    }
 
     setAudience(selected.audience);
     setStyle(selected.style);
@@ -1057,7 +1110,9 @@ export default function Page() {
   ======================================================= */
 
   function handleOptimize() {
-    if (!selected) return;
+    if (!selected) {
+      return;
+    }
 
     setOptimizing(true);
     setError("");
@@ -1087,7 +1142,7 @@ export default function Page() {
   }
 
   /* =======================================================
-     USE GENERATED
+     USE GENERATED CONTENT
   ======================================================= */
 
   function useGenerated(
@@ -1099,7 +1154,9 @@ export default function Page() {
       | "seoTitle"
       | "metaDescription",
   ) {
-    if (!optimized) return;
+    if (!optimized) {
+      return;
+    }
 
     switch (field) {
       case "title":
@@ -1143,13 +1200,17 @@ export default function Page() {
   }
 
   /* =======================================================
-     SAVE
+     SAVE TO SHOPIFY
   ======================================================= */
 
   async function handleSave() {
-    if (!selected) return;
+    if (!selected) {
+      return;
+    }
 
-    const finalTitle = clean(title);
+    const finalTitle =
+      clean(title);
+
     const finalProductType =
       clean(productType);
 
@@ -1210,14 +1271,17 @@ export default function Page() {
         await getSessionToken();
 
       const payload = {
-        productId: selected.id,
+        productId:
+          selected.id,
 
-        title: finalTitle,
+        title:
+          finalTitle,
 
         productType:
           finalProductType,
 
-        tags: finalTags,
+        tags:
+          finalTags,
 
         description:
           finalDescription,
@@ -1252,44 +1316,67 @@ export default function Page() {
           },
         );
 
-      const data =
+      const data: unknown =
         await response.json();
+
+      const result = data as {
+        success?: boolean;
+        error?: string;
+      };
 
       if (
         !response.ok ||
-        !data?.success
+        !result.success
       ) {
         throw new Error(
-          data?.error ||
+          result.error ||
             "Shopify rejected the product save.",
         );
       }
 
-      setProducts((current) =>
-        current.map((product) =>
-          product.id === selected.id
-            ? {
-                ...product,
-                title: finalTitle,
-                productType:
-                  finalProductType,
-                tags: finalTags,
-                description:
-                  finalDescription,
-              }
-            : product,
-        ),
+      setProducts(
+        (
+          current: Product[],
+        ) =>
+          current.map(
+            (
+              product: Product,
+            ) =>
+              product.id ===
+              selected.id
+                ? {
+                    ...product,
+                    title:
+                      finalTitle,
+                    productType:
+                      finalProductType,
+                    tags:
+                      finalTags,
+                    description:
+                      finalDescription,
+                  }
+                : product,
+          ),
       );
 
       setTitle(finalTitle);
+
       setProductType(
         finalProductType,
       );
-      setTags(finalTags.join(", "));
+
+      setTags(
+        finalTags.join(", "),
+      );
+
       setDescription(
         finalDescription,
       );
-      setSeoTitle(finalSeoTitle);
+
+      setSeoTitle(
+        finalSeoTitle,
+      );
+
       setMetaDescription(
         finalMetaDescription,
       );
@@ -1760,8 +1847,13 @@ export default function Page() {
 
       <header className="topbar">
         <div className="brand">
-          <div className="brand-icon">✦</div>
-          <span>Virello AI Optimizer</span>
+          <div className="brand-icon">
+            ✦
+          </div>
+
+          <span>
+            Virello AI Optimizer
+          </span>
         </div>
 
         <div className="status">
@@ -1795,14 +1887,18 @@ export default function Page() {
       <section className="content">
         <aside className="card">
           <div className="card-header">
-            <h2>Shopify Products</h2>
+            <h2>
+              Shopify Products
+            </h2>
 
             <input
               className="search"
               placeholder="Search Shopify products..."
               value={search}
               onChange={(event) =>
-                setSearch(event.target.value)
+                setSearch(
+                  event.target.value,
+                )
               }
             />
           </div>
@@ -1811,23 +1907,29 @@ export default function Page() {
             <div className="loading">
               Loading products...
             </div>
-          ) : filteredProducts.length === 0 ? (
+          ) : filteredProducts.length ===
+            0 ? (
             <div className="empty">
               No Shopify products found.
             </div>
           ) : (
             <div className="product-list">
               {filteredProducts.map(
-                (product) => (
+                (
+                  product: Product,
+                ) => (
                   <button
                     key={product.id}
                     className={`product-row ${
-                      selectedId === product.id
+                      selectedId ===
+                      product.id
                         ? "active"
                         : ""
                     }`}
                     onClick={() =>
-                      setSelectedId(product.id)
+                      setSelectedId(
+                        product.id,
+                      )
                     }
                   >
                     <div className="product-name">
@@ -1868,11 +1970,15 @@ export default function Page() {
 
                 <div className="editor-title">
                   <div>
-                    <h2>Edit product</h2>
+                    <h2>
+                      Edit product
+                    </h2>
 
                     <p>
-                      Changes stay in Virello until
-                      you press Save to Shopify.
+                      Changes stay in
+                      Virello until you
+                      press Save to
+                      Shopify.
                     </p>
                   </div>
 
@@ -1880,7 +1986,8 @@ export default function Page() {
                     <button
                       className="button primary"
                       disabled={
-                        optimizing || saving
+                        optimizing ||
+                        saving
                       }
                       onClick={
                         handleOptimize
@@ -1894,9 +2001,12 @@ export default function Page() {
                     <button
                       className="button"
                       disabled={
-                        saving || optimizing
+                        saving ||
+                        optimizing
                       }
-                      onClick={handleSave}
+                      onClick={
+                        handleSave
+                      }
                     >
                       {saving
                         ? "Saving..."
@@ -1911,20 +2021,29 @@ export default function Page() {
                       src={
                         selected.featuredImage
                       }
-                      alt={selected.title}
+                      alt={
+                        selected.title
+                      }
                     />
                   </div>
                 )}
 
                 <div className="grid-two">
                   <div className="field">
-                    <label>Audience</label>
+                    <label>
+                      Audience
+                    </label>
 
                     <select
-                      value={audience}
-                      onChange={(event) =>
+                      value={
+                        audience
+                      }
+                      onChange={(
+                        event,
+                      ) =>
                         setAudience(
-                          event.target
+                          event
+                            .target
                             .value as Audience,
                         )
                       }
@@ -1932,9 +2051,11 @@ export default function Page() {
                       <option value="Women">
                         Women
                       </option>
+
                       <option value="Men">
                         Men
                       </option>
+
                       <option value="Unisex">
                         Unisex
                       </option>
@@ -1942,13 +2063,18 @@ export default function Page() {
                   </div>
 
                   <div className="field">
-                    <label>Style</label>
+                    <label>
+                      Style
+                    </label>
 
                     <select
                       value={style}
-                      onChange={(event) =>
+                      onChange={(
+                        event,
+                      ) =>
                         setStyle(
-                          event.target
+                          event
+                            .target
                             .value as Style,
                         )
                       }
@@ -1956,18 +2082,23 @@ export default function Page() {
                       <option value="Premium / Luxury">
                         Premium / Luxury
                       </option>
+
                       <option value="Professional">
                         Professional
                       </option>
+
                       <option value="Everyday">
                         Everyday
                       </option>
+
                       <option value="Casual">
                         Casual
                       </option>
+
                       <option value="Sport">
                         Sport
                       </option>
+
                       <option value="Gift">
                         Gift
                       </option>
@@ -1976,7 +2107,9 @@ export default function Page() {
                 </div>
 
                 <div className="field">
-                  <label>Product Title</label>
+                  <label>
+                    Product Title
+                  </label>
 
                   <input
                     value={title}
@@ -1989,26 +2122,36 @@ export default function Page() {
                 </div>
 
                 <div className="field">
-                  <label>Product Type</label>
+                  <label>
+                    Product Type
+                  </label>
 
                   <input
-                    value={productType}
-                    onChange={(event) =>
+                    value={
+                      productType
+                    }
+                    onChange={(
+                      event,
+                    ) =>
                       setProductType(
-                        event.target.value,
+                        event.target
+                          .value,
                       )
                     }
                   />
                 </div>
 
                 <div className="field">
-                  <label>Tags</label>
+                  <label>
+                    Tags
+                  </label>
 
                   <input
                     value={tags}
                     onChange={(event) =>
                       setTags(
-                        event.target.value,
+                        event.target
+                          .value,
                       )
                     }
                     placeholder="watches, chronograph, luxury watches"
@@ -2016,20 +2159,29 @@ export default function Page() {
                 </div>
 
                 <div className="field">
-                  <label>Description</label>
+                  <label>
+                    Description
+                  </label>
 
                   <textarea
-                    value={description}
-                    onChange={(event) =>
+                    value={
+                      description
+                    }
+                    onChange={(
+                      event,
+                    ) =>
                       setDescription(
-                        event.target.value,
+                        event.target
+                          .value,
                       )
                     }
                   />
                 </div>
 
                 <div className="section">
-                  <h3>SEO</h3>
+                  <h3>
+                    SEO
+                  </h3>
 
                   <div className="field">
                     <label>
@@ -2037,17 +2189,25 @@ export default function Page() {
                     </label>
 
                     <input
-                      value={seoTitle}
+                      value={
+                        seoTitle
+                      }
                       maxLength={50}
-                      onChange={(event) =>
+                      onChange={(
+                        event,
+                      ) =>
                         setSeoTitle(
-                          event.target.value,
+                          event.target
+                            .value,
                         )
                       }
                     />
 
                     <div className="counter">
-                      {seoTitle.length}/50
+                      {
+                        seoTitle.length
+                      }
+                      /50
                     </div>
                   </div>
 
@@ -2057,17 +2217,27 @@ export default function Page() {
                     </label>
 
                     <textarea
-                      value={metaDescription}
-                      maxLength={150}
-                      onChange={(event) =>
+                      value={
+                        metaDescription
+                      }
+                      maxLength={
+                        150
+                      }
+                      onChange={(
+                        event,
+                      ) =>
                         setMetaDescription(
-                          event.target.value,
+                          event.target
+                            .value,
                         )
                       }
                     />
 
                     <div className="counter">
-                      {metaDescription.length}/150
+                      {
+                        metaDescription.length
+                      }
+                      /150
                     </div>
                   </div>
                 </div>
@@ -2097,7 +2267,9 @@ export default function Page() {
                       </div>
 
                       <p>
-                        {optimized.title}
+                        {
+                          optimized.title
+                        }
                       </p>
                     </div>
 
@@ -2183,13 +2355,14 @@ export default function Page() {
                         </strong>
                       </div>
 
-                      {optimized.specs.length >
+                      {optimized.specs
+                        .length >
                       0 ? (
                         <ul>
                           {optimized.specs.map(
                             (
-                              spec,
-                              index,
+                              spec: string,
+                              index: number,
                             ) => (
                               <li
                                 key={
@@ -2203,10 +2376,12 @@ export default function Page() {
                         </ul>
                       ) : (
                         <p>
-                          No explicit technical
-                          specifications were found
-                          in the supplied Shopify
-                          data.
+                          No explicit
+                          technical
+                          specifications
+                          were found in
+                          the supplied
+                          Shopify data.
                         </p>
                       )}
                     </div>
@@ -2221,8 +2396,8 @@ export default function Page() {
                       <ul>
                         {optimized.bullets.map(
                           (
-                            bullet,
-                            index,
+                            bullet: string,
+                            index: number,
                           ) => (
                             <li
                               key={
@@ -2245,8 +2420,8 @@ export default function Page() {
 
                       {optimized.faq.map(
                         (
-                          item,
-                          index,
+                          item: FAQ,
+                          index: number,
                         ) => (
                           <details
                             className="faq"
@@ -2335,14 +2510,16 @@ export default function Page() {
                     </div>
 
                     <div className="saved-box">
-                      Technical specifications
-                      are taken only from the
-                      supplied product information.
-                      Virello does not invent missing
+                      Technical
+                      specifications are
+                      taken only from the
+                      supplied product
+                      information. Virello
+                      does not invent missing
                       measurements, materials,
                       movement specifications,
-                      water resistance, or performance
-                      claims.
+                      water resistance, or
+                      performance claims.
                     </div>
                   </div>
                 )}
