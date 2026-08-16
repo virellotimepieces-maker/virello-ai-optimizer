@@ -2,414 +2,222 @@ import { NextRequest, NextResponse } from "next/server";
 
 const SHOPIFY_API_VERSION = "2026-07";
 
-type JsonRecord = Record<string, unknown>;
-
-function json(data: JsonRecord, status = 200) {
-  return NextResponse.json(data, { status });
+function getToken(request: NextRequest) {
+  return (
+    request.headers
+      .get("authorization")
+      ?.replace(/^Bearer\s+/i, "")
+      .trim() ||
+    request.headers
+      .get("x-shopify-session-token")
+      ?.trim() ||
+    ""
+  );
 }
 
-function normalizeShopDomain(value: string) {
-  return value
-    .trim()
-    .replace(/^https?:\/\//i, "")
-    .replace(/\/+$/, "");
-}
+function getShop(request: NextRequest, token: string) {
+  const headerShop = request.headers
+    .get("x-shopify-shop")
+    ?.trim();
 
-function getShopFromSessionToken(token: string) {
+  if (headerShop) {
+    return headerShop.replace(/^https?:\/\//i, "").replace(/\/+$/, "");
+  }
+
   try {
     const parts = token.split(".");
 
-    if (parts.length !== 3) return "";
-
-    const payloadPart = parts[1]
-      .replace(/-/g, "+")
-      .replace(/_/g, "/");
-
-    const padded =
-      payloadPart +
-      "=".repeat((4 - (payloadPart.length % 4)) % 4);
+    if (parts.length !== 3) {
+      return "";
+    }
 
     const payload = JSON.parse(
-      Buffer.from(padded, "base64").toString("utf8")
-    ) as JsonRecord;
-
-    if (typeof payload.dest !== "string") return "";
-
-    return normalizeShopDomain(
-      new URL(payload.dest).hostname
+      Buffer.from(parts[1], "base64url").toString("utf8")
     );
+
+    if (typeof payload.dest !== "string") {
+      return "";
+    }
+
+    return new URL(payload.dest).hostname;
   } catch {
     return "";
   }
 }
 
-async function exchangeSessionToken(
+async function shopifyGraphQL(
   shop: string,
-  sessionToken: string
+  accessToken: string
 ) {
-  const clientId =
-    process.env.SHOPIFY_API_KEY?.trim();
-
-  const clientSecret =
-    process.env.SHOPIFY_API_SECRET?.trim();
-
-  if (!clientId || !clientSecret) {
-    throw new Error(
-      "Missing SHOPIFY_API_KEY or SHOPIFY_API_SECRET in Vercel Environment Variables."
-    );
-  }
-
-  const body = new URLSearchParams({
-    grant_type:
-      "urn:ietf:params:oauth:grant-type:token-exchange",
-    client_id: clientId,
-    client_secret: clientSecret,
-    subject_token: sessionToken,
-    subject_token_type:
-      "urn:ietf:params:oauth:token-type:id_token",
-    requested_token_type:
-      "urn:shopify:params:oauth:token-type:online-access-token",
-  }).toString();
-
   const response = await fetch(
-    `https://${shop}/admin/oauth/access_token`,
+    `https://${shop}/admin/api/${SHOPIFY_API_VERSION}/graphql.json`,
     {
       method: "POST",
       headers: {
-        "Content-Type":
-          "application/x-www-form-urlencoded",
-        Accept: "application/json",
+        "Content-Type": "application/json",
+        "X-Shopify-Access-Token": accessToken,
       },
-      body,
+      body: JSON.stringify({
+        query: `
+          query GetProducts {
+            products(first: 100) {
+              nodes {
+                id
+                title
+                description
+                productType
+                tags
+                status
+                vendor
+                featuredImage {
+                  url
+                  altText
+                }
+                variants(first: 1) {
+                  nodes {
+                    price
+                  }
+                }
+                images(first: 20) {
+                  nodes {
+                    url
+                    altText
+                  }
+                }
+              }
+            }
+          }
+        `,
+      }),
       cache: "no-store",
     }
   );
 
   const text = await response.text();
 
-  let data: JsonRecord = {};
+  let data: any;
 
   try {
-    const parsed = JSON.parse(text);
-
-    if (parsed && typeof parsed === "object") {
-      data = parsed as JsonRecord;
-    }
+    data = JSON.parse(text);
   } catch {
     throw new Error(
-      `Shopify token exchange returned non-JSON data (HTTP ${response.status}).`
+      `Shopify returned non-JSON response (${response.status}).`
     );
   }
 
   if (!response.ok) {
-    const detail =
-      typeof data.error_description === "string"
-        ? data.error_description
-        : typeof data.error === "string"
-          ? data.error
-          : `HTTP ${response.status}`;
-
     throw new Error(
-      `Shopify token exchange failed: ${detail}`
+      data?.errors?.[0]?.message ||
+        `Shopify API request failed (${response.status}).`
     );
   }
 
-  const accessToken = data.access_token;
-
-  if (
-    typeof accessToken !== "string" ||
-    !accessToken
-  ) {
+  if (data?.errors?.length) {
     throw new Error(
-      "Shopify did not return an access token."
+      data.errors
+        .map((error: any) => error.message)
+        .join("; ")
     );
   }
 
-  return accessToken;
+  return data?.data?.products?.nodes || [];
 }
 
-export async function GET(
-  request: NextRequest
-) {
+export async function GET(request: NextRequest) {
   try {
-    const sessionToken =
-      request.headers
-        .get("authorization")
-        ?.replace(/^Bearer\s+/i, "") ||
-      request.headers.get(
-        "x-shopify-session-token"
-      ) ||
-      "";
+    const token = getToken(request);
 
-    if (!sessionToken) {
-      return json(
+    if (!token) {
+      return NextResponse.json(
         {
           success: false,
           error:
-            "Shopify session token is unavailable. Open Virello from Shopify Admin.",
+            "Shopify session token is missing.",
         },
-        401
+        { status: 401 }
       );
     }
 
-    const tokenShop =
-      getShopFromSessionToken(sessionToken);
+    const shop = getShop(request, token);
 
-    const configuredShop =
-      process.env.SHOPIFY_STORE_DOMAIN
-        ? normalizeShopDomain(
-            process.env.SHOPIFY_STORE_DOMAIN
-          )
-        : "";
-
-    const shop =
-      tokenShop || configuredShop;
-
-    if (
-      !shop ||
-      !shop.endsWith(".myshopify.com")
-    ) {
-      return json(
+    if (!shop) {
+      return NextResponse.json(
         {
           success: false,
           error:
-            "Shopify store domain could not be determined.",
+            "Shopify store could not be determined.",
         },
-        400
+        { status: 400 }
       );
     }
 
     const accessToken =
-      await exchangeSessionToken(
-        shop,
-        sessionToken
-      );
+      process.env.SHOPIFY_ADMIN_ACCESS_TOKEN ||
+      process.env.SHOPIFY_ACCESS_TOKEN ||
+      "";
 
-    const query = `
-      query GetProducts {
-        products(first: 50) {
-          nodes {
-            id
-            title
-            handle
-            descriptionHtml
-            vendor
-            productType
-            status
-            tags
-
-            featuredImage {
-              url
-              altText
-            }
-
-            variants(first: 1) {
-              nodes {
-                price
-              }
-            }
-          }
-        }
-      }
-    `;
-
-    const response = await fetch(
-      `https://${shop}/admin/api/${SHOPIFY_API_VERSION}/graphql.json`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json",
-          "X-Shopify-Access-Token":
-            accessToken,
-        },
-        body: JSON.stringify({ query }),
-        cache: "no-store",
-      }
-    );
-
-    const text = await response.text();
-
-    let result: JsonRecord = {};
-
-    try {
-      const parsed = JSON.parse(text);
-
-      if (
-        parsed &&
-        typeof parsed === "object"
-      ) {
-        result = parsed as JsonRecord;
-      }
-    } catch {
-      throw new Error(
-        `Shopify Admin API returned non-JSON data (HTTP ${response.status}).`
-      );
-    }
-
-    if (!response.ok) {
-      return json(
+    if (!accessToken) {
+      return NextResponse.json(
         {
           success: false,
           error:
-            "Shopify Admin API request failed.",
-          details: result,
+            "SHOPIFY_ADMIN_ACCESS_TOKEN is not configured in Vercel.",
         },
-        response.status
+        { status: 500 }
       );
     }
 
-    if (
-      Array.isArray(result.errors) &&
-      result.errors.length > 0
-    ) {
-      return json(
-        {
-          success: false,
-          error:
-            "Shopify GraphQL error.",
-          details: result.errors,
-        },
-        500
-      );
-    }
-
-    const data =
-      result.data as
-        | JsonRecord
-        | undefined;
-
-    const connection =
-      data?.products as
-        | JsonRecord
-        | undefined;
-
-    const nodes =
-      Array.isArray(connection?.nodes)
-        ? connection.nodes
-        : [];
-
-    const products = nodes.map(
-      (node) => {
-        const item =
-          (node || {}) as JsonRecord;
-
-        const variants =
-          item.variants as
-            | JsonRecord
-            | undefined;
-
-        const variantNodes =
-          Array.isArray(
-            variants?.nodes
-          )
-            ? variants.nodes
-            : [];
-
-        const firstVariant =
-          (variantNodes[0] || {}) as JsonRecord;
-
-        const image =
-          item.featuredImage as
-            | JsonRecord
-            | null
-            | undefined;
-
-        return {
-          id:
-            typeof item.id === "string"
-              ? item.id
-              : "",
-
-          title:
-            typeof item.title === "string"
-              ? item.title
-              : "",
-
-          handle:
-            typeof item.handle === "string"
-              ? item.handle
-              : "",
-
-          description:
-            typeof item.descriptionHtml ===
-            "string"
-              ? item.descriptionHtml
-              : "",
-
-          productType:
-            typeof item.productType ===
-            "string"
-              ? item.productType
-              : "",
-
-          tags:
-            Array.isArray(item.tags)
-              ? item.tags.filter(
-                  (tag): tag is string =>
-                    typeof tag === "string"
-                )
-              : [],
-
-          status:
-            typeof item.status === "string"
-              ? item.status
-              : "",
-
-          vendor:
-            typeof item.vendor === "string"
-              ? item.vendor
-              : "",
-
-          price:
-            typeof firstVariant.price ===
-            "string"
-              ? firstVariant.price
-              : "",
-
-          images:
-            image &&
-            typeof image.url === "string"
-              ? [
-                  {
-                    url: image.url,
-                    altText:
-                      typeof image.altText ===
-                      "string"
-                        ? image.altText
-                        : null,
-                  },
-                ]
-              : [],
-
-          featuredImage:
-            image &&
-            typeof image.url === "string"
-              ? image.url
-              : null,
-        };
-      }
+    const products = await shopifyGraphQL(
+      shop,
+      accessToken
     );
 
-    return json({
+    const normalized = products.map(
+      (product: any) => ({
+        id: product.id,
+        title: product.title || "",
+        description: product.description || "",
+        productType: product.productType || "",
+        tags: Array.isArray(product.tags)
+          ? product.tags
+          : [],
+        status: product.status || "",
+        vendor: product.vendor || "",
+        price:
+          product.variants?.nodes?.[0]?.price || "",
+        images: Array.isArray(product.images?.nodes)
+          ? product.images.nodes.map(
+              (image: any) => ({
+                url: image.url,
+                altText: image.altText || null,
+              })
+            )
+          : [],
+        featuredImage:
+          product.featuredImage?.url || null,
+      })
+    );
+
+    return NextResponse.json({
       success: true,
-      products,
+      shop,
+      products: normalized,
     });
   } catch (error) {
     console.error(
-      "Shopify products error:",
+      "SHOPIFY_PRODUCTS_ERROR:",
       error
     );
 
-    return json(
+    return NextResponse.json(
       {
         success: false,
         error:
           error instanceof Error
             ? error.message
-            : "Failed to fetch Shopify products.",
+            : "Unable to load Shopify products.",
       },
-      500
+      { status: 500 }
     );
   }
 }
