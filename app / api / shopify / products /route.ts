@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 
 const SHOPIFY_API_VERSION = "2026-07";
 
@@ -8,84 +8,20 @@ function jsonResponse(data: JsonRecord, status = 200) {
   return NextResponse.json(data, { status });
 }
 
-function normalizeShopDomain(value: string): string {
-  return value.trim().replace(/^https?:\/\//i, "").replace(/\/+$/, "");
+function getShopDomain(): string {
+  return (process.env.SHOPIFY_STORE_DOMAIN || "")
+    .trim()
+    .replace(/^https?:\/\//i, "")
+    .replace(/\/+$/, "");
 }
 
-function getShopFromToken(token: string): string {
-  try {
-    const parts = token.split(".");
+async function getShopifyAccessToken(shop: string): Promise<string> {
+  const clientId = process.env.SHOPIFY_API_KEY?.trim();
+  const clientSecret = process.env.SHOPIFY_API_SECRET?.trim();
 
-    if (parts.length !== 3) {
-      return "";
-    }
-
-    const base64 = parts[1]
-      .replace(/-/g, "+")
-      .replace(/_/g, "/");
-
-    const padded =
-      base64 +
-      "=".repeat((4 - (base64.length % 4)) % 4);
-
-    const payload = JSON.parse(
-      Buffer.from(padded, "base64").toString("utf8")
-    ) as {
-      dest?: unknown;
-    };
-
-    if (typeof payload.dest !== "string") {
-      return "";
-    }
-
-    return normalizeShopDomain(
-      new URL(payload.dest).hostname
-    );
-  } catch {
-    return "";
-  }
-}
-
-async function readJsonResponse(
-  response: Response
-): Promise<JsonRecord> {
-  const text = await response.text();
-
-  if (!text) {
-    return {};
-  }
-
-  try {
-    const parsed: unknown = JSON.parse(text);
-
-    return parsed &&
-      typeof parsed === "object"
-      ? (parsed as JsonRecord)
-      : {};
-  } catch {
-    const contentType =
-      response.headers.get("content-type") ||
-      "unknown";
-
+  if (!clientId || !clientSecret) {
     throw new Error(
-      `Shopify returned a non-JSON response (${response.status}, ${contentType}).`
-    );
-  }
-}
-
-async function exchangeSessionToken(
-  shop: string,
-  sessionToken: string
-): Promise<string> {
-  const apiKey =
-    process.env.SHOPIFY_API_KEY;
-
-  const apiSecret =
-    process.env.SHOPIFY_API_SECRET;
-
-  if (!apiKey || !apiSecret) {
-    throw new Error(
-      "SHOPIFY_API_KEY or SHOPIFY_API_SECRET is missing in Vercel Environment Variables."
+      "Missing SHOPIFY_API_KEY or SHOPIFY_API_SECRET in Vercel Environment Variables."
     );
   }
 
@@ -93,35 +29,34 @@ async function exchangeSessionToken(
     `https://${shop}/admin/oauth/access_token`,
     {
       method: "POST",
-
       headers: {
-        "Content-Type":
-          "application/x-www-form-urlencoded",
+        "Content-Type": "application/x-www-form-urlencoded",
         Accept: "application/json",
       },
-
       body: new URLSearchParams({
-        client_id: apiKey,
-        client_secret: apiSecret,
-
-        grant_type:
-          "urn:ietf:params:oauth:grant-type:token-exchange",
-
-        subject_token: sessionToken,
-
-        subject_token_type:
-          "urn:shopify:params:oauth:token-type:id_token",
-
-        requested_token_type:
-          "urn:shopify:params:oauth:token-type:online-access-token",
+        grant_type: "client_credentials",
+        client_id: clientId,
+        client_secret: clientSecret,
       }).toString(),
-
       cache: "no-store",
     }
   );
 
-  const data =
-    await readJsonResponse(response);
+  const text = await response.text();
+
+  let data: JsonRecord = {};
+
+  try {
+    const parsed = JSON.parse(text);
+
+    if (parsed && typeof parsed === "object") {
+      data = parsed as JsonRecord;
+    }
+  } catch {
+    throw new Error(
+      `Shopify token endpoint returned non-JSON data (HTTP ${response.status}).`
+    );
+  }
 
   if (!response.ok) {
     const detail =
@@ -131,82 +66,36 @@ async function exchangeSessionToken(
           ? data.error
           : `HTTP ${response.status}`;
 
-    throw new Error(
-      `Shopify token exchange failed: ${detail}`
-    );
+    throw new Error(`Shopify authentication failed: ${detail}`);
   }
 
-  const accessToken =
-    data.access_token;
+  const accessToken = data.access_token;
 
-  if (
-    typeof accessToken !== "string" ||
-    !accessToken
-  ) {
-    throw new Error(
-      "Shopify did not return an access token."
-    );
+  if (typeof accessToken !== "string" || !accessToken) {
+    throw new Error("Shopify did not return an access token.");
   }
 
   return accessToken;
 }
 
-export async function GET(
-  request: NextRequest
-) {
+export async function GET() {
   try {
-    const sessionToken =
-      request.headers
-        .get("authorization")
-        ?.replace(/^Bearer\s+/i, "") ||
-      request.headers.get(
-        "x-shopify-session-token"
-      ) ||
-      "";
+    const shop = getShopDomain();
 
-    if (!sessionToken) {
+    if (!shop || !shop.endsWith(".myshopify.com")) {
       return jsonResponse(
         {
           success: false,
           error:
-            "Shopify session token is unavailable. Open Virello from Shopify Admin.",
+            "Invalid SHOPIFY_STORE_DOMAIN. Use your-store.myshopify.com.",
         },
-        401
+        500
       );
     }
 
-    const tokenShop =
-      getShopFromToken(sessionToken);
-
-    const configuredShop =
-      process.env.SHOPIFY_STORE_DOMAIN
-        ? normalizeShopDomain(
-            process.env.SHOPIFY_STORE_DOMAIN
-          )
-        : "";
-
-    const shop =
-      tokenShop || configuredShop;
-
-    if (
-      !shop ||
-      !shop.endsWith(".myshopify.com")
-    ) {
-      return jsonResponse(
-        {
-          success: false,
-          error:
-            "Shopify store domain could not be determined from the session token.",
-        },
-        400
-      );
-    }
-
-    const accessToken =
-      await exchangeSessionToken(
-        shop,
-        sessionToken
-      );
+    // No Shopify browser/session token is required here.
+    // Authentication is handled server-to-server.
+    const accessToken = await getShopifyAccessToken(shop);
 
     const query = `
       query GetProducts {
@@ -236,183 +125,151 @@ export async function GET(
       }
     `;
 
-    const response =
-      await fetch(
-        `https://${shop}/admin/api/${SHOPIFY_API_VERSION}/graphql.json`,
-        {
-          method: "POST",
+    const response = await fetch(
+      `https://${shop}/admin/api/${SHOPIFY_API_VERSION}/graphql.json`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+          "X-Shopify-Access-Token": accessToken,
+        },
+        body: JSON.stringify({ query }),
+        cache: "no-store",
+      }
+    );
 
-          headers: {
-            "Content-Type":
-              "application/json",
+    const text = await response.text();
 
-            Accept:
-              "application/json",
+    let result: JsonRecord = {};
 
-            "X-Shopify-Access-Token":
-              accessToken,
-          },
+    try {
+      const parsed = JSON.parse(text);
 
-          body: JSON.stringify({
-            query,
-          }),
-
-          cache: "no-store",
-        }
+      if (parsed && typeof parsed === "object") {
+        result = parsed as JsonRecord;
+      }
+    } catch {
+      throw new Error(
+        `Shopify Admin API returned non-JSON data (HTTP ${response.status}).`
       );
-
-    const result =
-      await readJsonResponse(response);
+    }
 
     if (!response.ok) {
       return jsonResponse(
         {
           success: false,
-          error:
-            "Shopify API request failed.",
+          error: "Shopify Admin API request failed.",
           details: result,
         },
         response.status
       );
     }
 
-    if (
-      Array.isArray(result.errors) &&
-      result.errors.length > 0
-    ) {
+    if (Array.isArray(result.errors) && result.errors.length > 0) {
       return jsonResponse(
         {
           success: false,
-          error:
-            "Shopify GraphQL error.",
+          error: "Shopify GraphQL error.",
           details: result.errors,
         },
         500
       );
     }
 
-    const data =
-      result.data as
-        | JsonRecord
-        | undefined;
+    const data = result.data as JsonRecord | undefined;
+    const productsConnection = data?.products as JsonRecord | undefined;
 
-    const productsConnection =
-      data?.products as
-        | JsonRecord
-        | undefined;
+    const nodes = Array.isArray(productsConnection?.nodes)
+      ? productsConnection.nodes
+      : [];
 
-    const nodes =
-      Array.isArray(
-        productsConnection?.nodes
-      )
-        ? productsConnection.nodes
+    const products = nodes.map((node) => {
+      const item = (node || {}) as JsonRecord;
+
+      const variants = item.variants as JsonRecord | undefined;
+
+      const variantNodes = Array.isArray(variants?.nodes)
+        ? variants.nodes
         : [];
 
-    const products =
-      nodes.map((node) => {
-        const item =
-          node as JsonRecord;
+      const firstVariant = (variantNodes[0] || {}) as JsonRecord;
 
-        const variants =
-          item.variants as
-            | JsonRecord
-            | undefined;
+      const featuredImage = item.featuredImage as
+        | JsonRecord
+        | null
+        | undefined;
 
-        const variantNodes =
-          Array.isArray(
-            variants?.nodes
-          )
-            ? variants.nodes
-            : [];
+      return {
+        id:
+          typeof item.id === "string"
+            ? item.id
+            : "",
 
-        const firstVariant =
-          (variantNodes[0] || {}) as
-            JsonRecord;
+        title:
+          typeof item.title === "string"
+            ? item.title
+            : "",
 
-        const featuredImage =
-          item.featuredImage as
-            | JsonRecord
-            | null
-            | undefined;
+        handle:
+          typeof item.handle === "string"
+            ? item.handle
+            : "",
 
-        return {
-          id:
-            typeof item.id === "string"
-              ? item.id
-              : "",
+        description:
+          typeof item.descriptionHtml === "string"
+            ? item.descriptionHtml
+            : "",
 
-          title:
-            typeof item.title === "string"
-              ? item.title
-              : "",
+        productType:
+          typeof item.productType === "string"
+            ? item.productType
+            : "",
 
-          description:
-            typeof item.descriptionHtml ===
-            "string"
-              ? item.descriptionHtml
-              : "",
+        tags:
+          Array.isArray(item.tags)
+            ? item.tags.filter(
+                (tag): tag is string =>
+                  typeof tag === "string"
+              )
+            : [],
 
-          productType:
-            typeof item.productType ===
-            "string"
-              ? item.productType
-              : "",
+        status:
+          typeof item.status === "string"
+            ? item.status
+            : "",
 
-          tags:
-            Array.isArray(item.tags)
-              ? item.tags.filter(
-                  (
-                    tag
-                  ): tag is string =>
-                    typeof tag ===
-                    "string"
-                )
-              : [],
+        vendor:
+          typeof item.vendor === "string"
+            ? item.vendor
+            : "",
 
-          status:
-            typeof item.status ===
-            "string"
-              ? item.status
-              : "",
+        price:
+          typeof firstVariant.price === "string"
+            ? firstVariant.price
+            : "",
 
-          vendor:
-            typeof item.vendor ===
-            "string"
-              ? item.vendor
-              : "",
+        images:
+          featuredImage &&
+          typeof featuredImage.url === "string"
+            ? [
+                {
+                  url: featuredImage.url,
+                  altText:
+                    typeof featuredImage.altText === "string"
+                      ? featuredImage.altText
+                      : null,
+                },
+              ]
+            : [],
 
-          price:
-            typeof firstVariant.price ===
-            "string"
-              ? firstVariant.price
-              : "",
-
-          images:
-            featuredImage &&
-            typeof featuredImage.url ===
-              "string"
-              ? [
-                  {
-                    url:
-                      featuredImage.url,
-
-                    altText:
-                      typeof featuredImage.altText ===
-                      "string"
-                        ? featuredImage.altText
-                        : null,
-                  },
-                ]
-              : [],
-
-          featuredImage:
-            featuredImage &&
-            typeof featuredImage.url ===
-              "string"
-              ? featuredImage.url
-              : null,
-        };
-      });
+        featuredImage:
+          featuredImage &&
+          typeof featuredImage.url === "string"
+            ? featuredImage.url
+            : null,
+      };
+    });
 
     return jsonResponse({
       success: true,
@@ -427,7 +284,6 @@ export async function GET(
     return jsonResponse(
       {
         success: false,
-
         error:
           error instanceof Error
             ? error.message
