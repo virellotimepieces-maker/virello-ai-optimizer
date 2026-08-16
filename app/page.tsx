@@ -70,11 +70,18 @@ const clean = (value: string) =>
 
 const stripHtml = (value: string) =>
   value
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/p>/gi, "\n")
+    .replace(/<\/div>/gi, "\n")
+    .replace(/<\/li>/gi, "\n")
     .replace(/<[^>]*>/g, " ")
     .replace(/&nbsp;/gi, " ")
     .replace(/&amp;/gi, "&")
     .replace(/&quot;/gi, '"')
     .replace(/&#39;/gi, "'")
+    .replace(/&#x27;/gi, "'")
+    .replace(/&ndash;/gi, "–")
+    .replace(/&mdash;/gi, "—")
     .replace(/\s+/g, " ")
     .trim();
 
@@ -115,6 +122,12 @@ function uniqueWords(value: string) {
   }
 
   return result;
+}
+
+function isWatchProduct(product: Product) {
+  return /watch|timepiece|chronograph|automatic|quartz|mechanical/i.test(
+    `${product.title} ${product.productType} ${product.tags}`
+  );
 }
 
 function buildTitle(
@@ -161,46 +174,74 @@ function buildTitle(
   return clean(words.slice(0, 8).join(" "));
 }
 
+/* ---------------------------------------
+   BETTER SPEC EXTRACTION
+--------------------------------------- */
+
 function extractSpecs(description: string) {
   const text = stripHtml(description);
-
   const specs: string[] = [];
 
   const patterns = [
     {
       label: "Movement",
       regex:
-        /\b(?:movement|mechanism)\s*[:\-]\s*([^.;,\n]+)/i,
+        /\b(?:movement|mechanism|caliber|calibre)\s*[:\-]?\s*([^.;,\n]+)/i,
     },
     {
       label: "Case Material",
       regex:
-        /\bcase material\s*[:\-]\s*([^.;,\n]+)/i,
+        /\bcase\s*material\s*[:\-]?\s*([^.;,\n]+)/i,
     },
     {
       label: "Case Size",
       regex:
-        /\b(?:case size|dial diameter|diameter)\s*[:\-]\s*([^.;,\n]+)/i,
+        /\b(?:case\s*size|case\s*diameter|dial\s*diameter|diameter)\s*[:\-]?\s*([^.;,\n]+)/i,
     },
     {
       label: "Water Resistance",
       regex:
-        /\b(?:water resistance|water resistant)\s*[:\-]?\s*([^.;,\n]+)/i,
+        /\b(?:water\s*resistance|water\s*resistant|waterproof)\s*[:\-]?\s*([^.;,\n]+)/i,
     },
     {
       label: "Strap",
       regex:
-        /\b(?:strap|band|bracelet)(?: material)?\s*[:\-]\s*([^.;,\n]+)/i,
+        /\b(?:strap|band|bracelet)(?:\s*material)?\s*[:\-]?\s*([^.;,\n]+)/i,
     },
     {
       label: "Crystal",
       regex:
-        /\b(?:crystal|glass)\s*[:\-]\s*([^.;,\n]+)/i,
+        /\b(?:crystal|glass)\s*[:\-]?\s*([^.;,\n]+)/i,
     },
     {
       label: "Power Reserve",
       regex:
-        /\bpower reserve\s*[:\-]\s*([^.;,\n]+)/i,
+        /\bpower\s*reserve\s*[:\-]?\s*([^.;,\n]+)/i,
+    },
+    {
+      label: "Dial Color",
+      regex:
+        /\b(?:dial\s*color|dial\s*colour)\s*[:\-]?\s*([^.;,\n]+)/i,
+    },
+    {
+      label: "Case Color",
+      regex:
+        /\b(?:case\s*color|case\s*colour)\s*[:\-]?\s*([^.;,\n]+)/i,
+    },
+    {
+      label: "Band Color",
+      regex:
+        /\b(?:band\s*color|band\s*colour|strap\s*color|strap\s*colour)\s*[:\-]?\s*([^.;,\n]+)/i,
+    },
+    {
+      label: "Clasp",
+      regex:
+        /\b(?:clasp|buckle)\s*[:\-]?\s*([^.;,\n]+)/i,
+    },
+    {
+      label: "Functions",
+      regex:
+        /\b(?:functions|features|function)\s*[:\-]?\s*([^.;,\n]+)/i,
     },
   ];
 
@@ -208,116 +249,298 @@ function extractSpecs(description: string) {
     const match = text.match(item.regex);
 
     if (match?.[1]) {
-      specs.push(
-        `${item.label}: ${clean(match[1])}`
-      );
+      const value = clean(match[1]);
+
+      if (
+        value &&
+        value.length > 1 &&
+        value.length < 100
+      ) {
+        specs.push(`${item.label}: ${value}`);
+      }
     }
   }
 
   return specs;
 }
 
-function generateResult(product: Product): Result {
+/* ---------------------------------------
+   TAG HELPERS
+--------------------------------------- */
+
+function getTags(product: Product) {
+  return product.tags
+    .split(",")
+    .map((tag) => clean(tag))
+    .filter(Boolean);
+}
+
+function hasKeyword(
+  product: Product,
+  keywords: string[]
+) {
+  const source =
+    `${product.title} ${product.productType} ${product.tags} ${product.description}`.toLowerCase();
+
+  return keywords.some((keyword) =>
+    source.includes(keyword.toLowerCase())
+  );
+}
+
+/* ---------------------------------------
+   DESCRIPTION
+--------------------------------------- */
+
+function buildDescription(product: Product) {
   const title = buildTitle(
     product.title,
     product.audience,
     product.productType
   );
 
-  const originalDescription = stripHtml(
+  const original = stripHtml(
     product.description
   );
 
-  const isWatch =
-    /watch|timepiece|chronograph|automatic|quartz/i.test(
-      `${product.title} ${product.productType}`
-    );
-
-  const audiencePhrase =
+  const audience =
     product.audience === "Unisex"
       ? "men and women"
       : product.audience.toLowerCase();
+
+  if (original.length > 40) {
+    return limit(
+      `${title}. ${original}`,
+      520
+    );
+  }
+
+  if (isWatchProduct(product)) {
+    return limit(
+      `${title} offers a refined look for ${audience}, combining versatile styling with a polished presence that works across everyday and more dressed-up occasions.`,
+      520
+    );
+  }
+
+  return limit(
+    `${title} is designed for ${audience} with a ${product.style.toLowerCase()} presentation suited to everyday use and personal style.`,
+    520
+  );
+}
+
+/* ---------------------------------------
+   BULLETS
+--------------------------------------- */
+
+function buildBullets(product: Product) {
+  const watch = isWatchProduct(product);
+
+  const bullets = watch
+    ? [
+        "Refined design with a polished presence",
+        "Versatile styling for everyday and dressier occasions",
+        "A practical choice for personal wear or gifting",
+        "Product details presented from the available listing information",
+      ]
+    : [
+        "Clean and versatile design",
+        "Easy to incorporate into everyday use",
+        "Suitable for personal use or gifting",
+        "Product details presented from the available listing information",
+      ];
+
+  if (
+    hasKeyword(product, [
+      "automatic",
+      "mechanical",
+    ])
+  ) {
+    bullets[2] =
+      "Automatic-style movement featured in the product listing";
+  }
+
+  if (
+    hasKeyword(product, [
+      "chronograph",
+    ])
+  ) {
+    bullets[1] =
+      "Chronograph-inspired styling with a versatile wrist presence";
+  }
+
+  if (
+    hasKeyword(product, [
+      "water resistant",
+      "water resistance",
+    ])
+  ) {
+    bullets[3] =
+      "Water-resistance information is presented when specified in the listing";
+  }
+
+  return bullets;
+}
+
+/* ---------------------------------------
+   FAQ
+--------------------------------------- */
+
+function buildFaq(
+  product: Product,
+  factualSpecs: string[]
+) {
+  const title = buildTitle(
+    product.title,
+    product.audience,
+    product.productType
+  );
+
+  const audienceText =
+    product.audience === "Unisex"
+      ? "men and women"
+      : product.audience.toLowerCase();
+
+  const watch = isWatchProduct(product);
+
+  const faq: Result["faq"] = [];
+
+  /* 1 */
+  faq.push({
+    q: "What type of product is this?",
+    a: product.productType
+      ? `This is a ${clean(
+          product.productType
+        )}, presented as ${title}.`
+      : `This product is presented as ${title}.`,
+  });
+
+  /* 2 */
+  faq.push({
+    q: "Who is this product designed for?",
+    a: `This style is intended for ${audienceText}, making it a versatile choice for personal wear and everyday styling.`,
+  });
+
+  /* 3 */
+  if (watch) {
+    faq.push({
+      q: "What makes this watch a versatile choice?",
+      a: `The ${title} is designed with a polished look that can complement both everyday outfits and more refined occasions.`,
+    });
+  } else {
+    faq.push({
+      q: "What makes this product useful?",
+      a: `${title} is presented as a ${product.style.toLowerCase()} option designed to fit naturally into everyday use.`,
+    });
+  }
+
+  /* 4 */
+  if (factualSpecs.length > 0) {
+    faq.push({
+      q: "What product details are available?",
+      a: `The available listing information includes ${factualSpecs
+        .slice(0, 4)
+        .map((item) => item.replace(/^.*?:\s*/, ""))
+        .join(", ")}. These details come directly from the supplied product information.`,
+    });
+  } else {
+    faq.push({
+      q: "What product details are available?",
+      a: `The listing provides the product title, product type, presentation details and the available product description. Technical specifications are only shown when they are supplied with the product information.`,
+    });
+  }
+
+  /* 5 */
+  faq.push({
+    q: "Can this product be given as a gift?",
+    a: `Yes. Its ${product.style.toLowerCase()} presentation makes it suitable to consider as a gift for someone who appreciates this style.`,
+  });
+
+  /* 6 */
+  faq.push({
+    q: "Are the product specifications verified?",
+    a: `The specifications shown by Virello are taken from the supplied product listing. Virello does not add technical measurements or performance claims that are not present in the available product information.`,
+  });
+
+  return faq;
+}
+
+/* ---------------------------------------
+   MAIN GENERATOR
+--------------------------------------- */
+
+function generateResult(
+  product: Product
+): Result {
+  const title = buildTitle(
+    product.title,
+    product.audience,
+    product.productType
+  );
 
   const factualSpecs = extractSpecs(
     product.description
   );
 
-  const bullets = isWatch
-    ? [
-        "Refined styling for everyday wear",
-        "Versatile design for casual and dressier occasions",
-        "Clear product details based on the available information",
-        "A considered choice for personal wear or gifting",
-      ]
-    : [
-        "Clean presentation for easier product discovery",
-        "Versatile styling for everyday use",
-        "Clear product information without unsupported claims",
-        "Suitable for personal use or gifting",
-      ];
+  const description =
+    buildDescription(product);
 
-  const descriptionSource =
-    originalDescription.length > 40
-      ? originalDescription
-      : `A ${product.style.toLowerCase()} option designed for ${audiencePhrase}.`;
-
-  const description = limit(
-    `${title}. ${descriptionSource}`,
-    520
-  );
+  const bullets =
+    buildBullets(product);
 
   const specs = [
     `Product Type: ${
-      product.productType || "Not specified"
+      product.productType || "Product"
     }`,
     `Audience: ${product.audience}`,
     `Style: ${product.style}`,
   ];
 
   if (product.vendor) {
-    specs.push(`Brand: ${product.vendor}`);
+    specs.push(
+      `Brand / Vendor: ${product.vendor}`
+    );
   }
 
   if (product.price) {
-    specs.push(`Price: $${product.price}`);
+    specs.push(
+      `Price: $${product.price}`
+    );
+  }
+
+  if (product.tags) {
+    const tags = getTags(product);
+
+    if (tags.length > 0) {
+      specs.push(
+        `Product Tags: ${tags
+          .slice(0, 8)
+          .join(", ")}`
+      );
+    }
   }
 
   if (factualSpecs.length) {
-    specs.push(...factualSpecs);
+    specs.push(
+      ...factualSpecs
+    );
   }
 
-  const faq = [
-    {
-      q: "What type of product is this?",
-      a: product.productType
-        ? `This product is listed as ${product.productType}.`
-        : "The product type has not been specified.",
-    },
-    {
-      q: "Who is this product designed for?",
-      a: `This product is presented for ${audiencePhrase}.`,
-    },
-    {
-      q: "What details are included?",
-      a: factualSpecs.length
-        ? "The product details shown here are based on the information provided for this item."
-        : "The available product information does not include additional technical specifications.",
-    },
-    {
-      q: "Are the specifications verified?",
-      a: factualSpecs.length
-        ? "The specifications shown are taken from the provided product information and are not supplemented with unsupported claims."
-        : "No technical specifications were added because they were not provided in the available product information.",
-    },
-  ];
+  const faq = buildFaq(
+    product,
+    factualSpecs
+  );
 
   const seoTitle = limit(
     title || "Product",
     70
   );
 
+  const audiencePhrase =
+    product.audience === "Unisex"
+      ? "men and women"
+      : product.audience.toLowerCase();
+
   const metaDescription = limit(
-    `Shop ${title}. Explore product details, available specifications and styling information for ${audiencePhrase}.`,
+    `Shop ${title}. Explore the design, product details and available specifications for ${audiencePhrase}.`,
     160
   );
 
@@ -332,7 +555,13 @@ function generateResult(product: Product): Result {
   };
 }
 
-function getShopFromToken(token: string) {
+/* ---------------------------------------
+   SHOPIFY TOKEN
+--------------------------------------- */
+
+function getShopFromToken(
+  token: string
+) {
   try {
     const parts = token.split(".");
 
@@ -347,7 +576,9 @@ function getShopFromToken(token: string) {
     const padded =
       base64 +
       "=".repeat(
-        (4 - (base64.length % 4)) % 4
+        (4 -
+          (base64.length % 4)) %
+          4
       );
 
     const payload = JSON.parse(
@@ -355,19 +586,27 @@ function getShopFromToken(token: string) {
     );
 
     if (
-      typeof payload.dest !== "string"
+      typeof payload.dest !==
+      "string"
     ) {
       return "";
     }
 
-    return new URL(payload.dest)
-      .hostname;
+    return new URL(
+      payload.dest
+    ).hostname;
   } catch {
     return "";
   }
 }
 
-function readImage(file: File): Promise<string> {
+/* ---------------------------------------
+   IMAGE UPLOAD
+--------------------------------------- */
+
+function readImage(
+  file: File
+): Promise<string> {
   return new Promise(
     (resolve, reject) => {
       const reader =
@@ -378,7 +617,9 @@ function readImage(file: File): Promise<string> {
           typeof reader.result ===
           "string"
         ) {
-          resolve(reader.result);
+          resolve(
+            reader.result
+          );
         } else {
           reject(
             new Error(
@@ -400,6 +641,10 @@ function readImage(file: File): Promise<string> {
   );
 }
 
+/* ---------------------------------------
+   EMPTY PRODUCT
+--------------------------------------- */
+
 const emptyProduct: Product = {
   id: "",
   title: "",
@@ -412,6 +657,10 @@ const emptyProduct: Product = {
   style: "Premium / Luxury",
   vendor: "",
 };
+
+/* ---------------------------------------
+   APP
+--------------------------------------- */
 
 export default function Home() {
   const [products, setProducts] =
@@ -438,10 +687,14 @@ export default function Home() {
   ] = useState("");
 
   const [product, setProduct] =
-    useState<Product>(emptyProduct);
+    useState<Product>(
+      emptyProduct
+    );
 
   const [result, setResult] =
-    useState<Result | null>(null);
+    useState<Result | null>(
+      null
+    );
 
   const [generated, setGenerated] =
     useState(false);
@@ -469,11 +722,17 @@ export default function Home() {
     key: K,
     value: Product[K]
   ) => {
-    setProduct((current) => ({
-      ...current,
-      [key]: value,
-    }));
+    setProduct(
+      (current) => ({
+        ...current,
+        [key]: value,
+      })
+    );
   };
+
+  /* ---------------------------------------
+     SHOPIFY SESSION TOKEN
+  --------------------------------------- */
 
   async function getShopifySessionToken() {
     if (
@@ -489,6 +748,10 @@ export default function Home() {
     return window.shopify.idToken();
   }
 
+  /* ---------------------------------------
+     LOAD PRODUCTS
+  --------------------------------------- */
+
   async function loadShopifyProducts() {
     setLoadingProducts(true);
     setConnectionMessage("");
@@ -498,7 +761,9 @@ export default function Home() {
         await getShopifySessionToken();
 
       const shop =
-        getShopFromToken(token);
+        getShopFromToken(
+          token
+        );
 
       if (!shop) {
         throw new Error(
@@ -514,9 +779,11 @@ export default function Home() {
             headers: {
               Authorization:
                 `Bearer ${token}`,
-              "x-shopify-shop": shop,
+              "x-shopify-shop":
+                shop,
             },
-            cache: "no-store",
+            cache:
+              "no-store",
           }
         );
 
@@ -529,12 +796,14 @@ export default function Home() {
       ) {
         throw new Error(
           data.error ||
-            "Unable to load products."
+            "Unable to load Shopify products."
         );
       }
 
       const loadedProducts =
-        Array.isArray(data.products)
+        Array.isArray(
+          data.products
+        )
           ? data.products
           : [];
 
@@ -542,25 +811,33 @@ export default function Home() {
         loadedProducts
       );
 
-      setShopifyConnected(true);
+      setShopifyConnected(
+        true
+      );
 
       setConnectionMessage(
         `${loadedProducts.length} product${
-          loadedProducts.length === 1
+          loadedProducts.length ===
+          1
             ? ""
             : "s"
         } loaded.`
       );
     } catch (error) {
-      setShopifyConnected(false);
+      setShopifyConnected(
+        false
+      );
 
       setConnectionMessage(
-        error instanceof Error
+        error instanceof
+          Error
           ? error.message
           : "Connection failed."
       );
     } finally {
-      setLoadingProducts(false);
+      setLoadingProducts(
+        false
+      );
     }
   }
 
@@ -568,13 +845,18 @@ export default function Home() {
     void loadShopifyProducts();
   }, []);
 
+  /* ---------------------------------------
+     SELECT SHOPIFY PRODUCT
+  --------------------------------------- */
+
   function selectShopifyProduct(
     productId: string
   ) {
     const selected =
       products.find(
         (item) =>
-          item.id === productId
+          item.id ===
+          productId
       );
 
     if (!selected) {
@@ -584,10 +866,13 @@ export default function Home() {
     const images =
       selected.images?.length
         ? selected.images.map(
-            (image) => image.url
+            (image) =>
+              image.url
           )
         : selected.featuredImage
-          ? [selected.featuredImage]
+          ? [
+              selected.featuredImage,
+            ]
           : [];
 
     let audience:
@@ -595,17 +880,21 @@ export default function Home() {
       "Men";
 
     if (
-      /women|female/i.test(
-        selected.title
+      /women|female|ladies/i.test(
+        `${selected.title} ${selected.productType} ${selected.tags.join(
+          " "
+        )}`
       )
     ) {
-      audience = "Women";
+      audience =
+        "Women";
     } else if (
       /unisex/i.test(
-        selected.title
+        `${selected.title} ${selected.productType}`
       )
     ) {
-      audience = "Unisex";
+      audience =
+        "Unisex";
     }
 
     let style:
@@ -613,8 +902,8 @@ export default function Home() {
       "Professional";
 
     if (
-      /luxury|premium|chronograph|automatic/i.test(
-        selected.title
+      /luxury|premium|chronograph|automatic|mechanical/i.test(
+        `${selected.title} ${selected.productType}`
       )
     ) {
       style =
@@ -627,10 +916,15 @@ export default function Home() {
 
     setProduct({
       id: selected.id,
-      title: selected.title || "",
+      title:
+        selected.title ||
+        "",
       description:
-        selected.description || "",
-      price: selected.price || "",
+        selected.description ||
+        "",
+      price:
+        selected.price ||
+        "",
       images,
       productType:
         selected.productType ||
@@ -646,7 +940,8 @@ export default function Home() {
       audience,
       style,
       vendor:
-        selected.vendor || "",
+        selected.vendor ||
+        "",
     });
 
     setActiveImage(0);
@@ -654,18 +949,23 @@ export default function Home() {
     setResult(null);
   }
 
+  /* ---------------------------------------
+     UPLOAD IMAGES
+  --------------------------------------- */
+
   async function uploadImages(
     e: ChangeEvent<HTMLInputElement>
   ) {
-    const files = Array.from(
-      e.target.files ?? []
-    )
-      .filter((file) =>
-        file.type.startsWith(
-          "image/"
-        )
+    const files =
+      Array.from(
+        e.target.files ?? []
       )
-      .slice(0, 6);
+        .filter((file) =>
+          file.type.startsWith(
+            "image/"
+          )
+        )
+        .slice(0, 6);
 
     if (!files.length) {
       return;
@@ -674,7 +974,9 @@ export default function Home() {
     try {
       const images =
         await Promise.all(
-          files.map(readImage)
+          files.map(
+            readImage
+          )
         );
 
       update(
@@ -697,7 +999,8 @@ export default function Home() {
   ) {
     const images =
       product.images.filter(
-        (_, i) => i !== index
+        (_, i) =>
+          i !== index
       );
 
     update(
@@ -711,13 +1014,18 @@ export default function Home() {
         Math.min(
           activeImage,
           Math.max(
-            images.length - 1,
+            images.length -
+              1,
             0
           )
         )
       )
     );
   }
+
+  /* ---------------------------------------
+     GENERATE
+  --------------------------------------- */
 
   function generate() {
     if (!product.title.trim()) {
@@ -728,7 +1036,9 @@ export default function Home() {
     }
 
     const generatedResult =
-      generateResult(product);
+      generateResult(
+        product
+      );
 
     setResult(
       generatedResult
@@ -736,16 +1046,24 @@ export default function Home() {
 
     setGenerated(true);
 
-    window.setTimeout(() => {
-      document
-        .getElementById(
-          "preview"
-        )
-        ?.scrollIntoView({
-          behavior: "smooth",
-        });
-    }, 50);
+    window.setTimeout(
+      () => {
+        document
+          .getElementById(
+            "preview"
+          )
+          ?.scrollIntoView({
+            behavior:
+              "smooth",
+          });
+      },
+      50
+    );
   }
+
+  /* ---------------------------------------
+     COPY
+  --------------------------------------- */
 
   async function copyText(
     label: string,
@@ -759,13 +1077,18 @@ export default function Home() {
       setCopied(label);
 
       window.setTimeout(
-        () => setCopied(""),
+        () =>
+          setCopied(""),
         1500
       );
     } catch {
       setCopied("");
     }
   }
+
+  /* ---------------------------------------
+     RESET
+  --------------------------------------- */
 
   function reset() {
     setGenerated(false);
@@ -774,9 +1097,14 @@ export default function Home() {
 
     window.scrollTo({
       top: 0,
-      behavior: "smooth",
+      behavior:
+        "smooth",
     });
   }
+
+  /* ---------------------------------------
+     UI
+  --------------------------------------- */
 
   return (
     <main className="app">
@@ -801,8 +1129,8 @@ export default function Home() {
           />
 
           {shopifyConnected
-            ? "Shopify Connected"
-            : "Shopify Not Connected"}
+            ? "Connected"
+            : "Not Connected"}
         </div>
       </header>
 
@@ -814,17 +1142,18 @@ export default function Home() {
             </div>
 
             <h1>
-              Build product pages shoppers
-              understand and want.
+              Build product pages
+              shoppers understand
+              and want.
             </h1>
 
             <p>
               Turn your product
-              information into clear,
-              persuasive and
-              search-ready product copy
-              without inventing
-              specifications.
+              information into
+              clear, persuasive
+              and search-ready
+              product copy without
+              inventing specifications.
             </p>
           </div>
 
@@ -832,7 +1161,7 @@ export default function Home() {
             <div className="shopify-head">
               <div>
                 <div className="eyebrow">
-                  STORE CONNECTION
+                  STORE PRODUCTS
                 </div>
 
                 <h2>
@@ -840,8 +1169,9 @@ export default function Home() {
                 </h2>
 
                 <p>
-                  Select a product directly
-                  from your store.
+                  Select a product
+                  directly from your
+                  store.
                 </p>
               </div>
 
@@ -881,7 +1211,8 @@ export default function Home() {
                 }
                 onChange={(e) =>
                   selectShopifyProduct(
-                    e.target.value
+                    e.target
+                      .value
                   )
                 }
                 disabled={
@@ -899,10 +1230,16 @@ export default function Home() {
                 {products.map(
                   (item) => (
                     <option
-                      key={item.id}
-                      value={item.id}
+                      key={
+                        item.id
+                      }
+                      value={
+                        item.id
+                      }
                     >
-                      {item.title}
+                      {
+                        item.title
+                      }
                     </option>
                   )
                 )}
@@ -924,7 +1261,7 @@ export default function Home() {
                 </div>
 
                 <span className="badge">
-                  Store ready
+                  Ready
                 </span>
               </div>
 
@@ -939,7 +1276,8 @@ export default function Home() {
                 onChange={(e) =>
                   update(
                     "title",
-                    e.target.value
+                    e.target
+                      .value
                   )
                 }
                 placeholder="Select a product"
@@ -948,7 +1286,7 @@ export default function Home() {
               <label>
                 Original Description{" "}
                 <span className="optional">
-                  Existing product copy
+                  From product listing
                 </span>
               </label>
 
@@ -959,7 +1297,8 @@ export default function Home() {
                 onChange={(e) =>
                   update(
                     "description",
-                    e.target.value
+                    e.target
+                      .value
                   )
                 }
                 placeholder="Product description"
@@ -980,7 +1319,9 @@ export default function Home() {
                       value={
                         product.price
                       }
-                      onChange={(e) =>
+                      onChange={(
+                        e
+                      ) =>
                         update(
                           "price",
                           e.target
@@ -1002,7 +1343,9 @@ export default function Home() {
                     value={
                       product.productType
                     }
-                    onChange={(e) =>
+                    onChange={(
+                      e
+                    ) =>
                       update(
                         "productType",
                         e.target
@@ -1025,7 +1368,8 @@ export default function Home() {
                 onChange={(e) =>
                   update(
                     "tags",
-                    e.target.value
+                    e.target
+                      .value
                   )
                 }
                 placeholder="Product tags"
@@ -1034,7 +1378,7 @@ export default function Home() {
               {product.vendor && (
                 <>
                   <label>
-                    Brand / Vendor
+                    Vendor
                   </label>
 
                   <input
@@ -1059,7 +1403,9 @@ export default function Home() {
                       "Men",
                       "Unisex",
                     ].map(
-                      (item) => (
+                      (
+                        item
+                      ) => (
                         <button
                           type="button"
                           className={
@@ -1074,9 +1420,13 @@ export default function Home() {
                               item as Product["audience"]
                             )
                           }
-                          key={item}
+                          key={
+                            item
+                          }
                         >
-                          {item}
+                          {
+                            item
+                          }
                         </button>
                       )
                     )}
@@ -1093,7 +1443,9 @@ export default function Home() {
                     value={
                       product.style
                     }
-                    onChange={(e) =>
+                    onChange={(
+                      e
+                    ) =>
                       update(
                         "style",
                         e.target
@@ -1104,18 +1456,23 @@ export default function Home() {
                     <option>
                       Premium / Luxury
                     </option>
+
                     <option>
                       Professional
                     </option>
+
                     <option>
                       Everyday
                     </option>
+
                     <option>
                       Casual
                     </option>
+
                     <option>
                       Sport
                     </option>
+
                     <option>
                       Gift
                     </option>
@@ -1142,7 +1499,8 @@ export default function Home() {
                         <img
                           src={image}
                           alt={`Product ${
-                            index + 1
+                            index +
+                            1
                           }`}
                         />
                       </div>
@@ -1150,8 +1508,8 @@ export default function Home() {
                   )
                 ) : (
                   <div className="no-image">
-                    No product images
-                    found.
+                    No product
+                    images found.
                   </div>
                 )}
               </div>
@@ -1176,17 +1534,19 @@ export default function Home() {
                     htmlFor="images"
                     className="uploadButton"
                   >
-                    + Add Product Images
+                    + Add Product
+                    Images
                   </label>
 
                   <p>
-                    Optional fallback for
-                    testing images locally.
+                    Optional fallback
+                    for local testing.
                   </p>
                 </div>
 
                 {product.images
-                  .length > 0 && (
+                  .length >
+                  0 && (
                   <div className="thumbGrid">
                     {product.images.map(
                       (
@@ -1198,9 +1558,12 @@ export default function Home() {
                           key={`${image}-${index}`}
                         >
                           <img
-                            src={image}
+                            src={
+                              image
+                            }
                             alt={`Product ${
-                              index + 1
+                              index +
+                              1
                             }`}
                           />
 
@@ -1212,7 +1575,8 @@ export default function Home() {
                               )
                             }
                             aria-label={`Remove image ${
-                              index + 1
+                              index +
+                              1
                             }`}
                           >
                             ×
@@ -1227,10 +1591,15 @@ export default function Home() {
               <button
                 type="button"
                 className="primary"
-                onClick={generate}
+                onClick={
+                  generate
+                }
               >
-                Generate Optimized Product
-                Page <span>→</span>
+                Generate Optimized
+                Product Page
+                <span>
+                  →
+                </span>
               </button>
             </section>
 
@@ -1249,9 +1618,8 @@ export default function Home() {
 
               <div className="mini-product">
                 <div className="mini-image">
-                  {product.images[
-                    0
-                  ] ? (
+                  {product
+                    .images[0] ? (
                     <img
                       src={
                         product
@@ -1288,7 +1656,7 @@ export default function Home() {
 
                 <div className="mini-checks">
                   <span>
-                    ✓ Product Details
+                    ✓ Product Data
                   </span>
 
                   <span>
@@ -1316,7 +1684,9 @@ export default function Home() {
             <button
               type="button"
               className="back"
-              onClick={reset}
+              onClick={
+                reset
+              }
             >
               ← Edit Product
             </button>
@@ -1329,7 +1699,8 @@ export default function Home() {
           <div className="productHero">
             <div className="gallery">
               <div className="mainPhoto">
-                {product.images[
+                {product
+                  .images[
                   activeImage
                 ] ? (
                   <img
@@ -1352,7 +1723,8 @@ export default function Home() {
               </div>
 
               {product.images
-                .length > 0 && (
+                .length >
+                0 && (
                 <div className="galleryThumbs">
                   {product.images.map(
                     (
@@ -1375,9 +1747,12 @@ export default function Home() {
                         }
                       >
                         <img
-                          src={image}
+                          src={
+                            image
+                          }
                           alt={`View ${
-                            index + 1
+                            index +
+                            1
                           }`}
                         />
                       </button>
@@ -1393,22 +1768,34 @@ export default function Home() {
               </div>
 
               <h2>
-                {active?.title}
+                {
+                  active?.title
+                }
               </h2>
 
               <div className="priceLarge">
-                ${product.price}
+                $
+                {
+                  product.price
+                }
               </div>
 
               <p className="lead">
-                {active?.description}
+                {
+                  active?.description
+                }
               </p>
 
               <div className="benefits">
                 {active?.bullets.map(
                   (item) => (
-                    <div key={item}>
-                      ✓ {item}
+                    <div
+                      key={
+                        item
+                      }
+                    >
+                      ✓{" "}
+                      {item}
                     </div>
                   )
                 )}
@@ -1417,7 +1804,8 @@ export default function Home() {
               <div className="trust">
                 <span>
                   Product information
-                  refined for your store
+                  sourced from
+                  your listing
                 </span>
 
                 <span>
@@ -1427,6 +1815,8 @@ export default function Home() {
               </div>
             </div>
           </div>
+
+          {/* BENEFITS */}
 
           <section className="resultSection">
             <div className="eyebrow">
@@ -1440,13 +1830,20 @@ export default function Home() {
 
             <div className="fourCards">
               {active?.bullets.map(
-                (item, index) => (
+                (
+                  item,
+                  index
+                ) => (
                   <article
                     className="feature"
-                    key={item}
+                    key={
+                      item
+                    }
                   >
                     <small>
-                      0{index + 1}
+                      0
+                      {index +
+                        1}
                     </small>
 
                     <h4>
@@ -1454,20 +1851,26 @@ export default function Home() {
                         [
                           "Refined Design",
                           "Versatile Styling",
-                          "Clear Presentation",
-                          "Considered Choice",
-                        ][index]
+                          "Product Details",
+                          "Gift Worthy",
+                        ][
+                          index
+                        ]
                       }
                     </h4>
 
                     <p>
-                      {item}
+                      {
+                        item
+                      }
                     </p>
                   </article>
                 )
               )}
             </div>
           </section>
+
+          {/* SPECIFICATIONS */}
 
           <section className="resultSection">
             <div className="eyebrow">
@@ -1476,30 +1879,40 @@ export default function Home() {
 
             <h3>
               Simple, useful
-              specifications.
+              product details.
             </h3>
 
             <div className="specList">
               {active?.specs.map(
-                (spec) => {
+                (
+                  spec
+                ) => {
                   const [
                     key,
                     ...rest
                   ] =
-                    spec.split(":");
+                    spec.split(
+                      ":"
+                    );
 
                   return (
                     <div
                       className="spec"
-                      key={spec}
+                      key={
+                        spec
+                      }
                     >
                       <span>
-                        {key}
+                        {
+                          key
+                        }
                       </span>
 
                       <strong>
                         {rest
-                          .join(":")
+                          .join(
+                            ":"
+                          )
                           .trim()}
                       </strong>
                     </div>
@@ -1509,34 +1922,46 @@ export default function Home() {
             </div>
           </section>
 
+          {/* FAQ */}
+
           <section className="resultSection">
             <div className="eyebrow">
               FREQUENTLY ASKED QUESTIONS
             </div>
 
             <h3>
-              Questions shoppers
-              may have.
+              Helpful answers for
+              shoppers.
             </h3>
 
             <div className="faq">
               {active?.faq.map(
-                (item) => (
+                (
+                  item
+                ) => (
                   <details
-                    key={item.q}
+                    key={
+                      item.q
+                    }
                   >
                     <summary>
-                      {item.q}
+                      {
+                        item.q
+                      }
                     </summary>
 
                     <p>
-                      {item.a}
+                      {
+                        item.a
+                      }
                     </p>
                   </details>
                 )
               )}
             </div>
           </section>
+
+          {/* SEO */}
 
           <section className="resultSection">
             <div className="eyebrow">
@@ -1572,12 +1997,15 @@ export default function Home() {
                 </div>
 
                 <p>
-                  {active?.seoTitle}
+                  {
+                    active?.seoTitle
+                  }
                 </p>
 
                 <small>
                   {
-                    active?.seoTitle
+                    active
+                      ?.seoTitle
                       .length
                   }
                   /70 characters
@@ -1625,31 +2053,37 @@ export default function Home() {
             </div>
           </section>
 
+          {/* FINAL */}
+
           <section className="resultSection finalCallout">
             <div className="eyebrow">
-              VIRELLO
+              READY
             </div>
 
             <h3>
-              Product information,
-              refined for your store.
+              Your product page is
+              ready to refine.
             </h3>
 
             <p>
-              Virello transforms your
-              existing product information
-              into clear, polished and
-              search-ready content while
-              keeping the available product
-              details at the center.
+              Virello builds the
+              optimized copy from
+              the product information
+              available in your
+              listing, while avoiding
+              unsupported technical
+              claims.
             </p>
 
             <button
               type="button"
               className="primary"
-              onClick={reset}
+              onClick={
+                reset
+              }
             >
-              OPTIMIZE ANOTHER PRODUCT →
+              OPTIMIZE ANOTHER
+              PRODUCT →
             </button>
           </section>
         </section>
@@ -1688,7 +2122,7 @@ export default function Home() {
         }
 
         .topbar {
-          height: 82px;
+          min-height: 82px;
           padding: 0 5vw;
           display: flex;
           align-items: center;
@@ -2301,9 +2735,10 @@ export default function Home() {
         }
 
         .faq p {
-          max-width: 700px;
+          max-width: 750px;
           color: #666;
           line-height: 1.6;
+          margin-top: 13px;
         }
 
         .seoGrid {
