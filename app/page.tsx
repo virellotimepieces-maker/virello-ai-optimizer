@@ -59,8 +59,8 @@ type OptimizedProduct = {
    HELPERS
 ========================================================= */
 
-function clean(value: unknown): string {
-  return String(value ?? "")
+function clean(value: string) {
+  return String(value || "")
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -76,6 +76,9 @@ function stripHtml(value: string) {
     .replace(/&#39;|&#x27;/gi, "'")
     .replace(/&ndash;/gi, "–")
     .replace(/&mdash;/gi, "—")
+    .replace(/&#8211;/gi, "–")
+    .replace(/&#8212;/gi, "—")
+    .replace(/&#x2F;/gi, "/")
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -124,7 +127,7 @@ function limitCharacters(value: string, max: number) {
 }
 
 function escapeHtml(value: string) {
-  return value.replace(
+  return String(value).replace(
     /[&<>'"]/g,
     (char) =>
       ({
@@ -148,9 +151,7 @@ function getProductText(product: ShopifyProduct) {
     product.vendor,
     product.tags.join(" "),
     stripHtml(product.description),
-  ]
-    .filter(Boolean)
-    .join(" ");
+  ].join(" ");
 }
 
 /* =========================================================
@@ -232,21 +233,25 @@ function toProduct(product: ShopifyProduct): Product {
 function buildProductType(product: Product) {
   const existing = clean(product.productType);
 
-  if (existing) {
+  /*
+   * If Shopify already has a useful product type,
+   * preserve it.
+   */
+  if (
+    existing &&
+    !/^product$/i.test(existing) &&
+    !/^products$/i.test(existing)
+  ) {
     return existing;
   }
 
   const text = getProductText(product).toLowerCase();
 
-  if (/chronograph/.test(text)) {
-    return "Chronograph Watches";
-  }
-
-  if (/automatic|mechanical/.test(text)) {
-    return "Automatic Watches";
-  }
-
-  if (/watch|timepiece/.test(text)) {
+  if (
+    /watch|timepiece|chronograph|quartz|automatic|mechanical/.test(
+      text,
+    )
+  ) {
     return "Watches";
   }
 
@@ -267,41 +272,31 @@ function buildProductType(product: Product) {
   }
 
   if (
-    /jewelry|jewellery|necklace|bracelet|ring/.test(
-      text,
-    )
+    /jewelry|jewellery|necklace|bracelet|ring/.test(text)
   ) {
     return "Jewelry";
   }
 
-  if (/wallet|card holder/.test(text)) {
-    return "Wallets";
-  }
-
-  if (/sunglasses|eyewear/.test(text)) {
-    return "Eyewear";
-  }
-
-  if (/belt/.test(text)) {
-    return "Belts";
-  }
-
-  return "Accessories";
+  return "Products";
 }
 
 /* =========================================================
-   PRODUCT TITLE
+   TITLE CLEANUP
 ========================================================= */
 
 function removeBadWords(value: string) {
   return clean(value)
     .replace(
-      /\b(elevate|dropshipping|wholesale|supplier|cheap|hot sale|hot selling|free shipping|best seller|new arrival)\b/gi,
+      /\b(elevate|dropshipping|wholesale|supplier|cheap|hot sale|hot selling|free shipping|best seller|new arrival|new product|fashion men|fashion women)\b/gi,
       "",
     )
     .replace(/\s+/g, " ")
     .trim();
 }
+
+/* =========================================================
+   PRODUCT TITLE
+========================================================= */
 
 function buildProductTitle(product: Product) {
   let source = removeBadWords(product.title);
@@ -311,9 +306,7 @@ function buildProductTitle(product: Product) {
     .replace(/\s+/g, " ")
     .trim();
 
-  const words = source
-    .split(/\s+/)
-    .filter(Boolean);
+  const words = source.split(/\s+/).filter(Boolean);
 
   const seen = new Set<string>();
 
@@ -330,16 +323,23 @@ function buildProductTitle(product: Product) {
     return true;
   });
 
-  let result = limitWords(
+  let title = limitWords(
     filtered.join(" "),
     8,
   );
 
-  if (!result) {
-    result = buildProductType(product);
-  }
+  /*
+   * Remove supplier-style repetition.
+   */
+  title = title
+    .replace(/\bDesign\s+Design\b/gi, "Design")
+    .replace(/\bWatch\s+Watch\b/gi, "Watch")
+    .replace(/\bMen's\s+Men's\b/gi, "Men's")
+    .replace(/\bWomen’s\s+Women’s\b/gi, "Women’s")
+    .replace(/\s+/g, " ")
+    .trim();
 
-  return result;
+  return title || "Premium Timepiece";
 }
 
 /* =========================================================
@@ -359,14 +359,12 @@ function buildTags(product: Product) {
     }
   };
 
-  /* Product category */
-
-  if (/watch|timepiece/.test(text)) {
+  if (
+    /watch|timepiece|chronograph|quartz|automatic|mechanical/.test(
+      text,
+    )
+  ) {
     add("watches");
-  }
-
-  if (/chronograph/.test(text)) {
-    add("chronograph");
   }
 
   if (/automatic/.test(text)) {
@@ -381,64 +379,46 @@ function buildTags(product: Product) {
     add("quartz watch");
   }
 
-  if (/analog|analogue/.test(text)) {
-    add("analog watch");
+  if (/chronograph/.test(text)) {
+    add("chronograph");
   }
-
-  /* Design */
-
-  if (/sport|racing|athletic/.test(text)) {
-    add("sport watch");
-  }
-
-  if (/dress|formal|business/.test(text)) {
-    add("dress watch");
-  }
-
-  if (/luxury|premium|elegant/.test(text)) {
-    add("luxury watch");
-  }
-
-  if (/retro|vintage|classic/.test(text)) {
-    add("classic watch");
-  }
-
-  /* Materials */
 
   if (/stainless steel/.test(text)) {
     add("stainless steel");
   }
 
-  if (/sapphire/.test(text)) {
-    add("sapphire crystal");
+  if (/sport|racing/.test(text)) {
+    add("sport watch");
   }
 
-  if (/leather/.test(text)) {
-    add("leather strap");
+  if (
+    /luxury|premium|elegant|refined/.test(text)
+  ) {
+    add("luxury");
   }
-
-  /* Audience */
 
   if (product.audience === "Men") {
-    add("men's watches");
+    add("men");
   }
 
   if (product.audience === "Women") {
-    add("women's watches");
+    add("women");
   }
 
   if (product.audience === "Unisex") {
-    add("unisex watches");
+    add("unisex");
   }
 
-  /* Existing useful Shopify tags */
-
+  /*
+   * Preserve useful original Shopify tags,
+   * but remove supplier/spam wording.
+   */
   for (const tag of product.tags) {
     const cleanedTag = clean(tag);
 
     if (
       !cleanedTag ||
-      /elevate|dropshipping|wholesale|supplier|cheap|hot sale|hot selling/i.test(
+      /elevate|dropshipping|wholesale|supplier|cheap|hot sale|hot selling|best seller|new arrival/i.test(
         cleanedTag,
       )
     ) {
@@ -448,28 +428,11 @@ function buildTags(product: Product) {
     add(cleanedTag);
   }
 
-  const finalTags = unique(result).slice(0, 15);
-
-  /*
-   * IMPORTANT:
-   * Never return an empty tag list for a recognizable product.
-   */
-
-  if (finalTags.length === 0) {
-    const type = buildProductType(product);
-
-    return unique([
-      type.toLowerCase(),
-      product.audience.toLowerCase(),
-      "premium style",
-    ]);
-  }
-
-  return finalTags;
+  return unique(result).slice(0, 15);
 }
 
 /* =========================================================
-   SPECIFICATIONS
+   SPECIFICATION LABELS
 ========================================================= */
 
 const SPEC_LABELS = [
@@ -477,9 +440,13 @@ const SPEC_LABELS = [
   "Movement",
   "Case Material",
   "Case Size",
+  "Case Diameter",
+  "Case Thickness",
   "Water Resistance",
   "Strap Material",
   "Band Material",
+  "Strap Width",
+  "Band Width",
   "Crystal",
   "Dial Color",
   "Case Color",
@@ -497,75 +464,114 @@ const SPEC_LABELS = [
   "Display Type",
   "Functions",
   "Features",
-  "Brand",
-  "Model",
-  "Gender",
+  "Closure Type",
   "Style",
 ] as const;
 
+/* =========================================================
+   NORMALIZE SPEC LABEL
+========================================================= */
+
 function normalizeLabel(value: string) {
-  const normalized = clean(value).toLowerCase();
+  const normalized = clean(value)
+    .toLowerCase()
+    .replace(/\s+/g, " ");
 
   return SPEC_LABELS.find(
-    (label) => label.toLowerCase() === normalized,
+    (label) =>
+      label.toLowerCase() === normalized,
   );
 }
 
+/* =========================================================
+   SPECIFICATION EXTRACTION
+========================================================= */
+
 function extractSpecifications(
   description: string,
-  product?: ShopifyProduct,
+  product: ShopifyProduct,
 ) {
-  const text = stripHtml(description);
+  const original = stripHtml(description);
 
   const specs: string[] = [];
 
-  const normalizedText = text
-    .replace(/\r/g, "")
-    .replace(/[•·]/g, "\n");
+  /*
+   * First look for traditional:
+   *
+   * Movement: Quartz
+   * Case Material: Stainless Steel
+   *
+   */
+  const labelPattern =
+    /(Material|Movement|Case Material|Case Size|Case Diameter|Case Thickness|Water Resistance|Strap Material|Band Material|Strap Width|Band Width|Crystal|Dial Color|Case Color|Band Color|Power Reserve|Battery|Dimensions|Weight|Capacity|Size|Color|Finish|Clasp Type|Dial Type|Display Type|Functions|Features|Closure Type)\s*[:：-]\s*([^,.;\n]{1,100})/gi;
 
-  const lines = normalizedText
-    .split(/\n/)
-    .map(clean)
-    .filter(Boolean);
+  let match: RegExpExecArray | null;
 
-  for (const line of lines) {
-    const match = line.match(
-      /^([A-Za-z][A-Za-z0-9 /_-]{1,35})\s*[:：-]\s*(.+)$/i,
-    );
-
-    if (!match) {
-      continue;
-    }
-
+  while (
+    (match = labelPattern.exec(original)) !== null
+  ) {
     const label = normalizeLabel(match[1]);
-
-    if (!label) {
-      continue;
-    }
-
     const value = clean(match[2]);
 
-    if (!value || value.length > 120) {
-      continue;
+    if (
+      label &&
+      value &&
+      value.length <= 120
+    ) {
+      specs.push(`${label}: ${value}`);
     }
-
-    specs.push(`${label}: ${value}`);
   }
 
   /*
-   * Add useful information that is available
-   * directly from Shopify.
+   * Also inspect Shopify product title,
+   * tags and product type for reliable
+   * specifications explicitly stated there.
    */
+  const productText = getProductText(product);
 
-  if (product?.vendor) {
-    specs.push(`Brand: ${clean(product.vendor)}`);
+  const lower = productText.toLowerCase();
+
+  if (/quartz/.test(lower)) {
+    specs.push("Movement: Quartz");
+  }
+
+  if (/automatic/.test(lower)) {
+    specs.push("Movement: Automatic");
+  }
+
+  if (/mechanical/.test(lower)) {
+    specs.push("Movement: Mechanical");
+  }
+
+  if (/chronograph/.test(lower)) {
+    specs.push(
+      "Functions: Chronograph",
+    );
+  }
+
+  if (/stainless steel/.test(lower)) {
+    specs.push(
+      "Case Material: Stainless Steel",
+    );
+  }
+
+  if (/water resistant/.test(lower)) {
+    const waterMatch = lower.match(
+      /(\d+\s*(?:m|meter|meters|atm|bar))\s*(?:water resistant|water resistance)/i,
+    );
+
+    if (waterMatch) {
+      specs.push(
+        `Water Resistance: ${waterMatch[1]}`,
+      );
+    }
   }
 
   return unique(specs).slice(0, 20);
 }
 
 /* =========================================================
-   DESCRIPTION
+   SENTENCE CLEANUP
 ========================================================= */
 
 function removeDuplicateSentences(value: string) {
@@ -593,100 +599,313 @@ function removeDuplicateSentences(value: string) {
     .join(" ");
 }
 
+/* =========================================================
+   ORIGINAL DESCRIPTION CLEANUP
+========================================================= */
+
+function cleanOriginalDescription(
+  description: string,
+) {
+  let original = stripHtml(description);
+
+  original = original
+    .replace(
+      /\b(shop now|buy now|upgrade your|elevate your|free shipping|order now|click here)\b[^.?!]*[.?!]?/gi,
+      "",
+    )
+    .replace(
+      /\b(key features|specifications|product details|product description)\b:?/gi,
+      "",
+    )
+    .replace(/\s+/g, " ")
+    .trim();
+
+  /*
+   * Remove supplier-style repetitive phrases.
+   */
+  original = original
+    .replace(
+      /\b(high quality|high-quality|top quality|premium quality)\b/gi,
+      "quality",
+    )
+    .replace(
+      /\b(must have|must-have)\b/gi,
+      "",
+    )
+    .replace(
+      /\b(perfect for everyone)\b/gi,
+      "",
+    )
+    .replace(/\s+/g, " ")
+    .trim();
+
+  return removeDuplicateSentences(
+    original,
+  );
+}
+
+/* =========================================================
+   DESCRIPTION
+========================================================= */
+
 function buildDescription(
   product: Product,
   title: string,
   specifications: string[],
 ) {
-  let original = stripHtml(
-    product.description,
-  );
+  const productText =
+    getProductText(product).toLowerCase();
 
-  /*
-   * Remove supplier-style promotional language.
-   */
-
-  original = original
-    .replace(
-      /\b(shop now|buy now|upgrade your|elevate your|free shipping|hot sale|best seller)\b[^.?!]*[.?!]?/gi,
-      "",
-    )
-    .replace(
-      /\b(key features|specifications|product details)\b:?/gi,
-      "",
+  const isWatch =
+    /watch|timepiece|chronograph|quartz|automatic|mechanical/.test(
+      productText,
     );
 
-  const lines = original
-    .split(/\n/)
-    .map(clean)
-    .filter(Boolean)
-    .filter((line) => {
-      const match = line.match(
-        /^([A-Za-z][A-Za-z0-9 /_-]{1,35})\s*[:：-]\s*(.+)$/i,
-      );
+  const isChronograph =
+    /chronograph/.test(productText);
 
-      return !match || !normalizeLabel(match[1]);
-    });
+  const isQuartz =
+    /quartz/.test(productText);
 
-  original = removeDuplicateSentences(
-    lines.join(" "),
-  );
+  const isAutomatic =
+    /automatic/.test(productText);
 
-  const audience =
-    product.audience === "Unisex"
-      ? "men and women"
-      : product.audience.toLowerCase();
-
-  const style =
-    product.style === "Premium / Luxury"
-      ? "refined and timeless"
-      : product.style.toLowerCase();
+  const audienceText =
+    product.audience === "Men"
+      ? "men"
+      : product.audience === "Women"
+        ? "women"
+        : "men and women";
 
   /*
-   * If supplier description is too short,
-   * create a proper premium description.
+   * Main opening paragraph.
    */
+  let intro = "";
 
-  if (original.length < 80) {
-    original =
-      `Designed for ${audience}, the ${title} combines a ${style} aesthetic with practical everyday wearability. The balanced design makes it easy to pair with tailored outfits, smart-casual looks, and relaxed everyday styles.`;
+  if (isWatch) {
+    if (isChronograph) {
+      intro =
+        `Designed for ${audienceText} who appreciate refined details, the ${title} brings a distinctive chronograph-inspired look to everyday style. Its detailed dial, balanced proportions, and polished finish create a confident appearance that transitions naturally from professional settings to evenings out.`;
+    } else if (isAutomatic) {
+      intro =
+        `The ${title} combines classic watchmaking style with a refined and versatile design. Created for ${audienceText}, it brings a polished finishing touch to everyday outfits while remaining well suited to professional settings and special occasions.`;
+    } else if (isQuartz) {
+      intro =
+        `The ${title} combines a clean, refined design with dependable quartz movement for effortless everyday wear. Designed for ${audienceText}, it adds a polished finishing touch to professional looks, casual outfits, and special occasions.`;
+    } else {
+      intro =
+        `The ${title} is designed for ${audienceText} who want a refined timepiece with versatile everyday appeal. Carefully considered design details create a polished look that transitions easily from work to evenings and special occasions.`;
+    }
+  } else {
+    intro =
+      `The ${title} is designed for ${audienceText} who appreciate thoughtful design and everyday versatility. Its practical details and refined appearance make it an easy addition to a well-considered lifestyle.`;
+  }
+
+  /*
+   * Preserve useful supplier information,
+   * but remove sales language and duplicate copy.
+   */
+  const original =
+    cleanOriginalDescription(
+      product.description,
+    );
+
+  let body = "";
+
+  if (original.length >= 60) {
+    body = limitCharacters(
+      original,
+      650,
+    );
+  } else if (isWatch) {
+    body =
+      `The carefully coordinated dial, case, and bracelet create a cohesive appearance without relying on excessive styling. The versatile design makes it easy to pair with tailored workwear, smart-casual outfits, and evening looks.`;
+  } else {
+    body =
+      `Thoughtfully designed for versatility, this piece is easy to incorporate into everyday use while maintaining a polished appearance.`;
+  }
+
+  /*
+   * Key features.
+   *
+   * Only state features supported by
+   * the Shopify data or safe general
+   * presentation language.
+   */
+  let features: string[] = [];
+
+  if (isWatch) {
+    if (isChronograph) {
+      features.push(
+        "Chronograph-inspired dial for a distinctive look",
+      );
+    }
+
+    if (isQuartz) {
+      features.push(
+        "Quartz movement for dependable everyday timekeeping",
+      );
+    }
+
+    if (isAutomatic) {
+      features.push(
+        "Automatic movement for a classic mechanical experience",
+      );
+    }
 
     if (
-      product.style === "Premium / Luxury"
+      /stainless steel/.test(
+        productText,
+      )
     ) {
-      original +=
-        " Its detailed finish gives the piece a polished presence without feeling overly flashy.";
+      features.push(
+        "Stainless steel construction",
+      );
     }
+
+    features.push(
+      "Refined design suited to professional and casual styling",
+    );
+
+    features.push(
+      "Versatile choice for everyday wear and special occasions",
+    );
+  } else {
+    features.push(
+      "Refined design for everyday use",
+    );
+
+    features.push(
+      "Versatile styling for different occasions",
+    );
+
+    features.push(
+      "Designed with practicality and presentation in mind",
+    );
   }
 
-  original = limitCharacters(
-    original,
-    1000,
-  );
+  features = unique(features);
 
-  let html = `<p>${escapeHtml(
-    original,
-  )}</p>`;
+  /*
+   * IMPORTANT:
+   *
+   * Return PLAIN TEXT.
+   *
+   * DO NOT put <p>, <h3>, <ul> or <li>
+   * inside this value.
+   *
+   * The textarea will therefore show
+   * clean readable content.
+   */
+  const sections: string[] = [];
+
+  sections.push(intro);
+
+  sections.push(body);
+
+  if (features.length > 0) {
+    sections.push(
+      `Key Features\n${features
+        .map(
+          (feature) =>
+            `• ${feature}`,
+        )
+        .join("\n")}`,
+    );
+  }
 
   if (specifications.length > 0) {
-    html +=
-      "<h3>Specifications</h3><ul>";
-
-    for (const spec of specifications) {
-      html += `<li>${escapeHtml(
-        spec,
-      )}</li>`;
-    }
-
-    html += "</ul>";
+    sections.push(
+      `Specifications\n${specifications
+        .map(
+          (specification) =>
+            `• ${specification}`,
+        )
+        .join("\n")}`,
+    );
   }
 
-  return html;
+  return sections
+    .join("\n\n")
+    .trim();
+}
+
+/* =========================================================
+   DESCRIPTION -> SHOPIFY HTML
+========================================================= */
+
+function descriptionToHtml(
+  description: string,
+) {
+  const paragraphs = description
+    .split(/\n\s*\n/)
+    .map((part) =>
+      part
+        .split("\n")
+        .map((line) => line.trim())
+        .filter(Boolean),
+    )
+    .filter(
+      (lines) => lines.length > 0,
+    );
+
+  const htmlParts: string[] = [];
+
+  for (const lines of paragraphs) {
+    if (
+      lines.length > 0 &&
+      /^(Key Features|Specifications)$/i.test(
+        lines[0],
+      )
+    ) {
+      const heading =
+        escapeHtml(lines[0]);
+
+      const items = lines
+        .slice(1)
+        .map((line) =>
+          line
+            .replace(/^•\s*/, "")
+            .trim(),
+        )
+        .filter(Boolean);
+
+      if (items.length > 0) {
+        htmlParts.push(
+          `<h3>${heading}</h3><ul>${items
+            .map(
+              (item) =>
+                `<li>${escapeHtml(
+                  item,
+                )}</li>`,
+            )
+            .join("")}</ul>`,
+        );
+      }
+
+      continue;
+    }
+
+    const paragraphText =
+      lines
+        .join(" ")
+        .replace(/\s+/g, " ")
+        .trim();
+
+    if (paragraphText) {
+      htmlParts.push(
+        `<p>${escapeHtml(
+          paragraphText,
+        )}</p>`,
+      );
+    }
+  }
+
+  return htmlParts.join("");
 }
 
 /* =========================================================
    SEO TITLE
-   MAXIMUM = 50 CHARACTERS
 ========================================================= */
 
 function buildSeoTitle(
@@ -694,54 +913,36 @@ function buildSeoTitle(
   title: string,
   productType: string,
 ) {
-  const text = getProductText(product).toLowerCase();
+  const text =
+    getProductText(product).toLowerCase();
 
-  let keyword = "Watch";
+  let keyword = productType;
 
   if (/chronograph/.test(text)) {
     keyword = "Chronograph Watch";
   } else if (/automatic/.test(text)) {
     keyword = "Automatic Watch";
+  } else if (/mechanical/.test(text)) {
+    keyword = "Mechanical Watch";
   } else if (/quartz/.test(text)) {
     keyword = "Quartz Watch";
-  } else if (/watch|timepiece/.test(text)) {
-    keyword = "Luxury Watch";
-  } else {
-    keyword = productType;
+  } else if (
+    /watch|timepiece/.test(text)
+  ) {
+    keyword = "Watch";
   }
 
-  const shortTitle = limitCharacters(
-    title,
-    30,
-  );
-
-  const candidates = [
-    `${shortTitle} | ${keyword}`,
-    `${keyword} | ${shortTitle}`,
-    shortTitle,
-    `${keyword} for ${product.audience}`,
-  ];
-
-  for (const candidate of candidates) {
-    const result = limitCharacters(
-      candidate,
-      50,
-    );
-
-    if (result.length >= 20) {
-      return result;
-    }
-  }
+  const candidate =
+    `${keyword} - ${title}`;
 
   return limitCharacters(
-    title || keyword,
-    50,
+    candidate,
+    60,
   );
 }
 
 /* =========================================================
    META DESCRIPTION
-   MAXIMUM = 150 CHARACTERS
 ========================================================= */
 
 function buildMetaDescription(
@@ -754,37 +955,52 @@ function buildMetaDescription(
       ? "men and women"
       : product.audience.toLowerCase();
 
-  const style =
-    product.style === "Premium / Luxury"
-      ? "refined"
-      : product.style.toLowerCase();
+  const productText =
+    getProductText(product).toLowerCase();
 
-  const firstFeature =
-    specifications.find(
-      (spec) =>
-        !/^Brand:/i.test(spec),
-    ) || "";
+  let benefit =
+    "refined design and versatile styling";
+
+  if (
+    /chronograph/.test(
+      productText,
+    )
+  ) {
+    benefit =
+      "a distinctive chronograph design and versatile styling";
+  } else if (
+    /quartz/.test(productText)
+  ) {
+    benefit =
+      "dependable quartz movement and versatile styling";
+  } else if (
+    /automatic/.test(productText)
+  ) {
+    benefit =
+      "classic automatic movement and refined styling";
+  }
 
   let candidate =
-    `Shop the ${title} for ${audience}. A ${style} design with versatile styling for everyday wear and special occasions.`;
+    `Shop the ${title} for ${audience}. Discover ${benefit}, designed for everyday wear, professional looks, and special occasions.`;
 
-  if (firstFeature) {
-    const featureValue =
-      firstFeature
-        .split(":")
-        .slice(1)
-        .join(":")
-        .trim();
+  if (
+    specifications.length > 0
+  ) {
+    const firstSpec =
+      specifications[0]
+        .replace(
+          /^[^:]+:\s*/,
+          "",
+        )
+        .toLowerCase();
 
-    if (featureValue) {
-      candidate =
-        `Shop the ${title} for ${audience}. ${style} design with ${featureValue.toLowerCase()} and versatile everyday styling.`;
-    }
+    candidate =
+      `Shop the ${title} for ${audience}. Discover ${benefit}. Features ${firstSpec} for versatile everyday wear.`;
   }
 
   return limitCharacters(
     candidate,
-    150,
+    160,
   );
 }
 
@@ -891,8 +1107,10 @@ export default function Page() {
   const [seoTitle, setSeoTitle] =
     useState("");
 
-  const [metaDescription, setMetaDescription] =
-    useState("");
+  const [
+    metaDescription,
+    setMetaDescription,
+  ] = useState("");
 
   const [audience, setAudience] =
     useState<Audience>("Unisex");
@@ -938,18 +1156,21 @@ export default function Page() {
       const token =
         await getSessionToken();
 
-      const response = await fetch(
-        "/api/shopify/products",
-        {
-          method: "GET",
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "x-shopify-session-token":
-              token,
+      const response =
+        await fetch(
+          "/api/shopify/products",
+          {
+            method: "GET",
+            headers: {
+              Authorization:
+                `Bearer ${token}`,
+
+              "x-shopify-session-token":
+                token,
+            },
+            cache: "no-store",
           },
-          cache: "no-store",
-        },
-      );
+        );
 
       const data =
         (await response.json()) as {
@@ -977,7 +1198,9 @@ export default function Page() {
 
       setProducts(normalized);
 
-      if (normalized.length > 0) {
+      if (
+        normalized.length > 0
+      ) {
         setSelectedId(
           normalized[0].id,
         );
@@ -1001,23 +1224,30 @@ export default function Page() {
      SELECTED PRODUCT
   ======================================================= */
 
-  const selected = useMemo(
-    () =>
-      products.find(
-        (product) =>
-          product.id === selectedId,
-      ) || null,
-    [products, selectedId],
-  );
+  const selected =
+    useMemo(
+      () =>
+        products.find(
+          (product) =>
+            product.id ===
+            selectedId,
+        ) || null,
+      [
+        products,
+        selectedId,
+      ],
+    );
 
   /* =======================================================
-     FILTER
+     FILTERED PRODUCTS
   ======================================================= */
 
   const filteredProducts =
     useMemo(() => {
       const query =
-        search.toLowerCase().trim();
+        search
+          .toLowerCase()
+          .trim();
 
       if (!query) {
         return products;
@@ -1035,18 +1265,22 @@ export default function Page() {
             product.vendor
               .toLowerCase()
               .includes(query) ||
-            product.tags.some((tag) =>
-              tag
-                .toLowerCase()
-                .includes(query),
+            product.tags.some(
+              (tag) =>
+                tag
+                  .toLowerCase()
+                  .includes(query),
             )
           );
         },
       );
-    }, [products, search]);
+    }, [
+      products,
+      search,
+    ]);
 
   /* =======================================================
-     LOAD SELECTED PRODUCT INTO EDITOR
+     LOAD SELECTED PRODUCT
   ======================================================= */
 
   useEffect(() => {
@@ -1054,94 +1288,50 @@ export default function Page() {
       return;
     }
 
-    const nextAudience =
-      selected.audience;
+    setAudience(
+      selected.audience,
+    );
 
-    const nextStyle =
-      selected.style;
+    setStyle(
+      selected.style,
+    );
 
-    const productForOptimization: Product =
-      {
-        ...selected,
-        audience:
-          nextAudience,
-        style: nextStyle,
-      };
-
-    /*
-     * Generate fallback values immediately.
-     * This prevents the fields from appearing empty
-     * when Shopify has incomplete product data.
-     */
-
-    const initialTitle =
-      clean(selected.title) ||
-      buildProductTitle(
-        productForOptimization,
-      );
-
-    const initialProductType =
-      buildProductType(
-        productForOptimization,
-      );
-
-    const initialTags =
-      buildTags(
-        productForOptimization,
-      );
-
-    const initialSpecs =
-      extractSpecifications(
-        selected.description,
-        selected,
-      );
-
-    const initialSeoTitle =
-      buildSeoTitle(
-        productForOptimization,
-        initialTitle,
-        initialProductType,
-      );
-
-    const initialMetaDescription =
-      buildMetaDescription(
-        productForOptimization,
-        initialTitle,
-        initialSpecs,
-      );
-
-    setAudience(nextAudience);
-    setStyle(nextStyle);
-
-    setTitle(initialTitle);
+    setTitle(
+      stripHtml(
+        selected.title,
+      ),
+    );
 
     setProductType(
-      initialProductType,
+      stripHtml(
+        selected.productType,
+      ),
     );
 
     setTags(
-      initialTags.join(", "),
+      selected.tags.join(", "),
     );
 
+    /*
+     * IMPORTANT:
+     * Convert any Shopify HTML to
+     * clean plain text before showing
+     * it inside textarea.
+     */
     setDescription(
-      selected.description ||
-        buildDescription(
-          productForOptimization,
-          initialTitle,
-          initialSpecs,
-        ),
+      stripHtml(
+        selected.description,
+      ),
     );
 
-    setSeoTitle(
-      initialSeoTitle,
-    );
+    setSeoTitle("");
 
-    setMetaDescription(
-      initialMetaDescription,
-    );
+    setMetaDescription("");
 
     setOptimized(null);
+
     setMessage("");
+
     setError("");
   }, [selected]);
 
@@ -1168,7 +1358,9 @@ export default function Page() {
 
       setOptimized(result);
 
-      setTitle(result.title);
+      setTitle(
+        result.title,
+      );
 
       setProductType(
         result.productType,
@@ -1178,6 +1370,10 @@ export default function Page() {
         result.tags.join(", "),
       );
 
+      /*
+       * This is now PLAIN TEXT.
+       * No <p> tags.
+       */
       setDescription(
         result.description,
       );
@@ -1191,7 +1387,7 @@ export default function Page() {
       );
 
       setMessage(
-        "Optimization complete. Review the fields before saving to Shopify.",
+        "Optimization complete. Review the content before saving to Shopify.",
       );
     } catch (err) {
       setError(
@@ -1217,10 +1413,7 @@ export default function Page() {
       clean(title);
 
     const finalProductType =
-      clean(productType) ||
-      buildProductType(
-        selected,
-      );
+      clean(productType);
 
     const finalTags =
       unique(
@@ -1230,46 +1423,31 @@ export default function Page() {
           .filter(Boolean),
       );
 
-    const fallbackTags =
-      finalTags.length > 0
-        ? finalTags
-        : buildTags(selected);
-
+    /*
+     * The textarea contains PLAIN TEXT.
+     */
     const finalDescription =
-      description.trim() ||
-      buildDescription(
-        selected,
-        finalTitle,
-        extractSpecifications(
-          selected.description,
-          selected,
-        ),
+      description.trim();
+
+    /*
+     * Convert plain text into
+     * Shopify-compatible HTML only
+     * at save time.
+     */
+    const finalDescriptionHtml =
+      descriptionToHtml(
+        finalDescription,
       );
 
     const finalSeoTitle =
-      limitCharacters(
-        seoTitle ||
-          buildSeoTitle(
-            selected,
-            finalTitle,
-            finalProductType,
-          ),
-        50,
-      );
+      clean(seoTitle);
 
     const finalMetaDescription =
-      limitCharacters(
-        metaDescription ||
-          buildMetaDescription(
-            selected,
-            finalTitle,
-            extractSpecifications(
-              selected.description,
-              selected,
-            ),
-          ),
-        150,
-      );
+      clean(metaDescription);
+
+    /* -----------------------------------------------------
+       VALIDATION
+    ----------------------------------------------------- */
 
     if (!finalTitle) {
       setError(
@@ -1306,19 +1484,32 @@ export default function Page() {
       return;
     }
 
-    if (finalSeoTitle.length > 50) {
+    if (
+      finalSeoTitle.length >
+      60
+    ) {
       setError(
-        "SEO Title must be 50 characters or fewer.",
+        "SEO Title must be 60 characters or fewer.",
       );
       return;
     }
 
     if (
       finalMetaDescription.length >
-      150
+      160
     ) {
       setError(
-        "Meta Description must be 150 characters or fewer.",
+        "Meta Description must be 160 characters or fewer.",
+      );
+      return;
+    }
+
+    if (
+      finalDescriptionHtml.length ===
+      0
+    ) {
+      setError(
+        "Product Description could not be formatted.",
       );
       return;
     }
@@ -1331,38 +1522,50 @@ export default function Page() {
       const token =
         await getSessionToken();
 
-      const response = await fetch(
-        "/api/shopify/save-product",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type":
-              "application/json",
-            Authorization: `Bearer ${token}`,
-            "x-shopify-session-token":
-              token,
+      const response =
+        await fetch(
+          "/api/shopify/save-product",
+          {
+            method: "POST",
+
+            headers: {
+              "Content-Type":
+                "application/json",
+
+              Authorization:
+                `Bearer ${token}`,
+
+              "x-shopify-session-token":
+                token,
+            },
+
+            body: JSON.stringify({
+              productId:
+                selected.id,
+
+              title:
+                finalTitle,
+
+              productType:
+                finalProductType,
+
+              tags:
+                finalTags,
+
+              /*
+               * Shopify receives HTML.
+               */
+              description:
+                finalDescriptionHtml,
+
+              seoTitle:
+                finalSeoTitle,
+
+              metaDescription:
+                finalMetaDescription,
+            }),
           },
-          body: JSON.stringify({
-            productId: selected.id,
-
-            title: finalTitle,
-
-            productType:
-              finalProductType,
-
-            tags: fallbackTags,
-
-            description:
-              finalDescription,
-
-            seoTitle:
-              finalSeoTitle,
-
-            metaDescription:
-              finalMetaDescription,
-          }),
-        },
-      );
+        );
 
       const data =
         (await response.json()) as {
@@ -1380,6 +1583,10 @@ export default function Page() {
         );
       }
 
+      /*
+       * Keep local editor state as
+       * PLAIN TEXT.
+       */
       setProducts(
         (current) =>
           current.map(
@@ -1388,12 +1595,20 @@ export default function Page() {
               selected.id
                 ? {
                     ...product,
+
                     title:
                       finalTitle,
+
                     productType:
                       finalProductType,
+
                     tags:
-                      fallbackTags,
+                      finalTags,
+
+                    /*
+                     * Keep plain text
+                     * in local state.
+                     */
                     description:
                       finalDescription,
                   }
@@ -1401,14 +1616,16 @@ export default function Page() {
           ),
       );
 
-      setTitle(finalTitle);
+      setTitle(
+        finalTitle,
+      );
 
       setProductType(
         finalProductType,
       );
 
       setTags(
-        fallbackTags.join(", "),
+        finalTags.join(", "),
       );
 
       setDescription(
@@ -1448,8 +1665,13 @@ export default function Page() {
           box-sizing: border-box;
         }
 
+        html,
         body {
           margin: 0;
+          padding: 0;
+        }
+
+        body {
           background: #f5f5f5;
           color: #171717;
           font-family:
@@ -1488,6 +1710,7 @@ export default function Page() {
         .logo {
           font-size: 19px;
           font-weight: 800;
+          letter-spacing: -0.2px;
         }
 
         .status {
@@ -1527,6 +1750,7 @@ export default function Page() {
           border: 1px solid #d4d4d4;
           border-radius: 12px;
           outline: none;
+          background: #fff;
         }
 
         .products {
@@ -1585,11 +1809,13 @@ export default function Page() {
         h1 {
           margin: 0;
           font-size: 28px;
+          letter-spacing: -0.5px;
         }
 
         .subtitle {
           color: #777;
           margin-top: 6px;
+          line-height: 1.45;
         }
 
         .actions {
@@ -1604,12 +1830,17 @@ export default function Page() {
           border-radius: 11px;
           font-weight: 700;
           cursor: pointer;
+          white-space: nowrap;
         }
 
         .button.primary {
           background: #171717;
           color: #fff;
           border-color: #171717;
+        }
+
+        .button:hover:not(:disabled) {
+          opacity: 0.88;
         }
 
         .button:disabled {
@@ -1622,6 +1853,7 @@ export default function Page() {
           border-radius: 12px;
           margin-bottom: 18px;
           font-size: 14px;
+          line-height: 1.45;
         }
 
         .success {
@@ -1637,6 +1869,7 @@ export default function Page() {
         }
 
         .image {
+          display: block;
           width: 100%;
           max-height: 400px;
           object-fit: cover;
@@ -1661,6 +1894,7 @@ export default function Page() {
           font-weight: 800;
           color: #666;
           text-transform: uppercase;
+          letter-spacing: 0.3px;
         }
 
         input,
@@ -1672,18 +1906,28 @@ export default function Page() {
           padding: 13px;
           outline: none;
           background: #fff;
+          color: #171717;
+        }
+
+        input {
+          min-height: 48px;
         }
 
         textarea {
-          min-height: 180px;
+          min-height: 210px;
           resize: vertical;
-          line-height: 1.5;
+          line-height: 1.55;
         }
 
         input:focus,
         textarea:focus,
         select:focus {
           border-color: #777;
+          box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.04);
+        }
+
+        .description-textarea {
+          min-height: 330px;
         }
 
         .counter {
@@ -1723,7 +1967,7 @@ export default function Page() {
 
         .generated-content {
           white-space: pre-wrap;
-          line-height: 1.5;
+          line-height: 1.55;
           color: #444;
         }
 
@@ -1739,10 +1983,11 @@ export default function Page() {
           color: #777;
         }
 
-        .field-hint {
-          margin-top: 6px;
-          color: #888;
+        .small-note {
+          color: #777;
           font-size: 12px;
+          line-height: 1.45;
+          margin-top: 7px;
         }
 
         @media (max-width: 950px) {
@@ -1758,6 +2003,14 @@ export default function Page() {
         @media (max-width: 650px) {
           .header {
             padding: 0 15px;
+          }
+
+          .logo {
+            font-size: 16px;
+          }
+
+          .status {
+            font-size: 12px;
           }
 
           .container {
@@ -1778,10 +2031,19 @@ export default function Page() {
 
           .actions {
             margin-top: 15px;
+            width: 100%;
           }
 
           .button {
             flex: 1;
+          }
+
+          h1 {
+            font-size: 25px;
+          }
+
+          .description-textarea {
+            min-height: 360px;
           }
         }
       `}</style>
@@ -1839,7 +2101,10 @@ export default function Page() {
               {filteredProducts.map(
                 (product) => (
                   <button
-                    key={product.id}
+                    key={
+                      product.id
+                    }
+                    type="button"
                     className={`product ${
                       selectedId ===
                       product.id
@@ -1853,14 +2118,14 @@ export default function Page() {
                     }
                   >
                     <div className="product-name">
-                      {product.title}
+                      {
+                        product.title
+                      }
                     </div>
 
                     <div className="product-info">
                       {product.productType ||
-                        buildProductType(
-                          product,
-                        )}{" "}
+                        "Product"}{" "}
                       ·{" "}
                       {product.status}
                     </div>
@@ -1884,6 +2149,10 @@ export default function Page() {
               </div>
             ) : (
               <>
+                {/* -----------------------------------------
+                    NOTICES
+                ----------------------------------------- */}
+
                 {message && (
                   <div className="notice success">
                     {message}
@@ -1896,6 +2165,10 @@ export default function Page() {
                   </div>
                 )}
 
+                {/* -----------------------------------------
+                    EDITOR HEADER
+                ----------------------------------------- */}
+
                 <div className="editor-head">
                   <div>
                     <h1>
@@ -1904,15 +2177,15 @@ export default function Page() {
 
                     <div className="subtitle">
                       Optimize, review,
-                      edit, and save
-                      your product
-                      directly to
-                      Shopify.
+                      and save your
+                      product directly
+                      to Shopify.
                     </div>
                   </div>
 
                   <div className="actions">
                     <button
+                      type="button"
                       className="button primary"
                       disabled={
                         optimizing ||
@@ -1928,6 +2201,7 @@ export default function Page() {
                     </button>
 
                     <button
+                      type="button"
                       className="button"
                       disabled={
                         optimizing ||
@@ -1944,7 +2218,9 @@ export default function Page() {
                   </div>
                 </div>
 
-                {/* IMAGE */}
+                {/* -----------------------------------------
+                    IMAGE
+                ----------------------------------------- */}
 
                 {selected.featuredImage && (
                   <img
@@ -1958,7 +2234,9 @@ export default function Page() {
                   />
                 )}
 
-                {/* AUDIENCE / STYLE */}
+                {/* -----------------------------------------
+                    AUDIENCE / STYLE
+                ----------------------------------------- */}
 
                 <div className="two">
                   <div className="field">
@@ -1999,7 +2277,9 @@ export default function Page() {
                     </label>
 
                     <select
-                      value={style}
+                      value={
+                        style
+                      }
                       onChange={(
                         event,
                       ) =>
@@ -2010,7 +2290,8 @@ export default function Page() {
                       }
                     >
                       <option value="Premium / Luxury">
-                        Premium / Luxury
+                        Premium /
+                        Luxury
                       </option>
 
                       <option value="Professional">
@@ -2036,7 +2317,9 @@ export default function Page() {
                   </div>
                 </div>
 
-                {/* PRODUCT TITLE */}
+                {/* -----------------------------------------
+                    PRODUCT TITLE
+                ----------------------------------------- */}
 
                 <div className="field">
                   <label>
@@ -2045,7 +2328,9 @@ export default function Page() {
 
                   <input
                     value={title}
-                    onChange={(event) =>
+                    onChange={(
+                      event,
+                    ) =>
                       setTitle(
                         event.target
                           .value,
@@ -2054,7 +2339,9 @@ export default function Page() {
                   />
                 </div>
 
-                {/* PRODUCT TYPE */}
+                {/* -----------------------------------------
+                    PRODUCT TYPE
+                ----------------------------------------- */}
 
                 <div className="field">
                   <label>
@@ -2074,17 +2361,11 @@ export default function Page() {
                       )
                     }
                   />
-
-                  <div className="field-hint">
-                    Automatically
-                    generated when
-                    Shopify does not
-                    provide a product
-                    type.
-                  </div>
                 </div>
 
-                {/* TAGS */}
+                {/* -----------------------------------------
+                    TAGS
+                ----------------------------------------- */}
 
                 <div className="field">
                   <label>
@@ -2093,21 +2374,26 @@ export default function Page() {
 
                   <input
                     value={tags}
-                    onChange={(event) =>
+                    onChange={(
+                      event,
+                    ) =>
                       setTags(
                         event.target
                           .value,
                       )
                     }
+                    placeholder="watch, luxury, chronograph"
                   />
 
-                  <div className="field-hint">
+                  <div className="small-note">
                     Separate tags with
                     commas.
                   </div>
                 </div>
 
-                {/* DESCRIPTION */}
+                {/* -----------------------------------------
+                    DESCRIPTION
+                ----------------------------------------- */}
 
                 <div className="field">
                   <label>
@@ -2115,6 +2401,7 @@ export default function Page() {
                   </label>
 
                   <textarea
+                    className="description-textarea"
                     value={
                       description
                     }
@@ -2126,26 +2413,34 @@ export default function Page() {
                           .value,
                       )
                     }
+                    placeholder="Your optimized product description will appear here..."
                   />
+
+                  <div className="small-note">
+                    The editor uses
+                    clean text. HTML
+                    formatting is added
+                    automatically when
+                    you save to Shopify.
+                  </div>
                 </div>
 
-                {/* GOOGLE SEO */}
+                {/* -----------------------------------------
+                    GOOGLE SEO
+                ----------------------------------------- */}
 
                 <div className="section">
                   <div className="section-title">
                     Google SEO
                   </div>
 
-                  {/* SEO TITLE */}
-
                   <div className="field">
                     <label>
-                      SEO Title · Max
-                      50
+                      SEO Title · Max 60
                     </label>
 
                     <input
-                      maxLength={50}
+                      maxLength={60}
                       value={
                         seoTitle
                       }
@@ -2153,30 +2448,28 @@ export default function Page() {
                         event,
                       ) =>
                         setSeoTitle(
-                          event.target.value.slice(
-                            0,
-                            50,
-                          ),
+                          event.target
+                            .value,
                         )
                       }
                     />
 
                     <div className="counter">
-                      {seoTitle.length}
-                      /50
+                      {
+                        seoTitle.length
+                      }
+                      /60
                     </div>
                   </div>
-
-                  {/* META DESCRIPTION */}
 
                   <div className="field">
                     <label>
                       Meta Description ·
-                      Max 150
+                      Max 160
                     </label>
 
                     <textarea
-                      maxLength={150}
+                      maxLength={160}
                       value={
                         metaDescription
                       }
@@ -2184,10 +2477,8 @@ export default function Page() {
                         event,
                       ) =>
                         setMetaDescription(
-                          event.target.value.slice(
-                            0,
-                            150,
-                          ),
+                          event.target
+                            .value,
                         )
                       }
                     />
@@ -2196,18 +2487,22 @@ export default function Page() {
                       {
                         metaDescription.length
                       }
-                      /150
+                      /160
                     </div>
                   </div>
                 </div>
 
-                {/* GENERATED CONTENT */}
+                {/* -----------------------------------------
+                    GENERATED CONTENT
+                ----------------------------------------- */}
 
                 {optimized && (
                   <div className="section">
                     <div className="section-title">
                       Generated Content
                     </div>
+
+                    {/* TITLE */}
 
                     <div className="generated">
                       <div className="generated-head">
@@ -2223,6 +2518,8 @@ export default function Page() {
                       </div>
                     </div>
 
+                    {/* PRODUCT TYPE */}
+
                     <div className="generated">
                       <div className="generated-head">
                         <strong>
@@ -2236,6 +2533,8 @@ export default function Page() {
                         }
                       </div>
                     </div>
+
+                    {/* TAGS */}
 
                     <div className="generated">
                       <div className="generated-head">
@@ -2251,6 +2550,8 @@ export default function Page() {
                       </div>
                     </div>
 
+                    {/* DESCRIPTION */}
+
                     <div className="generated">
                       <div className="generated-head">
                         <strong>
@@ -2260,11 +2561,13 @@ export default function Page() {
                       </div>
 
                       <div className="generated-content">
-                        {stripHtml(
-                          optimized.description,
-                        )}
+                        {
+                          optimized.description
+                        }
                       </div>
                     </div>
+
+                    {/* SPECIFICATIONS */}
 
                     <div className="generated">
                       <div className="generated-head">
@@ -2287,7 +2590,9 @@ export default function Page() {
                                   spec
                                 }
                               >
-                                {spec}
+                                {
+                                  spec
+                                }
                               </li>
                             ),
                           )}
@@ -2305,6 +2610,8 @@ export default function Page() {
                       )}
                     </div>
 
+                    {/* SEO TITLE */}
+
                     <div className="generated">
                       <div className="generated-head">
                         <strong>
@@ -2319,11 +2626,12 @@ export default function Page() {
                       </div>
                     </div>
 
+                    {/* META */}
+
                     <div className="generated">
                       <div className="generated-head">
                         <strong>
-                          Meta
-                          Description
+                          Meta Description
                         </strong>
                       </div>
 
