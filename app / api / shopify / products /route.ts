@@ -15,19 +15,32 @@ function normalizeShopDomain(value: string): string {
 function getShopFromToken(token: string): string {
   try {
     const parts = token.split(".");
-    if (parts.length !== 3) return "";
 
-    const base64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    if (parts.length !== 3) {
+      return "";
+    }
+
+    const base64 = parts[1]
+      .replace(/-/g, "+")
+      .replace(/_/g, "/");
+
     const padded =
-      base64 + "=".repeat((4 - (base64.length % 4)) % 4);
+      base64 +
+      "=".repeat((4 - (base64.length % 4)) % 4);
 
     const payload = JSON.parse(
       Buffer.from(padded, "base64").toString("utf8")
-    ) as { dest?: unknown };
+    ) as {
+      dest?: unknown;
+    };
 
-    if (typeof payload.dest !== "string") return "";
+    if (typeof payload.dest !== "string") {
+      return "";
+    }
 
-    return normalizeShopDomain(new URL(payload.dest).hostname);
+    return normalizeShopDomain(
+      new URL(payload.dest).hostname
+    );
   } catch {
     return "";
   }
@@ -38,17 +51,21 @@ async function readJsonResponse(
 ): Promise<JsonRecord> {
   const text = await response.text();
 
-  if (!text) return {};
+  if (!text) {
+    return {};
+  }
 
   try {
-    const parsed = JSON.parse(text);
+    const parsed: unknown = JSON.parse(text);
 
-    return parsed && typeof parsed === "object"
+    return parsed &&
+      typeof parsed === "object"
       ? (parsed as JsonRecord)
       : {};
   } catch {
     const contentType =
-      response.headers.get("content-type") || "unknown";
+      response.headers.get("content-type") ||
+      "unknown";
 
     throw new Error(
       `Shopify returned a non-JSON response (${response.status}, ${contentType}).`
@@ -60,8 +77,11 @@ async function exchangeSessionToken(
   shop: string,
   sessionToken: string
 ): Promise<string> {
-  const apiKey = process.env.SHOPIFY_API_KEY;
-  const apiSecret = process.env.SHOPIFY_API_SECRET;
+  const apiKey =
+    process.env.SHOPIFY_API_KEY;
+
+  const apiSecret =
+    process.env.SHOPIFY_API_SECRET;
 
   if (!apiKey || !apiSecret) {
     throw new Error(
@@ -100,7 +120,8 @@ async function exchangeSessionToken(
     }
   );
 
-  const data = await readJsonResponse(response);
+  const data =
+    await readJsonResponse(response);
 
   if (!response.ok) {
     const detail =
@@ -115,7 +136,8 @@ async function exchangeSessionToken(
     );
   }
 
-  const accessToken = data.access_token;
+  const accessToken =
+    data.access_token;
 
   if (
     typeof accessToken !== "string" ||
@@ -129,7 +151,9 @@ async function exchangeSessionToken(
   return accessToken;
 }
 
-export async function GET(request: NextRequest) {
+export async function GET(
+  request: NextRequest
+) {
   try {
     const sessionToken =
       request.headers
@@ -212,25 +236,30 @@ export async function GET(request: NextRequest) {
       }
     `;
 
-    const response = await fetch(
-      `https://${shop}/admin/api/${SHOPIFY_API_VERSION}/graphql.json`,
-      {
-        method: "POST",
+    const response =
+      await fetch(
+        `https://${shop}/admin/api/${SHOPIFY_API_VERSION}/graphql.json`,
+        {
+          method: "POST",
 
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json",
-          "X-Shopify-Access-Token":
-            accessToken,
-        },
+          headers: {
+            "Content-Type":
+              "application/json",
 
-        body: JSON.stringify({
-          query,
-        }),
+            Accept:
+              "application/json",
 
-        cache: "no-store",
-      }
-    );
+            "X-Shopify-Access-Token":
+              accessToken,
+          },
+
+          body: JSON.stringify({
+            query,
+          }),
+
+          cache: "no-store",
+        }
+      );
 
     const result =
       await readJsonResponse(response);
@@ -279,106 +308,111 @@ export async function GET(request: NextRequest) {
         ? productsConnection.nodes
         : [];
 
-    const products = nodes.map((node) => {
-      const item =
-        node as JsonRecord;
+    const products =
+      nodes.map((node) => {
+        const item =
+          node as JsonRecord;
 
-      const variants =
-        item.variants as
-          | JsonRecord
-          | undefined;
+        const variants =
+          item.variants as
+            | JsonRecord
+            | undefined;
 
-      const variantNodes =
-        Array.isArray(variants?.nodes)
-          ? variants.nodes
-          : [];
+        const variantNodes =
+          Array.isArray(
+            variants?.nodes
+          )
+            ? variants.nodes
+            : [];
 
-      const firstVariant =
-        (variantNodes[0] ||
-          {}) as JsonRecord;
+        const firstVariant =
+          (variantNodes[0] || {}) as
+            JsonRecord;
 
-      const featuredImage =
-        item.featuredImage as
-          | JsonRecord
-          | null
-          | undefined;
+        const featuredImage =
+          item.featuredImage as
+            | JsonRecord
+            | null
+            | undefined;
 
-      return {
-        id:
-          typeof item.id === "string"
-            ? item.id
-            : "",
+        return {
+          id:
+            typeof item.id === "string"
+              ? item.id
+              : "",
 
-        title:
-          typeof item.title === "string"
-            ? item.title
-            : "",
+          title:
+            typeof item.title === "string"
+              ? item.title
+              : "",
 
-        description:
-          typeof item.descriptionHtml ===
-          "string"
-            ? item.descriptionHtml
-            : "",
-
-        productType:
-          typeof item.productType ===
-          "string"
-            ? item.productType
-            : "",
-
-        tags:
-          Array.isArray(item.tags)
-            ? item.tags.filter(
-                (
-                  tag
-                ): tag is string =>
-                  typeof tag ===
-                  "string"
-              )
-            : [],
-
-        status:
-          typeof item.status === "string"
-            ? item.status
-            : "",
-
-        vendor:
-          typeof item.vendor === "string"
-            ? item.vendor
-            : "",
-
-        price:
-          typeof firstVariant.price ===
-          "string"
-            ? firstVariant.price
-            : "",
-
-        images:
-          featuredImage &&
-          typeof featuredImage.url ===
+          description:
+            typeof item.descriptionHtml ===
             "string"
-            ? [
-                {
-                  url:
-                    featuredImage.url,
+              ? item.descriptionHtml
+              : "",
 
-                  altText:
-                    typeof featuredImage.altText ===
+          productType:
+            typeof item.productType ===
+            "string"
+              ? item.productType
+              : "",
+
+          tags:
+            Array.isArray(item.tags)
+              ? item.tags.filter(
+                  (
+                    tag
+                  ): tag is string =>
+                    typeof tag ===
                     "string"
-                      ? featuredImage.altText
-                      : null,
-                },
-              ]
-            : [],
+                )
+              : [],
 
-        featuredImage:
-          featuredImage &&
-          typeof featuredImage.url ===
+          status:
+            typeof item.status ===
             "string"
-            ? featuredImage.url
-            : null,
-      };
-    });
+              ? item.status
+              : "",
+
+          vendor:
+            typeof item.vendor ===
+            "string"
+              ? item.vendor
+              : "",
+
+          price:
+            typeof firstVariant.price ===
+            "string"
+              ? firstVariant.price
+              : "",
+
+          images:
+            featuredImage &&
+            typeof featuredImage.url ===
+              "string"
+              ? [
+                  {
+                    url:
+                      featuredImage.url,
+
+                    altText:
+                      typeof featuredImage.altText ===
+                      "string"
+                        ? featuredImage.altText
+                        : null,
+                  },
+                ]
+              : [],
+
+          featuredImage:
+            featuredImage &&
+            typeof featuredImage.url ===
+              "string"
+              ? featuredImage.url
+              : null,
+        };
+      });
 
     return jsonResponse({
       success: true,
