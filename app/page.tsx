@@ -75,6 +75,7 @@ const stripHtml = (value: string) =>
     .replace(/&amp;/gi, "&")
     .replace(/&quot;/gi, '"')
     .replace(/&#39;/gi, "'")
+    .replace(/&#x27;/gi, "'")
     .replace(/\s+/g, " ")
     .trim();
 
@@ -88,9 +89,14 @@ const limit = (value: string, max: number) => {
   const cut = text.slice(0, max + 1);
   const end = cut.lastIndexOf(" ");
 
-  return cut
-    .slice(0, end > 0 ? end : max)
-    .replace(/[.,;:!?-]+$/, "");
+  const result = cut.slice(
+    0,
+    end > 0 ? end : max
+  );
+
+  return result
+    .replace(/[.,;:!?-]+$/, "")
+    .trim();
 };
 
 function uniqueWords(value: string) {
@@ -117,93 +123,230 @@ function uniqueWords(value: string) {
   return result;
 }
 
-function buildTitle(
-  sourceTitle: string,
-  audience: Product["audience"],
-  productType: string
-) {
-  const isWatch =
-    /watch|timepiece|chronograph|automatic|quartz/i.test(
-      `${sourceTitle} ${productType}`
-    );
-
-  let source = clean(sourceTitle)
+function cleanProductSource(value: string) {
+  return clean(value)
     .replace(
-      /\b(official|wholesale|dropshipping|free shipping|cheap|hot sale|new arrival|2024|2025|2026)\b/gi,
+      /\b(official|wholesale|dropshipping|free shipping|cheap|hot sale|new arrival|best seller|top quality|2024|2025|2026)\b/gi,
+      ""
+    )
+    .replace(
+      /\b(men's|mens|men|women's|womens|women|unisex)\b/gi,
+      ""
+    )
+    .replace(
+      /\b(watch|watches|timepiece|timepieces)\b/gi,
       ""
     )
     .replace(/[|,:;()[\]{}]+/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
 
-  const words = uniqueWords(source);
+function detectWatchType(
+  sourceTitle: string,
+  productType: string,
+  description: string
+) {
+  const text =
+    `${sourceTitle} ${productType} ${description}`.toLowerCase();
 
-  if (isWatch) {
-    const gender =
-      audience === "Women"
-        ? "Women's"
-        : audience === "Men"
-          ? "Men's"
-          : "Unisex";
-
-    const filtered = words.filter(
-      (word) =>
-        !/\b(men|men's|women|women's|unisex|watch|timepiece)\b/i.test(
-          word
-        )
-    );
-
-    const base = filtered
-      .slice(0, 6)
-      .join(" ");
-
-    return clean(
-      `${base} ${gender} Watch`
-    );
+  if (/\bchronograph\b/.test(text)) {
+    return "Chronograph";
   }
 
-  return clean(words.slice(0, 8).join(" "));
+  if (/\bautomatic\b/.test(text)) {
+    return "Automatic";
+  }
+
+  if (/\bmechanical\b/.test(text)) {
+    return "Mechanical";
+  }
+
+  if (/\bquartz\b/.test(text)) {
+    return "Quartz";
+  }
+
+  if (/\bsmart\s*watch|smartwatch\b/.test(text)) {
+    return "Smart";
+  }
+
+  return "Watch";
+}
+
+function buildTitle(
+  sourceTitle: string,
+  audience: Product["audience"],
+  productType: string,
+  description = ""
+) {
+  const cleaned = cleanProductSource(sourceTitle);
+
+  const type = detectWatchType(
+    sourceTitle,
+    productType,
+    description
+  );
+
+  const words = uniqueWords(cleaned);
+
+  const blocked = new Set([
+    "for",
+    "the",
+    "with",
+    "and",
+    "men",
+    "mens",
+    "men's",
+    "women",
+    "womens",
+    "women's",
+    "unisex",
+    "watch",
+    "watches",
+    "timepiece",
+    "timepieces",
+    "fashion",
+    "style",
+    "luxury",
+    "new",
+    "classic",
+    "sale",
+    "brand",
+    "official",
+    "original",
+  ]);
+
+  const useful = words.filter(
+    (word) =>
+      !blocked.has(
+        word.toLowerCase()
+      )
+  );
+
+  const selected = useful
+    .slice(0, 5)
+    .join(" ");
+
+  let result = selected;
+
+  if (type === "Chronograph") {
+    result = `${selected} Chronograph`;
+  } else if (type === "Automatic") {
+    result = `${selected} Automatic Watch`;
+  } else if (type === "Mechanical") {
+    result = `${selected} Mechanical Watch`;
+  } else if (type === "Quartz") {
+    result = `${selected} Quartz Watch`;
+  } else if (type === "Smart") {
+    result = `${selected} Smart Watch`;
+  } else {
+    result = `${selected} Watch`;
+  }
+
+  if (audience === "Women") {
+    result = `${result} Women's`;
+  } else if (audience === "Men") {
+    result = `${result} Men's`;
+  }
+
+  result = clean(result);
+
+  if (!result || result === "Watch") {
+    return "Classic Watch";
+  }
+
+  return result;
 }
 
 function extractSpecs(description: string) {
   const text = stripHtml(description);
   const specs: string[] = [];
 
+  const addSpec = (
+    label: string,
+    value: string | undefined
+  ) => {
+    if (!value) {
+      return;
+    }
+
+    const cleaned = clean(value)
+      .replace(/^[:\-–—]\s*/, "")
+      .replace(/\s+/g, " ")
+      .trim();
+
+    if (
+      !cleaned ||
+      cleaned.length < 2 ||
+      cleaned.length > 120
+    ) {
+      return;
+    }
+
+    const finalValue =
+      `${label}: ${cleaned}`;
+
+    if (
+      !specs.some(
+        (item) =>
+          item.toLowerCase() ===
+          finalValue.toLowerCase()
+      )
+    ) {
+      specs.push(finalValue);
+    }
+  };
+
   const patterns = [
     {
       label: "Movement",
       regex:
-        /\b(?:movement|mechanism)\s*[:\-]\s*([^.;,\n]+)/i,
+        /(?:movement|mechanism|movement type)\s*[:：\-–—]?\s*([^\n|;]{2,120})/i,
     },
     {
       label: "Case Material",
       regex:
-        /\bcase material\s*[:\-]\s*([^.;,\n]+)/i,
+        /(?:case material|case)\s*[:：\-–—]\s*([^\n|;]{2,120})/i,
     },
     {
       label: "Case Size",
       regex:
-        /\b(?:case size|dial diameter|diameter)\s*[:\-]\s*([^.;,\n]+)/i,
+        /(?:case size|dial diameter|diameter|dial size)\s*[:：\-–—]?\s*([^\n|;]{2,120})/i,
     },
     {
       label: "Water Resistance",
       regex:
-        /\b(?:water resistance|water resistant)\s*[:\-]?\s*([^.;,\n]+)/i,
+        /(?:water resistance|water resistant|waterproof)\s*[:：\-–—]?\s*([^\n|;]{2,120})/i,
     },
     {
       label: "Strap",
       regex:
-        /\b(?:strap|band|bracelet)(?: material)?\s*[:\-]\s*([^.;,\n]+)/i,
+        /(?:strap material|band material|bracelet material|strap|band|bracelet)\s*[:：\-–—]\s*([^\n|;]{2,120})/i,
     },
     {
       label: "Crystal",
       regex:
-        /\b(?:crystal|glass)\s*[:\-]\s*([^.;,\n]+)/i,
+        /(?:crystal|glass material|watch glass|glass)\s*[:：\-–—]?\s*([^\n|;]{2,120})/i,
     },
     {
       label: "Power Reserve",
       regex:
-        /\bpower reserve\s*[:\-]\s*([^.;,\n]+)/i,
+        /(?:power reserve|reserve time)\s*[:：\-–—]?\s*([^\n|;]{2,120})/i,
+    },
+    {
+      label: "Dial Color",
+      regex:
+        /(?:dial color|dial colour)\s*[:：\-–—]?\s*([^\n|;]{2,120})/i,
+    },
+    {
+      label: "Case Color",
+      regex:
+        /(?:case color|case colour)\s*[:：\-–—]?\s*([^\n|;]{2,120})/i,
+    },
+    {
+      label: "Clasp",
+      regex:
+        /(?:clasp type|clasp)\s*[:：\-–—]?\s*([^\n|;]{2,120})/i,
     },
   ];
 
@@ -211,29 +354,78 @@ function extractSpecs(description: string) {
     const match = text.match(item.regex);
 
     if (match?.[1]) {
-      specs.push(
-        `${item.label}: ${clean(match[1])}`
+      addSpec(
+        item.label,
+        match[1]
       );
     }
   }
 
-  return specs;
+  const linePatterns = [
+    {
+      label: "Movement",
+      regex:
+        /\bMovement\s+Type\s+([A-Za-z0-9 .\/-]{2,80})/i,
+    },
+    {
+      label: "Band Material",
+      regex:
+        /\bBand\s+Material\s+Type\s+([A-Za-z0-9 .\/-]{2,80})/i,
+    },
+    {
+      label: "Case Material",
+      regex:
+        /\bCase\s+Material\s+([A-Za-z0-9 .\/-]{2,80})/i,
+    },
+    {
+      label: "Water Resistance",
+      regex:
+        /\bWater\s+Resistance\s+Depth\s+([A-Za-z0-9 .\/-]{2,80})/i,
+    },
+    {
+      label: "Dial Window",
+      regex:
+        /\bDial\s+Window\s+Material\s+Type\s+([A-Za-z0-9 .\/-]{2,80})/i,
+    },
+    {
+      label: "Clasp",
+      regex:
+        /\bClasp\s+Type\s+([A-Za-z0-9 .\/-]{2,80})/i,
+    },
+  ];
+
+  for (const item of linePatterns) {
+    const match = text.match(item.regex);
+
+    if (match?.[1]) {
+      addSpec(
+        item.label,
+        match[1]
+      );
+    }
+  }
+
+  return specs.slice(0, 12);
 }
 
-function generateResult(product: Product): Result {
+function generateResult(
+  product: Product
+): Result {
+  const originalDescription =
+    stripHtml(
+      product.description
+    );
+
   const title = buildTitle(
     product.title,
     product.audience,
-    product.productType
-  );
-
-  const originalDescription = stripHtml(
+    product.productType,
     product.description
   );
 
-  const isWatch =
-    /watch|timepiece|chronograph|automatic|quartz/i.test(
-      `${product.title} ${product.productType}`
+  const factualSpecs =
+    extractSpecs(
+      product.description
     );
 
   const audiencePhrase =
@@ -241,91 +433,200 @@ function generateResult(product: Product): Result {
       ? "men and women"
       : product.audience.toLowerCase();
 
-  const factualSpecs = extractSpecs(
-    product.description
-  );
+  const sourceText =
+    `${product.title} ${product.productType} ${product.description}`.toLowerCase();
 
-  const bullets = isWatch
-    ? [
-        "Refined styling for everyday wear",
-        "Versatile design suited to casual and dressier looks",
-        "Product details presented from the available Shopify information",
-        "Suitable for personal wear or gifting",
-      ]
-    : [
-        "Clean presentation for easier product discovery",
-        "Versatile styling for everyday use",
-        "Product information presented without unsupported claims",
-        "Suitable for personal use or gifting",
-      ];
+  const hasAutomatic =
+    /\bautomatic\b/.test(
+      sourceText
+    );
 
-  const descriptionSource =
+  const hasChronograph =
+    /\bchronograph\b/.test(
+      sourceText
+    );
+
+  const hasQuartz =
+    /\bquartz\b/.test(
+      sourceText
+    );
+
+  const hasStainless =
+    /stainless steel/.test(
+      sourceText
+    );
+
+  const hasWaterResistance =
+    /water resistant|water resistance|waterproof/.test(
+      sourceText
+    );
+
+  const hasLeather =
+    /leather|genuine leather/.test(
+      sourceText
+    );
+
+  const bullets: string[] = [];
+
+  if (hasAutomatic) {
+    bullets.push(
+      "Automatic movement for a traditional mechanical feel"
+    );
+  }
+
+  if (hasChronograph) {
+    bullets.push(
+      "Chronograph styling with a sport-inspired profile"
+    );
+  }
+
+  if (hasQuartz) {
+    bullets.push(
+      "Quartz movement suited to dependable everyday wear"
+    );
+  }
+
+  if (hasStainless) {
+    bullets.push(
+      "Stainless steel detailing for a polished finish"
+    );
+  }
+
+  if (hasWaterResistance) {
+    bullets.push(
+      "Water-resistance details are presented from the supplied product information"
+    );
+  }
+
+  if (hasLeather) {
+    bullets.push(
+      "Leather strap styling for a refined everyday look"
+    );
+  }
+
+  if (bullets.length === 0) {
+    bullets.push(
+      `Designed for ${audiencePhrase} with a distinctive product profile`,
+      "Versatile styling for everyday outfits and occasions",
+      "Product details are presented from the available Shopify information",
+      "A considered option for personal wear or gifting"
+    );
+  }
+
+  const finalBullets =
+    bullets
+      .filter(
+        (item, index, array) =>
+          array.indexOf(item) ===
+          index
+      )
+      .slice(0, 4);
+
+  let descriptionText =
     originalDescription.length > 40
       ? originalDescription
-      : `A ${product.style.toLowerCase()} option designed for ${audiencePhrase}.`;
+      : `${title} is designed for ${audiencePhrase} who want a distinctive watch with a refined everyday presence.`;
 
-  const description = limit(
-    `${title}. ${descriptionSource}`,
-    520
+  descriptionText = clean(
+    descriptionText
   );
+
+  const description =
+    limit(
+      `${title}. ${descriptionText}`,
+      520
+    );
 
   const specs = [
     `Product Type: ${
-      product.productType || "Not specified"
+      product.productType ||
+      "Not specified"
     }`,
     `Audience: ${product.audience}`,
     `Style: ${product.style}`,
   ];
 
   if (product.vendor) {
-    specs.push(`Vendor: ${product.vendor}`);
+    specs.push(
+      `Vendor: ${product.vendor}`
+    );
   }
 
   if (product.price) {
-    specs.push(`Price: $${product.price}`);
+    specs.push(
+      `Price: $${product.price}`
+    );
   }
 
   if (factualSpecs.length) {
-    specs.push(...factualSpecs);
+    specs.push(
+      ...factualSpecs
+    );
   }
 
   const faq = [
     {
-      q: "What is the product type?",
+      q: "What type of product is this?",
       a: product.productType
         ? `This product is listed as ${product.productType}.`
         : "The product type has not been specified.",
     },
     {
-      q: "Who is this product for?",
-      a: `The selected target audience is ${audiencePhrase}.`,
+      q: "Who is this product designed for?",
+      a: `The selected audience is ${audiencePhrase}.`,
     },
     {
-      q: "What style is this product?",
-      a: `The selected presentation style is ${product.style}.`,
-    },
-    {
-      q: "Where do the specifications come from?",
+      q: "What details are included?",
       a: factualSpecs.length
-        ? "The listed specifications are based on information found in the Shopify product description."
-        : "No additional technical specifications were found in the Shopify product description.",
+        ? "The available specifications are taken from the Shopify product information supplied to Virello."
+        : "No additional technical specifications were found in the supplied Shopify description.",
+    },
+    {
+      q: "Are the specifications verified?",
+      a: factualSpecs.length
+        ? "Virello displays specifications found in the supplied product information and does not intentionally add unsupported technical claims."
+        : "No technical specifications were added because they were not found in the supplied product information.",
     },
   ];
 
-  const seoTitle = limit(
-    title || "Product",
-    70
+  const seoCandidates = [
+    title,
+    `${title} | Shop Online`,
+    `${title} for ${product.audience}`,
+  ];
+
+  let seoTitle =
+    seoCandidates.find(
+      (candidate) =>
+        clean(candidate).length <= 50
+    ) ||
+    limit(title, 50);
+
+  seoTitle = clean(
+    seoTitle
   );
 
-  const metaDescription = limit(
-    `Shop ${title}. View product details, available specifications and styling information for ${audiencePhrase}.`,
-    160
-  );
+  let metaDescription =
+    limit(
+      `Shop ${title}. Explore key details, specifications and a refined design made for ${audiencePhrase}.`,
+      150
+    );
+
+  if (
+    metaDescription.length >
+    150
+  ) {
+    metaDescription =
+      limit(
+        `Shop ${title}. View key features, specifications and product details for ${audiencePhrase}.`,
+        150
+      );
+  }
 
   return {
     title,
     description,
-    bullets,
+    bullets: finalBullets,
     specs,
     faq,
     seoTitle,
@@ -333,42 +634,53 @@ function generateResult(product: Product): Result {
   };
 }
 
-function getShopFromToken(token: string) {
+function getShopFromToken(
+  token: string
+) {
   try {
-    const parts = token.split(".");
+    const parts =
+      token.split(".");
 
     if (parts.length !== 3) {
       return "";
     }
 
-    const base64 = parts[1]
-      .replace(/-/g, "+")
-      .replace(/_/g, "/");
+    const base64 =
+      parts[1]
+        .replace(/-/g, "+")
+        .replace(/_/g, "/");
 
     const padded =
       base64 +
       "=".repeat(
-        (4 - (base64.length % 4)) % 4
+        (4 -
+          (base64.length % 4)) %
+          4
       );
 
-    const payload = JSON.parse(
-      atob(padded)
-    );
+    const payload =
+      JSON.parse(
+        atob(padded)
+      );
 
     if (
-      typeof payload.dest !== "string"
+      typeof payload.dest !==
+      "string"
     ) {
       return "";
     }
 
-    return new URL(payload.dest)
-      .hostname;
+    return new URL(
+      payload.dest
+    ).hostname;
   } catch {
     return "";
   }
 }
 
-function readImage(file: File): Promise<string> {
+function readImage(
+  file: File
+): Promise<string> {
   return new Promise(
     (resolve, reject) => {
       const reader =
@@ -379,7 +691,9 @@ function readImage(file: File): Promise<string> {
           typeof reader.result ===
           "string"
         ) {
-          resolve(reader.result);
+          resolve(
+            reader.result
+          );
         } else {
           reject(
             new Error(
@@ -396,7 +710,9 @@ function readImage(file: File): Promise<string> {
           )
         );
 
-      reader.readAsDataURL(file);
+      reader.readAsDataURL(
+        file
+      );
     }
   );
 }
@@ -415,8 +731,12 @@ const emptyProduct: Product = {
 };
 
 export default function Home() {
-  const [products, setProducts] =
-    useState<ShopifyProduct[]>([]);
+  const [
+    products,
+    setProducts,
+  ] = useState<
+    ShopifyProduct[]
+  >([]);
 
   const [
     loadingProducts,
@@ -438,28 +758,46 @@ export default function Home() {
     setSelectedProductId,
   ] = useState("");
 
-  const [product, setProduct] =
-    useState<Product>(emptyProduct);
+  const [
+    product,
+    setProduct,
+  ] =
+    useState<Product>(
+      emptyProduct
+    );
 
-  const [result, setResult] =
-    useState<Result | null>(null);
-
-  const [generated, setGenerated] =
-    useState(false);
-
-  const [activeImage, setActiveImage] =
-    useState(0);
-
-  const [copied, setCopied] =
-    useState("");
-
-  const liveResult = useMemo(
-    () =>
-      product.title.trim()
-        ? generateResult(product)
-        : null,
-    [product]
+  const [
+    result,
+    setResult,
+  ] = useState<Result | null>(
+    null
   );
+
+  const [
+    generated,
+    setGenerated,
+  ] = useState(false);
+
+  const [
+    activeImage,
+    setActiveImage,
+  ] = useState(0);
+
+  const [
+    copied,
+    setCopied,
+  ] = useState("");
+
+  const liveResult =
+    useMemo(
+      () =>
+        product.title.trim()
+          ? generateResult(
+              product
+            )
+          : null,
+      [product]
+    );
 
   const active =
     result ?? liveResult;
@@ -470,10 +808,12 @@ export default function Home() {
     key: K,
     value: Product[K]
   ) => {
-    setProduct((current) => ({
-      ...current,
-      [key]: value,
-    }));
+    setProduct(
+      (current) => ({
+        ...current,
+        [key]: value,
+      })
+    );
   };
 
   async function getShopifySessionToken() {
@@ -491,15 +831,22 @@ export default function Home() {
   }
 
   async function loadShopifyProducts() {
-    setLoadingProducts(true);
-    setConnectionMessage("");
+    setLoadingProducts(
+      true
+    );
+
+    setConnectionMessage(
+      ""
+    );
 
     try {
       const token =
         await getShopifySessionToken();
 
       const shop =
-        getShopFromToken(token);
+        getShopFromToken(
+          token
+        );
 
       if (!shop) {
         throw new Error(
@@ -515,9 +862,11 @@ export default function Home() {
             headers: {
               Authorization:
                 `Bearer ${token}`,
-              "x-shopify-shop": shop,
+              "x-shopify-shop":
+                shop,
             },
-            cache: "no-store",
+            cache:
+              "no-store",
           }
         );
 
@@ -526,7 +875,8 @@ export default function Home() {
 
       if (
         !response.ok ||
-        data.success !== true
+        data.success !==
+          true
       ) {
         throw new Error(
           data.error ||
@@ -535,7 +885,9 @@ export default function Home() {
       }
 
       const loadedProducts =
-        Array.isArray(data.products)
+        Array.isArray(
+          data.products
+        )
           ? data.products
           : [];
 
@@ -543,25 +895,33 @@ export default function Home() {
         loadedProducts
       );
 
-      setShopifyConnected(true);
+      setShopifyConnected(
+        true
+      );
 
       setConnectionMessage(
         `${loadedProducts.length} Shopify product${
-          loadedProducts.length === 1
+          loadedProducts.length ===
+          1
             ? ""
             : "s"
         } loaded.`
       );
     } catch (error) {
-      setShopifyConnected(false);
+      setShopifyConnected(
+        false
+      );
 
       setConnectionMessage(
-        error instanceof Error
+        error instanceof
+          Error
           ? error.message
           : "Shopify connection failed."
       );
     } finally {
-      setLoadingProducts(false);
+      setLoadingProducts(
+        false
+      );
     }
   }
 
@@ -575,7 +935,8 @@ export default function Home() {
     const selected =
       products.find(
         (item) =>
-          item.id === productId
+          item.id ===
+          productId
       );
 
     if (!selected) {
@@ -583,12 +944,16 @@ export default function Home() {
     }
 
     const images =
-      selected.images?.length
+      selected.images
+        ?.length
         ? selected.images.map(
-            (image) => image.url
+            (image) =>
+              image.url
           )
         : selected.featuredImage
-          ? [selected.featuredImage]
+          ? [
+              selected.featuredImage,
+            ]
           : [];
 
     let audience:
@@ -600,13 +965,15 @@ export default function Home() {
         selected.title
       )
     ) {
-      audience = "Women";
+      audience =
+        "Women";
     } else if (
       /unisex/i.test(
         selected.title
       )
     ) {
-      audience = "Unisex";
+      audience =
+        "Unisex";
     }
 
     let style:
@@ -614,7 +981,7 @@ export default function Home() {
       "Professional";
 
     if (
-      /luxury|premium|chronograph/i.test(
+      /luxury|premium|chronograph|automatic/i.test(
         selected.title
       )
     ) {
@@ -628,10 +995,15 @@ export default function Home() {
 
     setProduct({
       id: selected.id,
-      title: selected.title || "",
+      title:
+        selected.title ||
+        "",
       description:
-        selected.description || "",
-      price: selected.price || "",
+        selected.description ||
+        "",
+      price:
+        selected.price ||
+        "",
       images,
       productType:
         selected.productType ||
@@ -647,7 +1019,8 @@ export default function Home() {
       audience,
       style,
       vendor:
-        selected.vendor || "",
+        selected.vendor ||
+        "",
     });
 
     setActiveImage(0);
@@ -658,15 +1031,17 @@ export default function Home() {
   async function uploadImages(
     e: ChangeEvent<HTMLInputElement>
   ) {
-    const files = Array.from(
-      e.target.files ?? []
-    )
-      .filter((file) =>
-        file.type.startsWith(
-          "image/"
-        )
+    const files =
+      Array.from(
+        e.target.files ??
+          []
       )
-      .slice(0, 6);
+        .filter((file) =>
+          file.type.startsWith(
+            "image/"
+          )
+        )
+        .slice(0, 6);
 
     if (!files.length) {
       return;
@@ -675,7 +1050,9 @@ export default function Home() {
     try {
       const images =
         await Promise.all(
-          files.map(readImage)
+          files.map(
+            readImage
+          )
         );
 
       update(
@@ -689,7 +1066,8 @@ export default function Home() {
         "Unable to read one or more images."
       );
     } finally {
-      e.target.value = "";
+      e.target.value =
+        "";
     }
   }
 
@@ -698,7 +1076,8 @@ export default function Home() {
   ) {
     const images =
       product.images.filter(
-        (_, i) => i !== index
+        (_, i) =>
+          i !== index
       );
 
     update(
@@ -712,7 +1091,8 @@ export default function Home() {
         Math.min(
           activeImage,
           Math.max(
-            images.length - 1,
+            images.length -
+              1,
             0
           )
         )
@@ -721,7 +1101,9 @@ export default function Home() {
   }
 
   function generate() {
-    if (!product.title.trim()) {
+    if (
+      !product.title.trim()
+    ) {
       alert(
         "Select a Shopify product first."
       );
@@ -729,23 +1111,31 @@ export default function Home() {
     }
 
     const generatedResult =
-      generateResult(product);
+      generateResult(
+        product
+      );
 
     setResult(
       generatedResult
     );
 
-    setGenerated(true);
+    setGenerated(
+      true
+    );
 
-    window.setTimeout(() => {
-      document
-        .getElementById(
-          "preview"
-        )
-        ?.scrollIntoView({
-          behavior: "smooth",
-        });
-    }, 50);
+    window.setTimeout(
+      () => {
+        document
+          .getElementById(
+            "preview"
+          )
+          ?.scrollIntoView({
+            behavior:
+              "smooth",
+          });
+      },
+      50
+    );
   }
 
   async function copyText(
@@ -760,7 +1150,10 @@ export default function Home() {
       setCopied(label);
 
       window.setTimeout(
-        () => setCopied(""),
+        () =>
+          setCopied(
+            ""
+          ),
         1500
       );
     } catch {
@@ -822,10 +1215,9 @@ export default function Home() {
             <p>
               Turn your Shopify product
               information into clear,
-              persuasive and
-              search-ready product copy
-              without inventing
-              specifications.
+              persuasive and search-ready
+              product copy without
+              inventing specifications.
             </p>
           </div>
 
@@ -984,8 +1376,7 @@ export default function Home() {
                       onChange={(e) =>
                         update(
                           "price",
-                          e.target
-                            .value
+                          e.target.value
                         )
                       }
                       inputMode="decimal"
@@ -1006,8 +1397,7 @@ export default function Home() {
                     onChange={(e) =>
                       update(
                         "productType",
-                        e.target
-                          .value
+                        e.target.value
                       )
                     }
                   />
@@ -1097,8 +1487,7 @@ export default function Home() {
                     onChange={(e) =>
                       update(
                         "style",
-                        e.target
-                          .value as Product["style"]
+                        e.target.value as Product["style"]
                       )
                     }
                   >
@@ -1129,8 +1518,7 @@ export default function Home() {
               </label>
 
               <div className="shopify-images">
-                {product.images
-                  .length ? (
+                {product.images.length ? (
                   product.images.map(
                     (
                       image,
@@ -1186,8 +1574,8 @@ export default function Home() {
                   </p>
                 </div>
 
-                {product.images
-                  .length > 0 && (
+                {product.images.length >
+                  0 && (
                   <div className="thumbGrid">
                     {product.images.map(
                       (
@@ -1250,13 +1638,10 @@ export default function Home() {
 
               <div className="mini-product">
                 <div className="mini-image">
-                  {product.images[
-                    0
-                  ] ? (
+                  {product.images[0] ? (
                     <img
                       src={
-                        product
-                          .images[0]
+                        product.images[0]
                       }
                       alt="Product"
                     />
@@ -1335,8 +1720,7 @@ export default function Home() {
                 ] ? (
                   <img
                     src={
-                      product
-                        .images[
+                      product.images[
                         activeImage
                       ]
                     }
@@ -1352,8 +1736,8 @@ export default function Home() {
                 )}
               </div>
 
-              {product.images
-                .length > 0 && (
+              {product.images.length >
+                0 && (
                 <div className="galleryThumbs">
                   {product.images.map(
                     (
@@ -1455,7 +1839,7 @@ export default function Home() {
                         [
                           "Refined Design",
                           "Versatile Styling",
-                          "Clear Presentation",
+                          "Clear Details",
                           "Considered Choice",
                         ][index]
                       }
@@ -1581,7 +1965,7 @@ export default function Home() {
                     active?.seoTitle
                       .length
                   }
-                  /70 characters
+                  /50 characters
                 </small>
               </div>
 
@@ -1620,7 +2004,7 @@ export default function Home() {
                       ?.metaDescription
                       .length
                   }
-                  /160 characters
+                  /150 characters
                 </small>
               </div>
             </div>
