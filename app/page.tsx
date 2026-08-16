@@ -88,12 +88,9 @@ const limit = (value: string, max: number) => {
   const cut = text.slice(0, max + 1);
   const end = cut.lastIndexOf(" ");
 
-  return (
-    cut
-      .slice(0, end > 0 ? end : max)
-      .replace(/[.,;:!?-]+$/, "")
-      .trim()
-  );
+  return cut
+    .slice(0, end > 0 ? end : max)
+    .replace(/[.,;:!?-]+$/, "");
 };
 
 function uniqueWords(value: string) {
@@ -120,80 +117,28 @@ function uniqueWords(value: string) {
   return result;
 }
 
-/**
- * Creates a short, specific product title.
- * The customer-facing title is intentionally kept compact.
- */
 function buildTitle(
   sourceTitle: string,
   audience: Product["audience"],
   productType: string
 ) {
   const isWatch =
-    /watch|timepiece|chronograph|automatic|quartz|mechanical/i.test(
+    /watch|timepiece|chronograph|automatic|quartz/i.test(
       `${sourceTitle} ${productType}`
     );
 
   let source = clean(sourceTitle)
     .replace(
-      /\b(
-        official|
-        wholesale|
-        dropshipping|
-        free shipping|
-        cheap|
-        hot sale|
-        sale|
-        new arrival|
-        new|
-        fashion|
-        trendy|
-        2023|
-        2024|
-        2025|
-        2026
-      )\b/gi,
+      /\b(official|wholesale|dropshipping|free shipping|cheap|hot sale|new arrival|2024|2025|2026)\b/gi,
       ""
     )
     .replace(/[|,:;()[\]{}]+/g, " ")
     .replace(/\s+/g, " ")
     .trim();
 
-  let words = uniqueWords(source);
-
-  const removeWords = new Set([
-    "watch",
-    "watches",
-    "timepiece",
-    "timepieces",
-    "men",
-    "men's",
-    "women",
-    "women's",
-    "unisex",
-    "for",
-    "the",
-    "and",
-    "with",
-    "style",
-    "style",
-  ]);
+  const words = uniqueWords(source);
 
   if (isWatch) {
-    words = words.filter(
-      (word) =>
-        !removeWords.has(
-          word.toLowerCase()
-        )
-    );
-
-    /*
-     * Keep the strongest identifying words:
-     * brand, model, movement, material,
-     * collection/model code, etc.
-     */
-    const core = words.slice(0, 5);
-
     const gender =
       audience === "Women"
         ? "Women's"
@@ -201,45 +146,24 @@ function buildTitle(
           ? "Men's"
           : "Unisex";
 
-    const generated = clean(
-      `${core.join(" ")} ${gender} Watch`
+    const filtered = words.filter(
+      (word) =>
+        !/\b(men|men's|women|women's|unisex|watch|timepiece)\b/i.test(
+          word
+        )
     );
 
-    return limit(
-      generated || `${gender} Watch`,
-      65
-    );
+    const base = filtered.slice(0, 6).join(" ");
+
+    return clean(`${base} ${gender} Watch`);
   }
 
-  const genericWords = new Set([
-    "product",
-    "item",
-    "best",
-    "new",
-    "hot",
-    "sale",
-    "fashion",
-    "style",
-    "design",
-  ]);
-
-  words = words.filter(
-    (word) =>
-      !genericWords.has(
-        word.toLowerCase()
-      )
-  );
-
-  return limit(
-    words.slice(0, 7).join(" ") ||
-      productType ||
-      "Product",
-    65
-  );
+  return clean(words.slice(0, 8).join(" "));
 }
 
 function extractSpecs(description: string) {
   const text = stripHtml(description);
+
   const specs: string[] = [];
 
   const patterns = [
@@ -293,70 +217,19 @@ function extractSpecs(description: string) {
   return specs;
 }
 
-function detectWatchFeatures(
-  product: Product
-) {
-  const text = `${product.title} ${product.description} ${product.tags}`;
-
-  const features: string[] = [];
-
-  if (/automatic|mechanical/i.test(text)) {
-    features.push(
-      "Automatic movement"
-    );
-  }
-
-  if (/chronograph/i.test(text)) {
-    features.push(
-      "Chronograph styling"
-    );
-  }
-
-  if (/stainless steel/i.test(text)) {
-    features.push(
-      "Stainless steel construction"
-    );
-  }
-
-  if (/sapphire/i.test(text)) {
-    features.push(
-      "Sapphire crystal"
-    );
-  } else if (/mineral crystal|mineral glass/i.test(text)) {
-    features.push(
-      "Mineral crystal"
-    );
-  }
-
-  if (/water resistant|water resistance/i.test(text)) {
-    features.push(
-      "Water-resistant design"
-    );
-  }
-
-  if (/quartz/i.test(text)) {
-    features.push(
-      "Quartz movement"
-    );
-  }
-
-  return features;
-}
-
-function generateResult(
-  product: Product
-): Result {
+function generateResult(product: Product): Result {
   const title = buildTitle(
     product.title,
     product.audience,
     product.productType
   );
 
-  const originalDescription =
-    stripHtml(product.description);
+  const originalDescription = stripHtml(
+    product.description
+  );
 
   const isWatch =
-    /watch|timepiece|chronograph|automatic|quartz|mechanical/i.test(
+    /watch|timepiece|chronograph|automatic|quartz/i.test(
       `${product.title} ${product.productType}`
     );
 
@@ -365,46 +238,29 @@ function generateResult(
       ? "men and women"
       : product.audience.toLowerCase();
 
-  const factualSpecs =
-    extractSpecs(product.description);
+  const factualSpecs = extractSpecs(
+    product.description
+  );
 
-  const detectedFeatures =
-    detectWatchFeatures(product);
-
-  /*
-   * More specific benefits when actual
-   * product information supports them.
-   */
   const bullets = isWatch
-    ? detectedFeatures.length
-      ? [
-          ...detectedFeatures.slice(
-            0,
-            3
-          ),
-          "Designed for versatile everyday and occasion wear",
-        ]
-      : [
-          "Refined design for everyday wear",
-          "Easy to pair with casual and dressier looks",
-          "A versatile choice for personal wear or gifting",
-          "Designed for a polished finish",
-        ]
+    ? [
+        "Refined styling for everyday wear",
+        "Versatile design for casual and dressier occasions",
+        "Clear product details based on the available information",
+        "A considered choice for personal wear or gifting",
+      ]
     : [
-        "Designed around practical everyday use",
-        "Easy to pair with a range of settings",
-        "Clean, versatile presentation",
-        "A practical choice for personal use or gifting",
+        "Clean presentation for easier product discovery",
+        "Versatile styling for everyday use",
+        "Clear product information without unsupported claims",
+        "Suitable for personal use or gifting",
       ];
 
   const descriptionSource =
     originalDescription.length > 40
       ? originalDescription
-      : `A ${product.style.toLowerCase()} design created for ${audiencePhrase}.`;
+      : `A ${product.style.toLowerCase()} option designed for ${audiencePhrase}.`;
 
-  /*
-   * Keep the description persuasive but factual.
-   */
   const description = limit(
     `${title}. ${descriptionSource}`,
     520
@@ -419,60 +275,50 @@ function generateResult(
   ];
 
   if (product.vendor) {
-    specs.push(
-      `Brand: ${product.vendor}`
-    );
+    specs.push(`Brand: ${product.vendor}`);
   }
 
   if (product.price) {
-    specs.push(
-      `Price: $${product.price}`
-    );
+    specs.push(`Price: $${product.price}`);
   }
 
   if (factualSpecs.length) {
-    specs.push(
-      ...factualSpecs
-    );
+    specs.push(...factualSpecs);
   }
 
   const faq = [
     {
-      q: "What is this product?",
+      q: "What type of product is this?",
       a: product.productType
         ? `This product is listed as ${product.productType}.`
         : "The product type has not been specified.",
     },
     {
-      q: "Who is it designed for?",
-      a: `This design is presented for ${audiencePhrase}.`,
+      q: "Who is this product designed for?",
+      a: `This product is presented for ${audiencePhrase}.`,
     },
     {
-      q: "What style does it have?",
-      a: `The product is presented in a ${product.style.toLowerCase()} style.`,
-    },
-    {
-      q: "What specifications are available?",
+      q: "What details are included?",
       a: factualSpecs.length
-        ? "Available specifications are listed above based on the product information provided."
-        : "No additional technical specifications were provided.",
+        ? "The product details shown here are based on the information provided for this item."
+        : "The available product information does not include additional technical specifications.",
+    },
+    {
+      q: "Are the specifications verified?",
+      a: factualSpecs.length
+        ? "The specifications shown are taken from the provided product information and are not supplemented with unsupported claims."
+        : "No technical specifications were added because they were not provided in the available product information.",
     },
   ];
 
-  /*
-   * SEO title: MAXIMUM 50 CHARACTERS.
-   */
   const seoTitle = limit(
     title || "Product",
-    50
+    70
   );
 
-  /*
-   * Meta description: MAXIMUM 150 CHARACTERS.
-   */
   const metaDescription = limit(
-    `Shop ${seoTitle}. Explore key details, specifications and styling for ${audiencePhrase}.`,
-    150
+    `Shop ${title}. Explore product details, available specifications and styling information for ${audiencePhrase}.`,
+    160
   );
 
   return {
@@ -486,9 +332,7 @@ function generateResult(
   };
 }
 
-function getShopFromToken(
-  token: string
-) {
+function getShopFromToken(token: string) {
   try {
     const parts = token.split(".");
 
@@ -511,23 +355,19 @@ function getShopFromToken(
     );
 
     if (
-      typeof payload.dest !==
-      "string"
+      typeof payload.dest !== "string"
     ) {
       return "";
     }
 
-    return new URL(
-      payload.dest
-    ).hostname;
+    return new URL(payload.dest)
+      .hostname;
   } catch {
     return "";
   }
 }
 
-function readImage(
-  file: File
-): Promise<string> {
+function readImage(file: File): Promise<string> {
   return new Promise(
     (resolve, reject) => {
       const reader =
@@ -538,9 +378,7 @@ function readImage(
           typeof reader.result ===
           "string"
         ) {
-          resolve(
-            reader.result
-          );
+          resolve(reader.result);
         } else {
           reject(
             new Error(
@@ -577,9 +415,7 @@ const emptyProduct: Product = {
 
 export default function Home() {
   const [products, setProducts] =
-    useState<ShopifyProduct[]>(
-      []
-    );
+    useState<ShopifyProduct[]>([]);
 
   const [
     loadingProducts,
@@ -602,14 +438,10 @@ export default function Home() {
   ] = useState("");
 
   const [product, setProduct] =
-    useState<Product>(
-      emptyProduct
-    );
+    useState<Product>(emptyProduct);
 
   const [result, setResult] =
-    useState<Result | null>(
-      null
-    );
+    useState<Result | null>(null);
 
   const [generated, setGenerated] =
     useState(false);
@@ -637,12 +469,10 @@ export default function Home() {
     key: K,
     value: Product[K]
   ) => {
-    setProduct(
-      (current) => ({
-        ...current,
-        [key]: value,
-      })
-    );
+    setProduct((current) => ({
+      ...current,
+      [key]: value,
+    }));
   };
 
   async function getShopifySessionToken() {
@@ -668,9 +498,7 @@ export default function Home() {
         await getShopifySessionToken();
 
       const shop =
-        getShopFromToken(
-          token
-        );
+        getShopFromToken(token);
 
       if (!shop) {
         throw new Error(
@@ -686,11 +514,9 @@ export default function Home() {
             headers: {
               Authorization:
                 `Bearer ${token}`,
-              "x-shopify-shop":
-                shop,
+              "x-shopify-shop": shop,
             },
-            cache:
-              "no-store",
+            cache: "no-store",
           }
         );
 
@@ -703,14 +529,12 @@ export default function Home() {
       ) {
         throw new Error(
           data.error ||
-            "Unable to load Shopify products."
+            "Unable to load products."
         );
       }
 
       const loadedProducts =
-        Array.isArray(
-          data.products
-        )
+        Array.isArray(data.products)
           ? data.products
           : [];
 
@@ -718,33 +542,25 @@ export default function Home() {
         loadedProducts
       );
 
-      setShopifyConnected(
-        true
-      );
+      setShopifyConnected(true);
 
       setConnectionMessage(
         `${loadedProducts.length} product${
-          loadedProducts.length ===
-          1
+          loadedProducts.length === 1
             ? ""
             : "s"
         } loaded.`
       );
     } catch (error) {
-      setShopifyConnected(
-        false
-      );
+      setShopifyConnected(false);
 
       setConnectionMessage(
-        error instanceof
-        Error
+        error instanceof Error
           ? error.message
           : "Connection failed."
       );
     } finally {
-      setLoadingProducts(
-        false
-      );
+      setLoadingProducts(false);
     }
   }
 
@@ -758,8 +574,7 @@ export default function Home() {
     const selected =
       products.find(
         (item) =>
-          item.id ===
-          productId
+          item.id === productId
       );
 
     if (!selected) {
@@ -769,13 +584,10 @@ export default function Home() {
     const images =
       selected.images?.length
         ? selected.images.map(
-            (image) =>
-              image.url
+            (image) => image.url
           )
         : selected.featuredImage
-          ? [
-              selected.featuredImage,
-            ]
+          ? [selected.featuredImage]
           : [];
 
     let audience:
@@ -787,15 +599,13 @@ export default function Home() {
         selected.title
       )
     ) {
-      audience =
-        "Women";
+      audience = "Women";
     } else if (
       /unisex/i.test(
         selected.title
       )
     ) {
-      audience =
-        "Unisex";
+      audience = "Unisex";
     }
 
     let style:
@@ -817,13 +627,10 @@ export default function Home() {
 
     setProduct({
       id: selected.id,
-      title:
-        selected.title || "",
+      title: selected.title || "",
       description:
-        selected.description ||
-        "",
-      price:
-        selected.price || "",
+        selected.description || "",
+      price: selected.price || "",
       images,
       productType:
         selected.productType ||
@@ -890,8 +697,7 @@ export default function Home() {
   ) {
     const images =
       product.images.filter(
-        (_, i) =>
-          i !== index
+        (_, i) => i !== index
       );
 
     update(
@@ -905,8 +711,7 @@ export default function Home() {
         Math.min(
           activeImage,
           Math.max(
-            images.length -
-              1,
+            images.length - 1,
             0
           )
         )
@@ -915,9 +720,7 @@ export default function Home() {
   }
 
   function generate() {
-    if (
-      !product.title.trim()
-    ) {
+    if (!product.title.trim()) {
       alert(
         "Select a product first."
       );
@@ -925,9 +728,7 @@ export default function Home() {
     }
 
     const generatedResult =
-      generateResult(
-        product
-      );
+      generateResult(product);
 
     setResult(
       generatedResult
@@ -935,19 +736,15 @@ export default function Home() {
 
     setGenerated(true);
 
-    window.setTimeout(
-      () => {
-        document
-          .getElementById(
-            "preview"
-          )
-          ?.scrollIntoView({
-            behavior:
-              "smooth",
-          });
-      },
-      50
-    );
+    window.setTimeout(() => {
+      document
+        .getElementById(
+          "preview"
+        )
+        ?.scrollIntoView({
+          behavior: "smooth",
+        });
+    }, 50);
   }
 
   async function copyText(
@@ -962,8 +759,7 @@ export default function Home() {
       setCopied(label);
 
       window.setTimeout(
-        () =>
-          setCopied(""),
+        () => setCopied(""),
         1500
       );
     } catch {
@@ -1018,18 +814,16 @@ export default function Home() {
             </div>
 
             <h1>
-              Build product pages
-              shoppers understand
-              and want.
+              Build product pages shoppers
+              understand and want.
             </h1>
 
             <p>
               Turn your product
-              information into
-              clear, persuasive
-              and search-ready
-              product copy without
-              inventing
+              information into clear,
+              persuasive and
+              search-ready product copy
+              without inventing
               specifications.
             </p>
           </div>
@@ -1038,7 +832,7 @@ export default function Home() {
             <div className="shopify-head">
               <div>
                 <div className="eyebrow">
-                  SHOPIFY CONNECTION
+                  STORE CONNECTION
                 </div>
 
                 <h2>
@@ -1046,9 +840,8 @@ export default function Home() {
                 </h2>
 
                 <p>
-                  Select a product
-                  directly from your
-                  store.
+                  Select a product directly
+                  from your store.
                 </p>
               </div>
 
@@ -1131,7 +924,7 @@ export default function Home() {
                 </div>
 
                 <span className="badge">
-                  Ready
+                  Store ready
                 </span>
               </div>
 
@@ -1155,7 +948,7 @@ export default function Home() {
               <label>
                 Original Description{" "}
                 <span className="optional">
-                  From product
+                  Existing product copy
                 </span>
               </label>
 
@@ -1190,7 +983,8 @@ export default function Home() {
                       onChange={(e) =>
                         update(
                           "price",
-                          e.target.value
+                          e.target
+                            .value
                         )
                       }
                       inputMode="decimal"
@@ -1211,7 +1005,8 @@ export default function Home() {
                     onChange={(e) =>
                       update(
                         "productType",
-                        e.target.value
+                        e.target
+                          .value
                       )
                     }
                   />
@@ -1301,7 +1096,8 @@ export default function Home() {
                     onChange={(e) =>
                       update(
                         "style",
-                        e.target.value as Product["style"]
+                        e.target
+                          .value as Product["style"]
                       )
                     }
                   >
@@ -1384,8 +1180,8 @@ export default function Home() {
                   </label>
 
                   <p>
-                    Optional image
-                    upload for testing.
+                    Optional fallback for
+                    testing images locally.
                   </p>
                 </div>
 
@@ -1433,9 +1229,8 @@ export default function Home() {
                 className="primary"
                 onClick={generate}
               >
-                Generate Optimized
-                Product Page
-                <span>→</span>
+                Generate Optimized Product
+                Page <span>→</span>
               </button>
             </section>
 
@@ -1459,7 +1254,8 @@ export default function Home() {
                   ] ? (
                     <img
                       src={
-                        product.images[0]
+                        product
+                          .images[0]
                       }
                       alt="Product"
                     />
@@ -1538,7 +1334,8 @@ export default function Home() {
                 ] ? (
                   <img
                     src={
-                      product.images[
+                      product
+                        .images[
                         activeImage
                       ]
                     }
@@ -1619,12 +1416,13 @@ export default function Home() {
 
               <div className="trust">
                 <span>
-                  Detailed product
-                  information
+                  Product information
+                  refined for your store
                 </span>
 
                 <span>
-                  Product images
+                  Original product
+                  images
                 </span>
               </div>
             </div>
@@ -1636,16 +1434,13 @@ export default function Home() {
             </div>
 
             <h3>
-              Reasons shoppers
-              can keep reading.
+              Clear reasons to keep
+              reading.
             </h3>
 
             <div className="fourCards">
               {active?.bullets.map(
-                (
-                  item,
-                  index
-                ) => (
+                (item, index) => (
                   <article
                     className="feature"
                     key={item}
@@ -1657,10 +1452,10 @@ export default function Home() {
                     <h4>
                       {
                         [
-                          "Design",
-                          "Versatility",
-                          "Key Detail",
-                          "Everyday Appeal",
+                          "Refined Design",
+                          "Versatile Styling",
+                          "Clear Presentation",
+                          "Considered Choice",
                         ][index]
                       }
                     </h4>
@@ -1785,7 +1580,7 @@ export default function Home() {
                     active?.seoTitle
                       .length
                   }
-                  /50 characters
+                  /70 characters
                 </small>
               </div>
 
@@ -1824,35 +1619,29 @@ export default function Home() {
                       ?.metaDescription
                       .length
                   }
-                  /150 characters
+                  /160 characters
                 </small>
               </div>
             </div>
           </section>
 
-          {/*
-           * IMPORTANT:
-           * The previous Shopify-source
-           * callout has intentionally been
-           * removed from the customer-facing
-           * product page.
-           */}
-
           <section className="resultSection finalCallout">
             <div className="eyebrow">
-              READY
+              VIRELLO
             </div>
 
             <h3>
-              Your product page is
-              ready to refine.
+              Product information,
+              refined for your store.
             </h3>
 
             <p>
-              Review the product title,
-              description, benefits,
-              specifications and SEO
-              content before publishing.
+              Virello transforms your
+              existing product information
+              into clear, polished and
+              search-ready content while
+              keeping the available product
+              details at the center.
             </p>
 
             <button
@@ -1899,7 +1688,7 @@ export default function Home() {
         }
 
         .topbar {
-          min-height: 82px;
+          height: 82px;
           padding: 0 5vw;
           display: flex;
           align-items: center;
@@ -1963,11 +1752,7 @@ export default function Home() {
         }
 
         .hero h1 {
-          font-size: clamp(
-            48px,
-            7vw,
-            86px
-          );
+          font-size: clamp(48px, 7vw, 86px);
           line-height: .96;
           letter-spacing: -.055em;
           margin: 22px 0;
@@ -2153,10 +1938,7 @@ export default function Home() {
 
         .shopify-images {
           display: grid;
-          grid-template-columns: repeat(
-            3,
-            1fr
-          );
+          grid-template-columns: repeat(3, 1fr);
           gap: 8px;
         }
 
@@ -2227,10 +2009,7 @@ export default function Home() {
 
         .thumbGrid {
           display: grid;
-          grid-template-columns: repeat(
-            6,
-            1fr
-          );
+          grid-template-columns: repeat(6, 1fr);
           gap: 8px;
           margin-top: 12px;
         }
@@ -2380,10 +2159,7 @@ export default function Home() {
 
         .galleryThumbs {
           display: grid;
-          grid-template-columns: repeat(
-            6,
-            1fr
-          );
+          grid-template-columns: repeat(6, 1fr);
           gap: 8px;
           margin-top: 9px;
         }
@@ -2412,11 +2188,7 @@ export default function Home() {
         }
 
         .heroCopy h2 {
-          font-size: clamp(
-            42px,
-            5vw,
-            70px
-          );
+          font-size: clamp(42px, 5vw, 70px);
           line-height: 1;
           letter-spacing: -.055em;
           margin: 18px 0;
@@ -2458,11 +2230,7 @@ export default function Home() {
         }
 
         .resultSection h3 {
-          font-size: clamp(
-            40px,
-            5vw,
-            64px
-          );
+          font-size: clamp(40px, 5vw, 64px);
           line-height: 1;
           letter-spacing: -.05em;
           max-width: 850px;
@@ -2471,10 +2239,7 @@ export default function Home() {
 
         .fourCards {
           display: grid;
-          grid-template-columns: repeat(
-            4,
-            1fr
-          );
+          grid-template-columns: repeat(4, 1fr);
           gap: 13px;
         }
 
@@ -2627,10 +2392,7 @@ export default function Home() {
           }
 
           .thumbGrid {
-            grid-template-columns: repeat(
-              3,
-              1fr
-            );
+            grid-template-columns: repeat(3, 1fr);
           }
 
           .shopify-images {
@@ -2661,14 +2423,6 @@ export default function Home() {
             align-items: flex-start;
             gap: 15px;
             flex-direction: column;
-          }
-
-          .hero h1 {
-            font-size: 48px;
-          }
-
-          .hero p {
-            font-size: 17px;
           }
         }
       `}</style>
