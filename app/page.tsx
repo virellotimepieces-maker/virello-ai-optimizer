@@ -59,8 +59,8 @@ type OptimizedProduct = {
    HELPERS
 ========================================================= */
 
-function clean(value: string) {
-  return String(value || "")
+function clean(value: unknown): string {
+  return String(value ?? "")
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -138,7 +138,7 @@ function escapeHtml(value: string) {
 }
 
 /* =========================================================
-   PRODUCT DETECTION
+   PRODUCT TEXT
 ========================================================= */
 
 function getProductText(product: ShopifyProduct) {
@@ -148,35 +148,57 @@ function getProductText(product: ShopifyProduct) {
     product.vendor,
     product.tags.join(" "),
     stripHtml(product.description),
-  ].join(" ");
+  ]
+    .filter(Boolean)
+    .join(" ");
 }
+
+/* =========================================================
+   AUDIENCE
+========================================================= */
 
 function detectAudience(product: ShopifyProduct): Audience {
   const text = getProductText(product).toLowerCase();
 
-  if (/\bwomen\b|\bwomen's\b|\bladies\b|\blady\b/.test(text)) {
+  if (
+    /\bwomen\b|\bwomen's\b|\bladies\b|\blady\b|\bfemale\b/.test(
+      text,
+    )
+  ) {
     return "Women";
   }
 
-  if (/\bmen\b|\bmen's\b|\bgentlemen\b|\bgents\b/.test(text)) {
+  if (
+    /\bmen\b|\bmen's\b|\bgentlemen\b|\bgents\b|\bmale\b/.test(
+      text,
+    )
+  ) {
     return "Men";
   }
 
   return "Unisex";
 }
 
+/* =========================================================
+   STYLE
+========================================================= */
+
 function detectStyle(product: ShopifyProduct): Style {
   const text = getProductText(product).toLowerCase();
 
   if (
-    /luxury|premium|elegant|sapphire|automatic|mechanical|formal/.test(
+    /luxury|premium|elegant|sapphire|automatic|mechanical|formal|dress watch/.test(
       text,
     )
   ) {
     return "Premium / Luxury";
   }
 
-  if (/sport|sports|diving|diver|racing|athletic/.test(text)) {
+  if (
+    /sport|sports|diving|diver|racing|athletic|chronograph/.test(
+      text,
+    )
+  ) {
     return "Sport";
   }
 
@@ -216,6 +238,14 @@ function buildProductType(product: Product) {
 
   const text = getProductText(product).toLowerCase();
 
+  if (/chronograph/.test(text)) {
+    return "Chronograph Watches";
+  }
+
+  if (/automatic|mechanical/.test(text)) {
+    return "Automatic Watches";
+  }
+
   if (/watch|timepiece/.test(text)) {
     return "Watches";
   }
@@ -236,11 +266,27 @@ function buildProductType(product: Product) {
     return "Bags";
   }
 
-  if (/jewelry|jewellery|necklace|bracelet|ring/.test(text)) {
+  if (
+    /jewelry|jewellery|necklace|bracelet|ring/.test(
+      text,
+    )
+  ) {
     return "Jewelry";
   }
 
-  return "Products";
+  if (/wallet|card holder/.test(text)) {
+    return "Wallets";
+  }
+
+  if (/sunglasses|eyewear/.test(text)) {
+    return "Eyewear";
+  }
+
+  if (/belt/.test(text)) {
+    return "Belts";
+  }
+
+  return "Accessories";
 }
 
 /* =========================================================
@@ -265,12 +311,16 @@ function buildProductTitle(product: Product) {
     .replace(/\s+/g, " ")
     .trim();
 
-  const words = source.split(/\s+/).filter(Boolean);
+  const words = source
+    .split(/\s+/)
+    .filter(Boolean);
 
   const seen = new Set<string>();
 
   const filtered = words.filter((word) => {
-    const key = word.toLowerCase().replace(/[^a-z0-9]/g, "");
+    const key = word
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, "");
 
     if (!key || seen.has(key)) {
       return false;
@@ -280,7 +330,16 @@ function buildProductTitle(product: Product) {
     return true;
   });
 
-  return limitWords(filtered.join(" "), 8);
+  let result = limitWords(
+    filtered.join(" "),
+    8,
+  );
+
+  if (!result) {
+    result = buildProductType(product);
+  }
+
+  return result;
 }
 
 /* =========================================================
@@ -289,6 +348,7 @@ function buildProductTitle(product: Product) {
 
 function buildTags(product: Product) {
   const text = getProductText(product).toLowerCase();
+
   const result: string[] = [];
 
   const add = (value: string) => {
@@ -299,8 +359,14 @@ function buildTags(product: Product) {
     }
   };
 
+  /* Product category */
+
   if (/watch|timepiece/.test(text)) {
     add("watches");
+  }
+
+  if (/chronograph/.test(text)) {
+    add("chronograph");
   }
 
   if (/automatic/.test(text)) {
@@ -315,41 +381,91 @@ function buildTags(product: Product) {
     add("quartz watch");
   }
 
-  if (/chronograph/.test(text)) {
-    add("chronograph");
+  if (/analog|analogue/.test(text)) {
+    add("analog watch");
   }
 
-  if (/sport|racing/.test(text)) {
-    add("sport");
+  /* Design */
+
+  if (/sport|racing|athletic/.test(text)) {
+    add("sport watch");
+  }
+
+  if (/dress|formal|business/.test(text)) {
+    add("dress watch");
   }
 
   if (/luxury|premium|elegant/.test(text)) {
-    add("luxury");
+    add("luxury watch");
   }
 
+  if (/retro|vintage|classic/.test(text)) {
+    add("classic watch");
+  }
+
+  /* Materials */
+
+  if (/stainless steel/.test(text)) {
+    add("stainless steel");
+  }
+
+  if (/sapphire/.test(text)) {
+    add("sapphire crystal");
+  }
+
+  if (/leather/.test(text)) {
+    add("leather strap");
+  }
+
+  /* Audience */
+
   if (product.audience === "Men") {
-    add("men");
+    add("men's watches");
   }
 
   if (product.audience === "Women") {
-    add("women");
+    add("women's watches");
   }
 
   if (product.audience === "Unisex") {
-    add("unisex");
+    add("unisex watches");
   }
+
+  /* Existing useful Shopify tags */
 
   for (const tag of product.tags) {
+    const cleanedTag = clean(tag);
+
     if (
-      !/elevate|dropshipping|wholesale|supplier|cheap|hot sale|hot selling/i.test(
-        tag,
+      !cleanedTag ||
+      /elevate|dropshipping|wholesale|supplier|cheap|hot sale|hot selling/i.test(
+        cleanedTag,
       )
     ) {
-      add(tag);
+      continue;
     }
+
+    add(cleanedTag);
   }
 
-  return unique(result).slice(0, 15);
+  const finalTags = unique(result).slice(0, 15);
+
+  /*
+   * IMPORTANT:
+   * Never return an empty tag list for a recognizable product.
+   */
+
+  if (finalTags.length === 0) {
+    const type = buildProductType(product);
+
+    return unique([
+      type.toLowerCase(),
+      product.audience.toLowerCase(),
+      "premium style",
+    ]);
+  }
+
+  return finalTags;
 }
 
 /* =========================================================
@@ -381,6 +497,10 @@ const SPEC_LABELS = [
   "Display Type",
   "Functions",
   "Features",
+  "Brand",
+  "Model",
+  "Gender",
+  "Style",
 ] as const;
 
 function normalizeLabel(value: string) {
@@ -391,7 +511,10 @@ function normalizeLabel(value: string) {
   );
 }
 
-function extractSpecifications(description: string) {
+function extractSpecifications(
+  description: string,
+  product?: ShopifyProduct,
+) {
   const text = stripHtml(description);
 
   const specs: string[] = [];
@@ -427,6 +550,15 @@ function extractSpecifications(description: string) {
     }
 
     specs.push(`${label}: ${value}`);
+  }
+
+  /*
+   * Add useful information that is available
+   * directly from Shopify.
+   */
+
+  if (product?.vendor) {
+    specs.push(`Brand: ${clean(product.vendor)}`);
   }
 
   return unique(specs).slice(0, 20);
@@ -466,11 +598,17 @@ function buildDescription(
   title: string,
   specifications: string[],
 ) {
-  let original = stripHtml(product.description);
+  let original = stripHtml(
+    product.description,
+  );
+
+  /*
+   * Remove supplier-style promotional language.
+   */
 
   original = original
     .replace(
-      /\b(shop now|buy now|upgrade your|elevate your|free shipping)\b[^.?!]*[.?!]?/gi,
+      /\b(shop now|buy now|upgrade your|elevate your|free shipping|hot sale|best seller)\b[^.?!]*[.?!]?/gi,
       "",
     )
     .replace(
@@ -490,34 +628,54 @@ function buildDescription(
       return !match || !normalizeLabel(match[1]);
     });
 
-  original = removeDuplicateSentences(lines.join(" "));
+  original = removeDuplicateSentences(
+    lines.join(" "),
+  );
 
-  let mainText = original;
+  const audience =
+    product.audience === "Unisex"
+      ? "men and women"
+      : product.audience.toLowerCase();
 
-  if (mainText.length < 50) {
-    const audience =
-      product.audience === "Unisex"
-        ? "men and women"
-        : product.audience.toLowerCase();
+  const style =
+    product.style === "Premium / Luxury"
+      ? "refined and timeless"
+      : product.style.toLowerCase();
 
-    const style =
+  /*
+   * If supplier description is too short,
+   * create a proper premium description.
+   */
+
+  if (original.length < 80) {
+    original =
+      `Designed for ${audience}, the ${title} combines a ${style} aesthetic with practical everyday wearability. The balanced design makes it easy to pair with tailored outfits, smart-casual looks, and relaxed everyday styles.`;
+
+    if (
       product.style === "Premium / Luxury"
-        ? "refined and timeless"
-        : product.style.toLowerCase();
-
-    mainText =
-      `Designed for ${audience}, the ${title} combines a ${style} look with practical everyday wearability. Its carefully selected design details make it a versatile choice for personal style, work, and special occasions.`;
+    ) {
+      original +=
+        " Its detailed finish gives the piece a polished presence without feeling overly flashy.";
+    }
   }
 
-  mainText = limitCharacters(mainText, 900);
+  original = limitCharacters(
+    original,
+    1000,
+  );
 
-  let html = `<p>${escapeHtml(mainText)}</p>`;
+  let html = `<p>${escapeHtml(
+    original,
+  )}</p>`;
 
   if (specifications.length > 0) {
-    html += "<h3>Specifications</h3><ul>";
+    html +=
+      "<h3>Specifications</h3><ul>";
 
     for (const spec of specifications) {
-      html += `<li>${escapeHtml(spec)}</li>`;
+      html += `<li>${escapeHtml(
+        spec,
+      )}</li>`;
     }
 
     html += "</ul>";
@@ -527,7 +685,8 @@ function buildDescription(
 }
 
 /* =========================================================
-   SEO
+   SEO TITLE
+   MAXIMUM = 50 CHARACTERS
 ========================================================= */
 
 function buildSeoTitle(
@@ -537,7 +696,7 @@ function buildSeoTitle(
 ) {
   const text = getProductText(product).toLowerCase();
 
-  let keyword = productType;
+  let keyword = "Watch";
 
   if (/chronograph/.test(text)) {
     keyword = "Chronograph Watch";
@@ -546,13 +705,44 @@ function buildSeoTitle(
   } else if (/quartz/.test(text)) {
     keyword = "Quartz Watch";
   } else if (/watch|timepiece/.test(text)) {
-    keyword = "Watch";
+    keyword = "Luxury Watch";
+  } else {
+    keyword = productType;
   }
 
-  const candidate = `${keyword} - ${title}`;
+  const shortTitle = limitCharacters(
+    title,
+    30,
+  );
 
-  return limitCharacters(candidate, 60);
+  const candidates = [
+    `${shortTitle} | ${keyword}`,
+    `${keyword} | ${shortTitle}`,
+    shortTitle,
+    `${keyword} for ${product.audience}`,
+  ];
+
+  for (const candidate of candidates) {
+    const result = limitCharacters(
+      candidate,
+      50,
+    );
+
+    if (result.length >= 20) {
+      return result;
+    }
+  }
+
+  return limitCharacters(
+    title || keyword,
+    50,
+  );
 }
+
+/* =========================================================
+   META DESCRIPTION
+   MAXIMUM = 150 CHARACTERS
+========================================================= */
 
 function buildMetaDescription(
   product: Product,
@@ -564,48 +754,82 @@ function buildMetaDescription(
       ? "men and women"
       : product.audience.toLowerCase();
 
-  const firstSpec = specifications[0]
-    ? ` Featuring ${specifications[0].toLowerCase()}.`
-    : "";
+  const style =
+    product.style === "Premium / Luxury"
+      ? "refined"
+      : product.style.toLowerCase();
 
-  const candidate =
-    `Shop the ${title} for ${audience}. Discover a refined design, practical details, and versatile styling for everyday wear and special occasions.${firstSpec}`;
+  const firstFeature =
+    specifications.find(
+      (spec) =>
+        !/^Brand:/i.test(spec),
+    ) || "";
 
-  return limitCharacters(candidate, 160);
+  let candidate =
+    `Shop the ${title} for ${audience}. A ${style} design with versatile styling for everyday wear and special occasions.`;
+
+  if (firstFeature) {
+    const featureValue =
+      firstFeature
+        .split(":")
+        .slice(1)
+        .join(":")
+        .trim();
+
+    if (featureValue) {
+      candidate =
+        `Shop the ${title} for ${audience}. ${style} design with ${featureValue.toLowerCase()} and versatile everyday styling.`;
+    }
+  }
+
+  return limitCharacters(
+    candidate,
+    150,
+  );
 }
 
 /* =========================================================
    OPTIMIZER
 ========================================================= */
 
-function optimizeProduct(product: Product): OptimizedProduct {
-  const title = buildProductTitle(product);
+function optimizeProduct(
+  product: Product,
+): OptimizedProduct {
+  const title =
+    buildProductTitle(product);
 
-  const productType = buildProductType(product);
+  const productType =
+    buildProductType(product);
 
-  const tags = buildTags(product);
+  const tags =
+    buildTags(product);
 
-  const specifications = extractSpecifications(
-    product.description,
-  );
+  const specifications =
+    extractSpecifications(
+      product.description,
+      product,
+    );
 
-  const description = buildDescription(
-    product,
-    title,
-    specifications,
-  );
+  const description =
+    buildDescription(
+      product,
+      title,
+      specifications,
+    );
 
-  const seoTitle = buildSeoTitle(
-    product,
-    title,
-    productType,
-  );
+  const seoTitle =
+    buildSeoTitle(
+      product,
+      title,
+      productType,
+    );
 
-  const metaDescription = buildMetaDescription(
-    product,
-    title,
-    specifications,
-  );
+  const metaDescription =
+    buildMetaDescription(
+      product,
+      title,
+      specifications,
+    );
 
   return {
     title,
@@ -623,26 +847,50 @@ function optimizeProduct(product: Product): OptimizedProduct {
 ========================================================= */
 
 export default function Page() {
-  const [products, setProducts] = useState<Product[]>([]);
-  const [selectedId, setSelectedId] = useState("");
-  const [search, setSearch] = useState("");
+  const [products, setProducts] =
+    useState<Product[]>([]);
 
-  const [loading, setLoading] = useState(true);
-  const [optimizing, setOptimizing] = useState(false);
-  const [saving, setSaving] = useState(false);
+  const [selectedId, setSelectedId] =
+    useState("");
 
-  const [error, setError] = useState("");
-  const [message, setMessage] = useState("");
+  const [search, setSearch] =
+    useState("");
+
+  const [loading, setLoading] =
+    useState(true);
+
+  const [optimizing, setOptimizing] =
+    useState(false);
+
+  const [saving, setSaving] =
+    useState(false);
+
+  const [error, setError] =
+    useState("");
+
+  const [message, setMessage] =
+    useState("");
 
   const [optimized, setOptimized] =
-    useState<OptimizedProduct | null>(null);
+    useState<OptimizedProduct | null>(
+      null,
+    );
 
-  const [title, setTitle] = useState("");
-  const [productType, setProductType] = useState("");
-  const [tags, setTags] = useState("");
-  const [description, setDescription] = useState("");
+  const [title, setTitle] =
+    useState("");
 
-  const [seoTitle, setSeoTitle] = useState("");
+  const [productType, setProductType] =
+    useState("");
+
+  const [tags, setTags] =
+    useState("");
+
+  const [description, setDescription] =
+    useState("");
+
+  const [seoTitle, setSeoTitle] =
+    useState("");
+
   const [metaDescription, setMetaDescription] =
     useState("");
 
@@ -666,7 +914,8 @@ export default function Page() {
       );
     }
 
-    const token = await window.shopify.idToken();
+    const token =
+      await window.shopify.idToken();
 
     if (!token) {
       throw new Error(
@@ -686,7 +935,8 @@ export default function Page() {
     setError("");
 
     try {
-      const token = await getSessionToken();
+      const token =
+        await getSessionToken();
 
       const response = await fetch(
         "/api/shopify/products",
@@ -694,33 +944,43 @@ export default function Page() {
           method: "GET",
           headers: {
             Authorization: `Bearer ${token}`,
-            "x-shopify-session-token": token,
+            "x-shopify-session-token":
+              token,
           },
           cache: "no-store",
         },
       );
 
-      const data = (await response.json()) as {
-        success?: boolean;
-        error?: string;
-        products?: ShopifyProduct[];
-      };
+      const data =
+        (await response.json()) as {
+          success?: boolean;
+          error?: string;
+          products?: ShopifyProduct[];
+        };
 
-      if (!response.ok || !data.success) {
+      if (
+        !response.ok ||
+        !data.success
+      ) {
         throw new Error(
           data.error ||
             "Unable to load Shopify products.",
         );
       }
 
-      const normalized = Array.isArray(data.products)
-        ? data.products.map(toProduct)
-        : [];
+      const normalized =
+        Array.isArray(data.products)
+          ? data.products.map(
+              toProduct,
+            )
+          : [];
 
       setProducts(normalized);
 
       if (normalized.length > 0) {
-        setSelectedId(normalized[0].id);
+        setSelectedId(
+          normalized[0].id,
+        );
       }
     } catch (err) {
       setError(
@@ -744,38 +1004,49 @@ export default function Page() {
   const selected = useMemo(
     () =>
       products.find(
-        (product) => product.id === selectedId,
+        (product) =>
+          product.id === selectedId,
       ) || null,
     [products, selectedId],
   );
 
-  const filteredProducts = useMemo(() => {
-    const query = search.toLowerCase().trim();
+  /* =======================================================
+     FILTER
+  ======================================================= */
 
-    if (!query) {
-      return products;
-    }
+  const filteredProducts =
+    useMemo(() => {
+      const query =
+        search.toLowerCase().trim();
 
-    return products.filter((product) => {
-      return (
-        product.title
-          .toLowerCase()
-          .includes(query) ||
-        product.productType
-          .toLowerCase()
-          .includes(query) ||
-        product.vendor
-          .toLowerCase()
-          .includes(query) ||
-        product.tags.some((tag) =>
-          tag.toLowerCase().includes(query),
-        )
+      if (!query) {
+        return products;
+      }
+
+      return products.filter(
+        (product) => {
+          return (
+            product.title
+              .toLowerCase()
+              .includes(query) ||
+            product.productType
+              .toLowerCase()
+              .includes(query) ||
+            product.vendor
+              .toLowerCase()
+              .includes(query) ||
+            product.tags.some((tag) =>
+              tag
+                .toLowerCase()
+                .includes(query),
+            )
+          );
+        },
       );
-    });
-  }, [products, search]);
+    }, [products, search]);
 
   /* =======================================================
-     LOAD SELECTED PRODUCT
+     LOAD SELECTED PRODUCT INTO EDITOR
   ======================================================= */
 
   useEffect(() => {
@@ -783,16 +1054,91 @@ export default function Page() {
       return;
     }
 
-    setAudience(selected.audience);
-    setStyle(selected.style);
+    const nextAudience =
+      selected.audience;
 
-    setTitle(selected.title);
-    setProductType(selected.productType);
-    setTags(selected.tags.join(", "));
-    setDescription(selected.description);
+    const nextStyle =
+      selected.style;
 
-    setSeoTitle("");
-    setMetaDescription("");
+    const productForOptimization: Product =
+      {
+        ...selected,
+        audience:
+          nextAudience,
+        style: nextStyle,
+      };
+
+    /*
+     * Generate fallback values immediately.
+     * This prevents the fields from appearing empty
+     * when Shopify has incomplete product data.
+     */
+
+    const initialTitle =
+      clean(selected.title) ||
+      buildProductTitle(
+        productForOptimization,
+      );
+
+    const initialProductType =
+      buildProductType(
+        productForOptimization,
+      );
+
+    const initialTags =
+      buildTags(
+        productForOptimization,
+      );
+
+    const initialSpecs =
+      extractSpecifications(
+        selected.description,
+        selected,
+      );
+
+    const initialSeoTitle =
+      buildSeoTitle(
+        productForOptimization,
+        initialTitle,
+        initialProductType,
+      );
+
+    const initialMetaDescription =
+      buildMetaDescription(
+        productForOptimization,
+        initialTitle,
+        initialSpecs,
+      );
+
+    setAudience(nextAudience);
+    setStyle(nextStyle);
+
+    setTitle(initialTitle);
+
+    setProductType(
+      initialProductType,
+    );
+
+    setTags(
+      initialTags.join(", "),
+    );
+
+    setDescription(
+      selected.description ||
+        buildDescription(
+          productForOptimization,
+          initialTitle,
+          initialSpecs,
+        ),
+    );
+
+    setSeoTitle(
+      initialSeoTitle,
+    );
+
+    setMetaDescription(
+      initialMetaDescription,
+    );
 
     setOptimized(null);
     setMessage("");
@@ -813,21 +1159,36 @@ export default function Page() {
     setMessage("");
 
     try {
-      const result = optimizeProduct({
-        ...selected,
-        audience,
-        style,
-      });
+      const result =
+        optimizeProduct({
+          ...selected,
+          audience,
+          style,
+        });
 
       setOptimized(result);
 
       setTitle(result.title);
-      setProductType(result.productType);
-      setTags(result.tags.join(", "));
-      setDescription(result.description);
 
-      setSeoTitle(result.seoTitle);
-      setMetaDescription(result.metaDescription);
+      setProductType(
+        result.productType,
+      );
+
+      setTags(
+        result.tags.join(", "),
+      );
+
+      setDescription(
+        result.description,
+      );
+
+      setSeoTitle(
+        result.seoTitle,
+      );
+
+      setMetaDescription(
+        result.metaDescription,
+      );
 
       setMessage(
         "Optimization complete. Review the fields before saving to Shopify.",
@@ -852,28 +1213,75 @@ export default function Page() {
       return;
     }
 
-    const finalTitle = clean(title);
-    const finalProductType = clean(productType);
+    const finalTitle =
+      clean(title);
 
-    const finalTags = unique(
-      tags
-        .split(",")
-        .map(clean)
-        .filter(Boolean),
-    );
+    const finalProductType =
+      clean(productType) ||
+      buildProductType(
+        selected,
+      );
 
-    const finalDescription = description.trim();
-    const finalSeoTitle = clean(seoTitle);
+    const finalTags =
+      unique(
+        tags
+          .split(",")
+          .map(clean)
+          .filter(Boolean),
+      );
+
+    const fallbackTags =
+      finalTags.length > 0
+        ? finalTags
+        : buildTags(selected);
+
+    const finalDescription =
+      description.trim() ||
+      buildDescription(
+        selected,
+        finalTitle,
+        extractSpecifications(
+          selected.description,
+          selected,
+        ),
+      );
+
+    const finalSeoTitle =
+      limitCharacters(
+        seoTitle ||
+          buildSeoTitle(
+            selected,
+            finalTitle,
+            finalProductType,
+          ),
+        50,
+      );
+
     const finalMetaDescription =
-      clean(metaDescription);
+      limitCharacters(
+        metaDescription ||
+          buildMetaDescription(
+            selected,
+            finalTitle,
+            extractSpecifications(
+              selected.description,
+              selected,
+            ),
+          ),
+        150,
+      );
 
     if (!finalTitle) {
-      setError("Product Title is required.");
+      setError(
+        "Product Title is required.",
+      );
       return;
     }
 
     if (!finalProductType) {
-      setError("Product Type is required.");
+      setError(
+        "Product Type is required.",
+      );
       return;
     }
 
@@ -885,7 +1293,9 @@ export default function Page() {
     }
 
     if (!finalSeoTitle) {
-      setError("SEO Title is required.");
+      setError(
+        "SEO Title is required.",
+      );
       return;
     }
 
@@ -896,16 +1306,19 @@ export default function Page() {
       return;
     }
 
-    if (finalSeoTitle.length > 60) {
+    if (finalSeoTitle.length > 50) {
       setError(
-        "SEO Title must be 60 characters or fewer.",
+        "SEO Title must be 50 characters or fewer.",
       );
       return;
     }
 
-    if (finalMetaDescription.length > 160) {
+    if (
+      finalMetaDescription.length >
+      150
+    ) {
       setError(
-        "Meta Description must be 160 characters or fewer.",
+        "Meta Description must be 150 characters or fewer.",
       );
       return;
     }
@@ -915,62 +1328,97 @@ export default function Page() {
     setMessage("");
 
     try {
-      const token = await getSessionToken();
+      const token =
+        await getSessionToken();
 
       const response = await fetch(
         "/api/shopify/save-product",
         {
           method: "POST",
           headers: {
-            "Content-Type": "application/json",
+            "Content-Type":
+              "application/json",
             Authorization: `Bearer ${token}`,
-            "x-shopify-session-token": token,
+            "x-shopify-session-token":
+              token,
           },
           body: JSON.stringify({
             productId: selected.id,
+
             title: finalTitle,
-            productType: finalProductType,
-            tags: finalTags,
-            description: finalDescription,
-            seoTitle: finalSeoTitle,
-            metaDescription: finalMetaDescription,
+
+            productType:
+              finalProductType,
+
+            tags: fallbackTags,
+
+            description:
+              finalDescription,
+
+            seoTitle:
+              finalSeoTitle,
+
+            metaDescription:
+              finalMetaDescription,
           }),
         },
       );
 
-      const data = (await response.json()) as {
-        success?: boolean;
-        error?: string;
-      };
+      const data =
+        (await response.json()) as {
+          success?: boolean;
+          error?: string;
+        };
 
-      if (!response.ok || !data.success) {
+      if (
+        !response.ok ||
+        !data.success
+      ) {
         throw new Error(
           data.error ||
             "Shopify rejected the save.",
         );
       }
 
-      setProducts((current) =>
-        current.map((product) =>
-          product.id === selected.id
-            ? {
-                ...product,
-                title: finalTitle,
-                productType:
-                  finalProductType,
-                tags: finalTags,
-                description:
-                  finalDescription,
-              }
-            : product,
-        ),
+      setProducts(
+        (current) =>
+          current.map(
+            (product) =>
+              product.id ===
+              selected.id
+                ? {
+                    ...product,
+                    title:
+                      finalTitle,
+                    productType:
+                      finalProductType,
+                    tags:
+                      fallbackTags,
+                    description:
+                      finalDescription,
+                  }
+                : product,
+          ),
       );
 
       setTitle(finalTitle);
-      setProductType(finalProductType);
-      setTags(finalTags.join(", "));
-      setDescription(finalDescription);
-      setSeoTitle(finalSeoTitle);
+
+      setProductType(
+        finalProductType,
+      );
+
+      setTags(
+        fallbackTags.join(", "),
+      );
+
+      setDescription(
+        finalDescription,
+      );
+
+      setSeoTitle(
+        finalSeoTitle,
+      );
+
       setMetaDescription(
         finalMetaDescription,
       );
@@ -1291,6 +1739,12 @@ export default function Page() {
           color: #777;
         }
 
+        .field-hint {
+          margin-top: 6px;
+          color: #888;
+          font-size: 12px;
+        }
+
         @media (max-width: 950px) {
           .container {
             grid-template-columns: 1fr;
@@ -1332,6 +1786,10 @@ export default function Page() {
         }
       `}</style>
 
+      {/* ===================================================
+          HEADER
+      =================================================== */}
+
       <header className="header">
         <div className="logo">
           Virello AI Optimizer
@@ -1351,14 +1809,18 @@ export default function Page() {
 
         <aside className="card">
           <div className="sidebar-head">
-            <h2>Shopify Products</h2>
+            <h2>
+              Shopify Products
+            </h2>
 
             <input
               className="search"
               placeholder="Search products..."
               value={search}
               onChange={(event) =>
-                setSearch(event.target.value)
+                setSearch(
+                  event.target.value,
+                )
               }
             />
           </div>
@@ -1367,35 +1829,44 @@ export default function Page() {
             <div className="empty">
               Loading products...
             </div>
-          ) : filteredProducts.length === 0 ? (
+          ) : filteredProducts.length ===
+            0 ? (
             <div className="empty">
               No products found.
             </div>
           ) : (
             <div className="products">
-              {filteredProducts.map((product) => (
-                <button
-                  key={product.id}
-                  className={`product ${
-                    selectedId === product.id
-                      ? "active"
-                      : ""
-                  }`}
-                  onClick={() =>
-                    setSelectedId(product.id)
-                  }
-                >
-                  <div className="product-name">
-                    {product.title}
-                  </div>
+              {filteredProducts.map(
+                (product) => (
+                  <button
+                    key={product.id}
+                    className={`product ${
+                      selectedId ===
+                      product.id
+                        ? "active"
+                        : ""
+                    }`}
+                    onClick={() =>
+                      setSelectedId(
+                        product.id,
+                      )
+                    }
+                  >
+                    <div className="product-name">
+                      {product.title}
+                    </div>
 
-                  <div className="product-info">
-                    {product.productType ||
-                      "Product"}{" "}
-                    · {product.status}
-                  </div>
-                </button>
-              ))}
+                    <div className="product-info">
+                      {product.productType ||
+                        buildProductType(
+                          product,
+                        )}{" "}
+                      ·{" "}
+                      {product.status}
+                    </div>
+                  </button>
+                ),
+              )}
             </div>
           )}
         </aside>
@@ -1408,7 +1879,8 @@ export default function Page() {
           <div className="editor">
             {!selected ? (
               <div className="empty">
-                Select a Shopify product.
+                Select a Shopify
+                product.
               </div>
             ) : (
               <>
@@ -1426,11 +1898,15 @@ export default function Page() {
 
                 <div className="editor-head">
                   <div>
-                    <h1>Product Optimizer</h1>
+                    <h1>
+                      Product Optimizer
+                    </h1>
 
                     <div className="subtitle">
-                      Optimize, review, and save
-                      your product directly to
+                      Optimize, review,
+                      edit, and save
+                      your product
+                      directly to
                       Shopify.
                     </div>
                   </div>
@@ -1439,9 +1915,12 @@ export default function Page() {
                     <button
                       className="button primary"
                       disabled={
-                        optimizing || saving
+                        optimizing ||
+                        saving
                       }
-                      onClick={handleOptimize}
+                      onClick={
+                        handleOptimize
+                      }
                     >
                       {optimizing
                         ? "Optimizing..."
@@ -1451,9 +1930,12 @@ export default function Page() {
                     <button
                       className="button"
                       disabled={
-                        optimizing || saving
+                        optimizing ||
+                        saving
                       }
-                      onClick={handleSave}
+                      onClick={
+                        handleSave
+                      }
                     >
                       {saving
                         ? "Saving..."
@@ -1462,11 +1944,17 @@ export default function Page() {
                   </div>
                 </div>
 
+                {/* IMAGE */}
+
                 {selected.featuredImage && (
                   <img
                     className="image"
-                    src={selected.featuredImage}
-                    alt={selected.title}
+                    src={
+                      selected.featuredImage
+                    }
+                    alt={
+                      selected.title
+                    }
                   />
                 )}
 
@@ -1474,13 +1962,20 @@ export default function Page() {
 
                 <div className="two">
                   <div className="field">
-                    <label>Audience</label>
+                    <label>
+                      Audience
+                    </label>
 
                     <select
-                      value={audience}
-                      onChange={(event) =>
+                      value={
+                        audience
+                      }
+                      onChange={(
+                        event,
+                      ) =>
                         setAudience(
-                          event.target.value as Audience,
+                          event.target
+                            .value as Audience,
                         )
                       }
                     >
@@ -1499,13 +1994,18 @@ export default function Page() {
                   </div>
 
                   <div className="field">
-                    <label>Style</label>
+                    <label>
+                      Style
+                    </label>
 
                     <select
                       value={style}
-                      onChange={(event) =>
+                      onChange={(
+                        event,
+                      ) =>
                         setStyle(
-                          event.target.value as Style,
+                          event.target
+                            .value as Style,
                         )
                       }
                     >
@@ -1539,12 +2039,17 @@ export default function Page() {
                 {/* PRODUCT TITLE */}
 
                 <div className="field">
-                  <label>Product Title</label>
+                  <label>
+                    Product Title
+                  </label>
 
                   <input
                     value={title}
                     onChange={(event) =>
-                      setTitle(event.target.value)
+                      setTitle(
+                        event.target
+                          .value,
+                      )
                     }
                   />
                 </div>
@@ -1552,30 +2057,54 @@ export default function Page() {
                 {/* PRODUCT TYPE */}
 
                 <div className="field">
-                  <label>Product Type</label>
+                  <label>
+                    Product Type
+                  </label>
 
                   <input
-                    value={productType}
-                    onChange={(event) =>
+                    value={
+                      productType
+                    }
+                    onChange={(
+                      event,
+                    ) =>
                       setProductType(
-                        event.target.value,
+                        event.target
+                          .value,
                       )
                     }
                   />
+
+                  <div className="field-hint">
+                    Automatically
+                    generated when
+                    Shopify does not
+                    provide a product
+                    type.
+                  </div>
                 </div>
 
                 {/* TAGS */}
 
                 <div className="field">
-                  <label>Tags</label>
+                  <label>
+                    Tags
+                  </label>
 
                   <input
                     value={tags}
                     onChange={(event) =>
-                      setTags(event.target.value)
+                      setTags(
+                        event.target
+                          .value,
+                      )
                     }
-                    placeholder="watch, luxury, men"
                   />
+
+                  <div className="field-hint">
+                    Separate tags with
+                    commas.
+                  </div>
                 </div>
 
                 {/* DESCRIPTION */}
@@ -1586,10 +2115,15 @@ export default function Page() {
                   </label>
 
                   <textarea
-                    value={description}
-                    onChange={(event) =>
+                    value={
+                      description
+                    }
+                    onChange={(
+                      event,
+                    ) =>
                       setDescription(
-                        event.target.value,
+                        event.target
+                          .value,
                       )
                     }
                   />
@@ -1602,43 +2136,67 @@ export default function Page() {
                     Google SEO
                   </div>
 
+                  {/* SEO TITLE */}
+
                   <div className="field">
                     <label>
-                      SEO Title · Max 60
+                      SEO Title · Max
+                      50
                     </label>
 
                     <input
-                      maxLength={60}
-                      value={seoTitle}
-                      onChange={(event) =>
+                      maxLength={50}
+                      value={
+                        seoTitle
+                      }
+                      onChange={(
+                        event,
+                      ) =>
                         setSeoTitle(
-                          event.target.value,
+                          event.target.value.slice(
+                            0,
+                            50,
+                          ),
                         )
                       }
                     />
 
                     <div className="counter">
-                      {seoTitle.length}/60
+                      {seoTitle.length}
+                      /50
                     </div>
                   </div>
 
+                  {/* META DESCRIPTION */}
+
                   <div className="field">
                     <label>
-                      Meta Description · Max 160
+                      Meta Description ·
+                      Max 150
                     </label>
 
                     <textarea
-                      maxLength={160}
-                      value={metaDescription}
-                      onChange={(event) =>
+                      maxLength={150}
+                      value={
+                        metaDescription
+                      }
+                      onChange={(
+                        event,
+                      ) =>
                         setMetaDescription(
-                          event.target.value,
+                          event.target.value.slice(
+                            0,
+                            150,
+                          ),
                         )
                       }
                     />
 
                     <div className="counter">
-                      {metaDescription.length}/160
+                      {
+                        metaDescription.length
+                      }
+                      /150
                     </div>
                   </div>
                 </div>
@@ -1659,7 +2217,9 @@ export default function Page() {
                       </div>
 
                       <div className="generated-content">
-                        {optimized.title}
+                        {
+                          optimized.title
+                        }
                       </div>
                     </div>
 
@@ -1671,24 +2231,31 @@ export default function Page() {
                       </div>
 
                       <div className="generated-content">
-                        {optimized.productType}
-                      </div>
-                    </div>
-
-                    <div className="generated">
-                      <div className="generated-head">
-                        <strong>Tags</strong>
-                      </div>
-
-                      <div className="generated-content">
-                        {optimized.tags.join(", ")}
+                        {
+                          optimized.productType
+                        }
                       </div>
                     </div>
 
                     <div className="generated">
                       <div className="generated-head">
                         <strong>
-                          Product Description
+                          Tags
+                        </strong>
+                      </div>
+
+                      <div className="generated-content">
+                        {optimized.tags.join(
+                          ", ",
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="generated">
+                      <div className="generated-head">
+                        <strong>
+                          Product
+                          Description
                         </strong>
                       </div>
 
@@ -1706,12 +2273,20 @@ export default function Page() {
                         </strong>
                       </div>
 
-                      {optimized.specifications
-                        .length > 0 ? (
+                      {optimized
+                        .specifications
+                        .length >
+                      0 ? (
                         <ul className="specs">
                           {optimized.specifications.map(
-                            (spec) => (
-                              <li key={spec}>
+                            (
+                              spec,
+                            ) => (
+                              <li
+                                key={
+                                  spec
+                                }
+                              >
                                 {spec}
                               </li>
                             ),
@@ -1720,9 +2295,12 @@ export default function Page() {
                       ) : (
                         <div className="generated-content">
                           No explicit
-                          specifications were
-                          found in the supplied
-                          Shopify data.
+                          specifications
+                          were found
+                          in the
+                          supplied
+                          Shopify
+                          data.
                         </div>
                       )}
                     </div>
@@ -1735,14 +2313,17 @@ export default function Page() {
                       </div>
 
                       <div className="generated-content">
-                        {optimized.seoTitle}
+                        {
+                          optimized.seoTitle
+                        }
                       </div>
                     </div>
 
                     <div className="generated">
                       <div className="generated-head">
                         <strong>
-                          Meta Description
+                          Meta
+                          Description
                         </strong>
                       </div>
 
