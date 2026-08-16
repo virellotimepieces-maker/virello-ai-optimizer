@@ -79,7 +79,6 @@ async function getProducts(shop: string, accessToken: string) {
 
 export async function GET(request: NextRequest) {
   try {
-    // Kunin ang credentials sa Vercel Environment Variables
     const shop = process.env.SHOPIFY_STORE_DOMAIN;
     const accessToken =
       process.env.SHOPIFY_ADMIN_ACCESS_TOKEN || process.env.SHOPIFY_API_SECRET;
@@ -95,7 +94,6 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Linisin ang domain para maging format na 'gfd1cp-1y.myshopify.com'
     const cleanShop = shop.replace(/^https?:\/\//, "").replace(/\/$/, "");
 
     const products = await getProducts(cleanShop, accessToken);
