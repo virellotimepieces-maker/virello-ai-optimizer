@@ -3,6 +3,20 @@
 import { useEffect, useMemo, useState } from "react";
 
 /* =========================================================
+   VIRELLO AI OPTIMIZER
+   ALL-IN-ONE PAGE.TSX
+
+   IMPORTANT:
+   - No CSV
+   - No hard-coded store name
+   - Generic Shopify product optimizer
+   - Product Title, SEO Title, Meta Description,
+     Product Description, Product Type and Tags are separate
+   - FAQ is NOT inserted into Product Description
+   - Specifications are extracted only from supplied data
+========================================================= */
+
+/* =========================================================
    TYPES
 ========================================================= */
 
@@ -32,30 +46,24 @@ type ShopifyProduct = {
   featuredImage: string | null;
 };
 
-type Audience = "Women" | "Men" | "Unisex" | "All";
+type Audience = "Women" | "Men" | "Unisex";
 
 type Style =
-  | "Premium"
+  | "Premium / Luxury"
   | "Professional"
   | "Everyday"
   | "Casual"
   | "Sport"
-  | "Gift"
-  | "General";
+  | "Gift";
 
 type Product = ShopifyProduct & {
   audience: Audience;
   style: Style;
 };
 
-type Specification = {
-  label: string;
-  value: string;
-};
-
 type FAQ = {
-  question: string;
-  answer: string;
+  q: string;
+  a: string;
 };
 
 type Optimized = {
@@ -63,15 +71,14 @@ type Optimized = {
   productType: string;
   tags: string[];
   description: string;
-  specifications: Specification[];
-  sellingPoints: string[];
+  specs: string[];
   faq: FAQ[];
   seoTitle: string;
   metaDescription: string;
 };
 
 /* =========================================================
-   HELPERS
+   GENERAL HELPERS
 ========================================================= */
 
 function clean(value: string) {
@@ -146,18 +153,25 @@ function uniqueStrings(values: string[]) {
    PRODUCT DETECTION
 ========================================================= */
 
-function productText(product: ShopifyProduct) {
+function productText(product: Product) {
   return [
     product.title,
     product.productType,
     product.vendor,
     product.tags.join(" "),
-    stripHtml(product.description),
+    product.description,
   ].join(" ");
 }
 
 function detectAudience(product: ShopifyProduct): Audience {
-  const source = productText(product).toLowerCase();
+  const source = [
+    product.title,
+    product.productType,
+    product.tags.join(" "),
+    product.description,
+  ]
+    .join(" ")
+    .toLowerCase();
 
   if (/\bwomen|women's|ladies|lady\b/.test(source)) {
     return "Women";
@@ -167,51 +181,49 @@ function detectAudience(product: ShopifyProduct): Audience {
     return "Men";
   }
 
-  return "All";
+  return "Unisex";
 }
 
 function detectStyle(product: ShopifyProduct): Style {
-  const source = productText(product).toLowerCase();
+  const source = [
+    product.title,
+    product.productType,
+    product.vendor,
+    product.tags.join(" "),
+    product.description,
+  ]
+    .join(" ")
+    .toLowerCase();
 
   if (
-    /luxury|premium|elegant|exclusive|high[- ]?end/.test(
+    /luxury|premium|elegant|sapphire|automatic|mechanical/.test(
       source,
     )
   ) {
-    return "Premium";
+    return "Premium / Luxury";
   }
 
   if (
-    /sport|sports|racing|athletic|fitness|outdoor/.test(
+    /sport|sports|diving|diver|chronograph|racing|fitness/.test(
       source,
     )
   ) {
     return "Sport";
   }
 
-  if (
-    /casual|fashion|streetwear|street/.test(source)
-  ) {
+  if (/casual|fashion|street/.test(source)) {
     return "Casual";
   }
 
-  if (/gift|present|gifting/.test(source)) {
+  if (/gift|present/.test(source)) {
     return "Gift";
   }
 
-  if (
-    /business|office|professional|formal/.test(
-      source,
-    )
-  ) {
+  if (/business|office|professional|formal/.test(source)) {
     return "Professional";
   }
 
-  if (/everyday|daily|home|general/.test(source)) {
-    return "Everyday";
-  }
-
-  return "General";
+  return "Everyday";
 }
 
 function toProduct(product: ShopifyProduct): Product {
@@ -223,192 +235,286 @@ function toProduct(product: ShopifyProduct): Product {
 }
 
 /* =========================================================
-   SPECIFICATION EXTRACTION
-   IMPORTANT:
-   Only use information already supplied by Shopify.
+   SPECIFICATIONS
 ========================================================= */
 
-const SPEC_LABELS: Record<string, string> = {
-  sku: "SKU",
-  brand: "Brand",
-  material: "Material",
-  materials: "Materials",
-  color: "Color",
-  colour: "Color",
-  size: "Size",
-  dimensions: "Dimensions",
-  weight: "Weight",
-  capacity: "Capacity",
-  length: "Length",
-  width: "Width",
-  height: "Height",
-  diameter: "Diameter",
-  volume: "Volume",
-  "product type": "Product Type",
-  model: "Model",
-  modelnumber: "Model Number",
-  "model number": "Model Number",
-  warranty: "Warranty",
-  "country of origin": "Country of Origin",
-  origin: "Country of Origin",
-  compatibility: "Compatibility",
-  "compatible with": "Compatibility",
-  power: "Power",
-  voltage: "Voltage",
-  wattage: "Wattage",
-  battery: "Battery",
-  "battery life": "Battery Life",
-  connectivity: "Connectivity",
-  "connection type": "Connection Type",
-  "water resistance": "Water Resistance",
-  "water resistant": "Water Resistance",
+type SpecLabel =
+  | "Movement"
+  | "Material"
+  | "Case Material"
+  | "Case Size"
+  | "Water Resistance"
+  | "Strap / Band"
+  | "Crystal"
+  | "Power Reserve"
+  | "Dial Color"
+  | "Case Color"
+  | "Band Color"
+  | "Clasp"
+  | "Dimensions"
+  | "Weight"
+  | "Capacity"
+  | "Voltage"
+  | "Power"
+  | "Compatibility"
+  | "Functions";
+
+const SPEC_ALIASES: Record<string, SpecLabel> = {
   movement: "Movement",
   mechanism: "Movement",
+  caliber: "Movement",
+  calibre: "Movement",
+  "movement type": "Movement",
+
+  material: "Material",
+  materials: "Material",
+
   "case material": "Case Material",
   "case size": "Case Size",
+  "case diameter": "Case Size",
+  "dial diameter": "Case Size",
+
+  "water resistance": "Water Resistance",
+  "water resistant": "Water Resistance",
+
+  strap: "Strap / Band",
+  band: "Strap / Band",
+  bracelet: "Strap / Band",
+  "strap material": "Strap / Band",
+  "band material": "Strap / Band",
+
   crystal: "Crystal",
-  "strap material": "Strap Material",
-  "band material": "Band Material",
+  glass: "Crystal",
+
+  "power reserve": "Power Reserve",
+
   "dial color": "Dial Color",
+  "dial colour": "Dial Color",
+
   "case color": "Case Color",
+  "case colour": "Case Color",
+
   "band color": "Band Color",
-  "screen size": "Screen Size",
-  "storage capacity": "Storage Capacity",
-  "operating system": "Operating System",
-  "item dimensions": "Dimensions",
-  "item weight": "Weight",
+  "band colour": "Band Color",
+  "strap color": "Band Color",
+  "strap colour": "Band Color",
+
+  clasp: "Clasp",
+  buckle: "Clasp",
+
+  dimensions: "Dimensions",
+  dimension: "Dimensions",
+  size: "Dimensions",
+
+  weight: "Weight",
+
+  capacity: "Capacity",
+
+  voltage: "Voltage",
+
+  power: "Power",
+  wattage: "Power",
+
+  compatibility: "Compatibility",
+  compatible: "Compatibility",
+
+  function: "Functions",
+  functions: "Functions",
+  features: "Functions",
 };
 
-function normalizeSpecLabel(label: string) {
-  const normalized = clean(label)
-    .toLowerCase()
-    .replace(/\s+/g, " ");
-
+function normalizeSpecLabel(value: string): SpecLabel | null {
   return (
-    SPEC_LABELS[normalized] ||
-    clean(label)
-      .replace(/[_-]+/g, " ")
-      .replace(/\b\w/g, (letter) =>
-        letter.toUpperCase(),
-      )
+    SPEC_ALIASES[clean(value).toLowerCase()] || null
   );
 }
 
-function isLikelySpecificationLine(line: string) {
-  const match = line.match(
-    /^([A-Za-z][A-Za-z0-9 /_-]{1,45})\s*[:：]\s*(.+)$/,
-  );
+function normalizeSpecValue(value: string) {
+  return clean(value)
+    .replace(/\s+/g, " ")
+    .replace(/^[•\-:]+/, "")
+    .trim();
+}
 
-  if (!match) {
-    return null;
+function parseSpecValue(
+  label: SpecLabel,
+  value: string,
+) {
+  const cleaned = normalizeSpecValue(value);
+
+  if (!cleaned || cleaned.length > 120) {
+    return "";
   }
 
-  const label = clean(match[1]);
-  const value = clean(match[2]);
-
-  if (!value || value.length > 250) {
-    return null;
-  }
-
-  const normalizedLabel = label
-    .toLowerCase()
-    .replace(/\s+/g, " ");
-
-  const known = Boolean(SPEC_LABELS[normalizedLabel]);
-
-  const genericSpecificationWords =
-    /^(spec|specs|specification|specifications|feature|features|details|details?)$/i.test(
-      label,
+  if (label === "Movement") {
+    const match = cleaned.match(
+      /\b(automatic|mechanical|quartz|solar|kinetic|manual\s+winding|self[-\s]?winding)\b/i,
     );
 
-  if (genericSpecificationWords) {
-    return null;
+    return match ? clean(match[1]) : cleaned;
   }
 
-  /*
-   * Accept known specification labels and reasonable
-   * label:value pairs from supplier/product data.
-   */
-  if (
-    known ||
-    /material|size|color|colour|weight|dimension|capacity|power|battery|voltage|compatib|warranty|model|origin|connection|movement|water|strap|band|crystal|diameter|length|width|height|volume|storage|screen|display|resolution|function|feature/i.test(
-      label,
-    )
-  ) {
-    return {
-      label: normalizeSpecLabel(label),
-      value,
-    };
+  if (label === "Case Size") {
+    const match = cleaned.match(
+      /\b\d+(?:\.\d+)?\s*(?:mm|cm|in)\b/i,
+    );
+
+    return match ? clean(match[0]) : "";
   }
 
-  return null;
+  if (label === "Water Resistance") {
+    const match = cleaned.match(
+      /\b\d+(?:\.\d+)?\s*(?:m|meter|meters|ft|feet|atm|bar)\b/i,
+    );
+
+    return match ? clean(match[0]) : "";
+  }
+
+  if (label === "Power Reserve") {
+    const match = cleaned.match(
+      /\b\d+(?:\.\d+)?\s*(?:hours?|hrs?)\b/i,
+    );
+
+    return match ? clean(match[0]) : "";
+  }
+
+  return cleaned;
 }
 
-function extractSpecifications(
-  description: string,
-  product: ShopifyProduct,
+function addSpec(
+  specs: string[],
+  label: SpecLabel,
+  rawValue: string,
 ) {
-  const text = stripHtml(description);
+  const value = parseSpecValue(label, rawValue);
 
-  const candidates: Specification[] = [];
+  if (!value) {
+    return;
+  }
+
+  const item = `${label}: ${value}`;
+
+  if (
+    !specs.some(
+      (existing) =>
+        existing.toLowerCase() === item.toLowerCase(),
+    )
+  ) {
+    specs.push(item);
+  }
+}
+
+function extractSpecs(description: string) {
+  const text = stripHtml(description);
+  const specs: string[] = [];
 
   const lines = text
     .split(/\n|•/)
     .map(clean)
     .filter(Boolean);
 
+  /*
+   * First: explicit "Label: Value" data.
+   */
   for (const line of lines) {
-    const result = isLikelySpecificationLine(line);
+    const match = line.match(
+      /^([A-Za-z][A-Za-z /_-]{1,40})\s*[:：-]\s*(.+)$/i,
+    );
 
-    if (result) {
-      candidates.push(result);
+    if (!match) {
+      continue;
     }
+
+    const label = normalizeSpecLabel(match[1]);
+
+    if (!label) {
+      continue;
+    }
+
+    addSpec(specs, label, match[2]);
   }
 
   /*
-   * Also check the original product text for common
-   * supplier-style specification patterns.
+   * Second: known specification patterns.
    */
-  const patterns: Array<[string, RegExp]> = [
+  const patterns: Array<
+    [SpecLabel, RegExp]
+  > = [
+    [
+      "Movement",
+      /\b(?:movement|mechanism|caliber|calibre)(?:\s+type)?\s*[:：-]\s*([^.;\n]+)/i,
+    ],
     [
       "Material",
-      /\bmaterial\s*[:：]\s*([^.;\n]+)/i,
+      /\bmaterial(?:s)?\s*[:：-]\s*([^.;\n]+)/i,
     ],
     [
-      "Color",
-      /\b(?:color|colour)\s*[:：]\s*([^.;\n]+)/i,
+      "Case Material",
+      /\bcase\s+material\s*[:：-]\s*([^.;\n]+)/i,
     ],
     [
-      "Size",
-      /\bsize\s*[:：]\s*([^.;\n]+)/i,
+      "Case Size",
+      /\b(?:case\s+size|case\s+diameter|dial\s+diameter)\s*[:：-]\s*([^.;\n]+)/i,
+    ],
+    [
+      "Water Resistance",
+      /\b(?:water\s+resistance|water\s+resistant)\s*[:：-]\s*([^.;\n]+)/i,
+    ],
+    [
+      "Strap / Band",
+      /\b(?:strap|band|bracelet)(?:\s+material)?\s*[:：-]\s*([^.;\n]+)/i,
+    ],
+    [
+      "Crystal",
+      /\b(?:crystal|glass)\s*[:：-]\s*([^.;\n]+)/i,
+    ],
+    [
+      "Power Reserve",
+      /\bpower\s+reserve\s*[:：-]\s*([^.;\n]+)/i,
+    ],
+    [
+      "Dial Color",
+      /\bdial\s+(?:color|colour)\s*[:：-]\s*([^.;\n]+)/i,
+    ],
+    [
+      "Case Color",
+      /\bcase\s+(?:color|colour)\s*[:：-]\s*([^.;\n]+)/i,
+    ],
+    [
+      "Band Color",
+      /\b(?:band|strap)\s+(?:color|colour)\s*[:：-]\s*([^.;\n]+)/i,
+    ],
+    [
+      "Clasp",
+      /\b(?:clasp|buckle)\s*[:：-]\s*([^.;\n]+)/i,
     ],
     [
       "Dimensions",
-      /\b(?:dimensions|dimension)\s*[:：]\s*([^.;\n]+)/i,
+      /\bdimensions?\s*[:：-]\s*([^.;\n]+)/i,
     ],
     [
       "Weight",
-      /\bweight\s*[:：]\s*([^.;\n]+)/i,
+      /\bweight\s*[:：-]\s*([^.;\n]+)/i,
     ],
     [
       "Capacity",
-      /\bcapacity\s*[:：]\s*([^.;\n]+)/i,
+      /\bcapacity\s*[:：-]\s*([^.;\n]+)/i,
     ],
     [
       "Voltage",
-      /\bvoltage\s*[:：]\s*([^.;\n]+)/i,
+      /\bvoltage\s*[:：-]\s*([^.;\n]+)/i,
     ],
     [
-      "Battery",
-      /\bbattery\s*[:：]\s*([^.;\n]+)/i,
+      "Power",
+      /\b(?:power|wattage)\s*[:：-]\s*([^.;\n]+)/i,
     ],
     [
       "Compatibility",
-      /\bcompatib(?:ility|le\s+with)\s*[:：]\s*([^.;\n]+)/i,
+      /\bcompatib(?:ility|le)\s*[:：-]\s*([^.;\n]+)/i,
     ],
     [
-      "Warranty",
-      /\bwarranty\s*[:：]\s*([^.;\n]+)/i,
+      "Functions",
+      /\b(?:functions|function|features)\s*[:：-]\s*([^.;\n]+)/i,
     ],
   ];
 
@@ -416,108 +522,72 @@ function extractSpecifications(
     const match = text.match(regex);
 
     if (match?.[1]) {
-      candidates.push({
-        label,
-        value: clean(match[1]),
-      });
+      addSpec(specs, label, match[1]);
     }
   }
 
-  /*
-   * Vendor is existing Shopify data, so it can be displayed
-   * as a specification only when it actually exists.
-   */
-  if (clean(product.vendor)) {
-    candidates.push({
-      label: "Brand",
-      value: clean(product.vendor),
-    });
-  }
-
-  const seen = new Set<string>();
-
-  return candidates.filter((item) => {
-    const key =
-      `${item.label}:${item.value}`.toLowerCase();
-
-    if (seen.has(key)) {
-      return false;
-    }
-
-    seen.add(key);
-    return true;
-  }).slice(0, 20);
+  return uniqueStrings(specs).slice(0, 20);
 }
 
 /* =========================================================
-   REMOVE SPECIFICATION LINES FROM DESCRIPTION
-   so specifications remain in their own section.
+   TITLE GENERATION
 ========================================================= */
 
-function removeSpecificationLines(
-  description: string,
-) {
-  const text = stripHtml(description);
-
-  return text
-    .split(/\n/)
-    .map(clean)
-    .filter(Boolean)
-    .filter((line) => {
-      return !isLikelySpecificationLine(line);
-    })
-    .join(" ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-/* =========================================================
-   TITLE
-========================================================= */
-
-function buildTitle(product: Product) {
-  const original = clean(product.title);
-
-  if (!original) {
-    return "Product";
-  }
-
-  /*
-   * Generic cleanup only.
-   * No niche-specific words are inserted.
-   */
-  let result = original
+function removeGenericWords(value: string) {
+  return clean(value)
     .replace(
       /\b(official|wholesale|dropshipping|free shipping|cheap|hot sale|hot selling|new arrival|best seller|2024|2025|2026)\b/gi,
       "",
     )
+    .replace(/[|,:;()[\]{}]+/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
 
-  const words = result
+function getMeaningfulTitleWords(value: string) {
+  const source = removeGenericWords(value);
+
+  const words = source
     .split(/\s+/)
     .filter(Boolean);
 
   const seen = new Set<string>();
 
-  const uniqueWords = words.filter((word) => {
-    const key = word
+  return words.filter((word) => {
+    const normalized = word
       .toLowerCase()
-      .replace(/[^\w]/g, "");
+      .replace(/[^a-z0-9']/g, "");
 
-    if (!key || seen.has(key)) {
+    if (!normalized || seen.has(normalized)) {
       return false;
     }
 
-    seen.add(key);
+    seen.add(normalized);
     return true;
   });
+}
 
-  result = uniqueWords
-    .slice(0, 10)
+function buildTitle(product: Product) {
+  const words = getMeaningfulTitleWords(
+    product.title,
+  );
+
+  /*
+   * Product Title:
+   * Short and readable.
+   * It is NOT used as the SEO title verbatim.
+   */
+  let result = words
+    .slice(0, 7)
     .join(" ");
 
-  return clean(result || original);
+  if (!result) {
+    result =
+      clean(product.productType) ||
+      "Shopify Product";
+  }
+
+  return limit(result, 70);
 }
 
 /* =========================================================
@@ -525,11 +595,40 @@ function buildTitle(product: Product) {
 ========================================================= */
 
 function buildProductType(product: Product) {
+  const source = productText(product).toLowerCase();
+
   /*
-   * Preserve the Shopify product type whenever it exists.
-   * Do not force a niche-specific type.
+   * Category only.
+   * Never put a sentence here.
    */
-  return clean(product.productType) || "Product";
+
+  if (/chronograph/.test(source)) {
+    return "Chronograph Watches";
+  }
+
+  if (/automatic|mechanical/.test(source)) {
+    return "Automatic Watches";
+  }
+
+  if (/quartz/.test(source)) {
+    return "Quartz Watches";
+  }
+
+  if (/watch|timepiece/.test(source)) {
+    return "Watches";
+  }
+
+  const existing = clean(product.productType);
+
+  if (
+    existing &&
+    existing.length <= 60 &&
+    !/[.!?]/.test(existing)
+  ) {
+    return existing;
+  }
+
+  return "Products";
 }
 
 /* =========================================================
@@ -537,189 +636,425 @@ function buildProductType(product: Product) {
 ========================================================= */
 
 function buildTags(product: Product) {
-  const result: string[] = [];
+  const source = productText(product).toLowerCase();
 
+  const tags: string[] = [];
+
+  const add = (tag: string) => {
+    const value = clean(tag);
+
+    if (!value) {
+      return;
+    }
+
+    if (
+      !tags.some(
+        (existing) =>
+          existing.toLowerCase() ===
+          value.toLowerCase(),
+      )
+    ) {
+      tags.push(value);
+    }
+  };
+
+  /*
+   * Product-category tags.
+   */
+  if (/watch|timepiece/.test(source)) {
+    add("watches");
+  }
+
+  if (/chronograph/.test(source)) {
+    add("chronograph");
+  }
+
+  if (/automatic/.test(source)) {
+    add("automatic watch");
+  }
+
+  if (/mechanical/.test(source)) {
+    add("mechanical watch");
+  }
+
+  if (/quartz/.test(source)) {
+    add("quartz watch");
+  }
+
+  if (/sport|racing|diving|diver/.test(source)) {
+    add("sport watch");
+  }
+
+  if (/dress|elegant|formal/.test(source)) {
+    add("dress watch");
+  }
+
+  if (product.audience === "Men") {
+    add("men's");
+  }
+
+  if (product.audience === "Women") {
+    add("women's");
+  }
+
+  if (product.audience === "Unisex") {
+    add("unisex");
+  }
+
+  if (product.style === "Premium / Luxury") {
+    add("luxury");
+  }
+
+  /*
+   * Keep useful existing Shopify tags.
+   * Remove duplicates automatically.
+   */
   for (const tag of product.tags) {
     const value = clean(tag);
 
-    if (value) {
-      result.push(value);
+    if (
+      value &&
+      value.length <= 40 &&
+      !/[.!?]/.test(value)
+    ) {
+      add(value);
     }
   }
 
-  /*
-   * Only add a product type when it is not already
-   * represented by the existing tags.
-   */
-  const type = clean(product.productType);
-
-  if (
-    type &&
-    !result.some(
-      (tag) =>
-        tag.toLowerCase() ===
-        type.toLowerCase(),
-    )
-  ) {
-    result.push(type);
-  }
-
-  return uniqueStrings(result).slice(0, 20);
-}
-
-/* =========================================================
-   SELLING POINTS
-========================================================= */
-
-function buildSellingPoints(
-  product: Product,
-  specifications: Specification[],
-) {
-  const points: string[] = [];
-
-  const original = removeSpecificationLines(
-    product.description,
-  );
-
-  if (original) {
-    points.push(
-      limit(original, 140),
-    );
-  }
-
-  /*
-   * Use actual supplied specifications as selling points,
-   * without inventing benefits.
-   */
-  for (const spec of specifications.slice(0, 4)) {
-    points.push(
-      `${spec.label}: ${spec.value}`,
-    );
-  }
-
-  if (points.length === 0) {
-    points.push(
-      "Product information available from the Shopify listing.",
-    );
-  }
-
-  return uniqueStrings(points).slice(0, 5);
+  return tags.slice(0, 20);
 }
 
 /* =========================================================
    DESCRIPTION
-   IMPORTANT:
-   FAQ is NOT inserted here.
 ========================================================= */
+
+function removeSpecLinesFromDescription(
+  value: string,
+) {
+  const text = stripHtml(value);
+
+  const lines = text
+    .split(/\n|•/)
+    .map(clean)
+    .filter(Boolean);
+
+  const result: string[] = [];
+
+  for (const line of lines) {
+    if (/^specifications?$/i.test(line)) {
+      continue;
+    }
+
+    const match = line.match(
+      /^([A-Za-z][A-Za-z /_-]{1,40})\s*[:：-]\s*(.+)$/i,
+    );
+
+    if (
+      match &&
+      normalizeSpecLabel(match[1])
+    ) {
+      continue;
+    }
+
+    result.push(line);
+  }
+
+  return result.join(" ");
+}
+
+function getDescriptionOpening(
+  product: Product,
+  title: string,
+) {
+  const audience =
+    product.audience === "Unisex"
+      ? "men and women"
+      : product.audience.toLowerCase();
+
+  const source = stripHtml(
+    product.description,
+  );
+
+  /*
+   * Do not simply copy the old description.
+   */
+  if (source.length >= 80) {
+    const firstPart = limit(source, 320);
+
+    return `Designed for ${audience}, ${title} combines the product details supplied in the original listing with a clean, easy-to-shop presentation. ${firstPart}`;
+  }
+
+  return `${title} is designed for ${audience} and offers a practical, refined option for everyday use, personal style, or gifting.`;
+}
+
+function getDescriptionBenefits(
+  product: Product,
+) {
+  const source = productText(product).toLowerCase();
+
+  const benefits: string[] = [];
+
+  if (
+    /automatic|mechanical|quartz|solar/.test(
+      source,
+    )
+  ) {
+    benefits.push(
+      "The movement type is presented according to the supplied product information.",
+    );
+  }
+
+  if (
+    /stainless|steel|leather|ceramic|titanium|silicone/.test(
+      source,
+    )
+  ) {
+    benefits.push(
+      "Material details are retained from the supplied product information.",
+    );
+  }
+
+  if (
+    /water resistant|water resistance|atm|bar/.test(
+      source,
+    )
+  ) {
+    benefits.push(
+      "Water-resistance information is shown only when provided in the product data.",
+    );
+  }
+
+  if (
+    /gift|present/.test(source) ||
+    product.style === "Gift"
+  ) {
+    benefits.push(
+      "A versatile option for personal use or gifting.",
+    );
+  }
+
+  if (benefits.length === 0) {
+    benefits.push(
+      "Designed for versatile everyday use.",
+    );
+
+    benefits.push(
+      "Product details are based on the supplied listing information.",
+    );
+  }
+
+  return uniqueStrings(benefits).slice(0, 4);
+}
 
 function buildDescription(
   product: Product,
   title: string,
-  sellingPoints: string[],
-  specifications: Specification[],
+  specs: string[],
 ) {
-  const original = removeSpecificationLines(
-    product.description,
+  /*
+   * IMPORTANT:
+   * FAQ is NOT inserted here.
+   * Specifications are NOT repeated in prose.
+   */
+  const original =
+    removeSpecLinesFromDescription(
+      product.description,
+    );
+
+  const opening = getDescriptionOpening(
+    product,
+    title,
   );
 
-  let introduction = "";
+  const sourceText =
+    original.length > 100
+      ? limit(original, 500)
+      : "";
 
-  if (original.length >= 40) {
-    introduction = limit(original, 900);
-  } else {
-    introduction =
-      `${title} is presented with the product information supplied in the Shopify listing.`;
+  const benefits =
+    getDescriptionBenefits(product);
+
+  let html = `<p>${escapeHtml(
+    opening,
+  )}</p>`;
+
+  if (sourceText) {
+    html += `<p>${escapeHtml(
+      sourceText,
+    )}</p>`;
   }
 
-  let html =
-    `<p>${escapeHtml(introduction)}</p>`;
+  html += `<h3>Key Features</h3><ul>`;
 
-  if (sellingPoints.length > 0) {
-    html += `<h3>Key Features</h3><ul>`;
+  for (const benefit of benefits) {
+    html += `<li>${escapeHtml(
+      benefit,
+    )}</li>`;
+  }
 
-    for (const point of sellingPoints) {
-      html += `<li>${escapeHtml(point)}</li>`;
+  html += `</ul>`;
+
+  /*
+   * Only add a specification section when
+   * actual specifications exist.
+   */
+  if (specs.length > 0) {
+    html += `<h3>Specifications</h3><ul>`;
+
+    for (const spec of specs) {
+      html += `<li>${escapeHtml(
+        spec,
+      )}</li>`;
     }
 
     html += `</ul>`;
-  }
-
-  /*
-   * Specifications are shown separately in the UI,
-   * but NOT duplicated inside the description.
-   */
-  if (specifications.length > 0) {
-    html += `<p>See the Specifications section for the product details supplied with this listing.</p>`;
   }
 
   return html;
 }
 
 /* =========================================================
+   SEO TITLE
+========================================================= */
+
+function buildSeoTitle(
+  product: Product,
+  title: string,
+) {
+  const source = productText(product).toLowerCase();
+
+  let keyword = "Shop Online";
+
+  if (/watch|timepiece/.test(source)) {
+    if (/automatic/.test(source)) {
+      keyword = "Automatic Watch";
+    } else if (/chronograph/.test(source)) {
+      keyword = "Chronograph Watch";
+    } else if (/quartz/.test(source)) {
+      keyword = "Quartz Watch";
+    } else {
+      keyword = "Watch";
+    }
+  } else if (product.productType) {
+    keyword = limit(
+      product.productType,
+      28,
+    );
+  }
+
+  /*
+   * Deliberately different from Product Title.
+   */
+  const candidates = [
+    `${keyword} | ${title}`,
+    `Shop ${keyword} - ${title}`,
+    `${keyword} for ${product.audience}`,
+  ];
+
+  for (const candidate of candidates) {
+    const result = clean(candidate);
+
+    if (
+      result.length <= 60 &&
+      result.toLowerCase() !==
+        title.toLowerCase()
+    ) {
+      return result;
+    }
+  }
+
+  return limit(
+    `Shop ${keyword} Online`,
+    60,
+  );
+}
+
+/* =========================================================
+   META DESCRIPTION
+========================================================= */
+
+function buildMetaDescription(
+  product: Product,
+  title: string,
+  specs: string[],
+) {
+  const source = productText(product).toLowerCase();
+
+  let keyword = "quality design";
+
+  if (/watch|timepiece/.test(source)) {
+    keyword =
+      "watch design and product details";
+  } else if (
+    /home|kitchen|bathroom/.test(source)
+  ) {
+    keyword =
+      "practical design and everyday use";
+  } else if (
+    /fashion|dress|shirt|clothing/.test(
+      source,
+    )
+  ) {
+    keyword =
+      "style and everyday versatility";
+  }
+
+  const specPhrase =
+    specs.length > 0
+      ? ` Explore ${specs
+          .slice(0, 2)
+          .join(" and ")}.`
+      : "";
+
+  /*
+   * Deliberately different from both
+   * Product Title and SEO Title.
+   */
+  return limit(
+    `Discover ${title} with ${keyword}. Review product features, specifications and details before you shop.${specPhrase}`,
+    155,
+  );
+}
+
+/* =========================================================
    FAQ
-   FAQ remains separate from product description.
 ========================================================= */
 
 function buildFaq(
   product: Product,
   title: string,
-  specifications: Specification[],
+  specs: string[],
 ): FAQ[] {
   const type =
     clean(product.productType) ||
     "product";
 
-  const faq: FAQ[] = [
+  return [
     {
-      question: "What is this product?",
-      answer: `${title} is listed as a ${type}.`,
+      q: `What is the ${type}?`,
+      a: `${title} is presented as a ${type.toLowerCase()} based on the supplied Shopify product information.`,
     },
     {
-      question: "What information is available?",
-      answer:
-        specifications.length > 0
-          ? `The available product information includes ${specifications
-              .slice(0, 5)
-              .map(
-                (item) =>
-                  `${item.label}: ${item.value}`,
-              )
-              .join("; ")}.`
-          : "The Shopify listing does not contain explicit technical specifications that could be extracted.",
+      q: "What information is included?",
+      a:
+        specs.length > 0
+          ? `Available specifications include ${specs
+              .slice(0, 4)
+              .join(", ")}.`
+          : "The available product information is shown without adding specifications that were not supplied.",
     },
     {
-      question: "Is the product information verified?",
-      answer:
-        "The specifications shown by Virello are taken from the product information supplied to Shopify and are not invented by the optimizer.",
+      q: "Who is this product for?",
+      a:
+        product.audience === "Unisex"
+          ? "The supplied product information does not limit it to one gender, so it is positioned as unisex."
+          : `The product is positioned for ${product.audience.toLowerCase()} based on the supplied listing information.`,
+    },
+    {
+      q: "Are missing specifications invented?",
+      a: "No. Virello only uses specifications available in the supplied Shopify product data.",
     },
   ];
-
-  return faq;
-}
-
-/* =========================================================
-   SEO
-========================================================= */
-
-function buildSeoTitle(title: string) {
-  /*
-   * No store name and no niche-specific text.
-   */
-  return limit(title, 60);
-}
-
-function buildMetaDescription(
-  title: string,
-  product: Product,
-) {
-  const type =
-    clean(product.productType) ||
-    "product";
-
-  return limit(
-    `Explore ${title}, a ${type} with product details and specifications based on the information supplied in the Shopify listing.`,
-    155,
-  );
 }
 
 /* =========================================================
@@ -728,50 +1063,51 @@ function buildMetaDescription(
 
 function optimize(product: Product): Optimized {
   const title = buildTitle(product);
+
   const productType =
     buildProductType(product);
+
   const tags = buildTags(product);
 
-  const specifications =
-    extractSpecifications(
-      product.description,
-      product,
-    );
-
-  const sellingPoints =
-    buildSellingPoints(
-      product,
-      specifications,
-    );
+  const specs =
+    extractSpecs(product.description);
 
   const description =
     buildDescription(
       product,
       title,
-      sellingPoints,
-      specifications,
+      specs,
     );
 
-  const faq = buildFaq(
-    product,
-    title,
-    specifications,
-  );
+  const seoTitle =
+    buildSeoTitle(
+      product,
+      title,
+    );
+
+  const metaDescription =
+    buildMetaDescription(
+      product,
+      title,
+      specs,
+    );
+
+  const faq =
+    buildFaq(
+      product,
+      title,
+      specs,
+    );
 
   return {
     title,
     productType,
     tags,
     description,
-    specifications,
-    sellingPoints,
+    specs,
     faq,
-    seoTitle: buildSeoTitle(title),
-    metaDescription:
-      buildMetaDescription(
-        title,
-        product,
-      ),
+    seoTitle,
+    metaDescription,
   };
 }
 
@@ -826,10 +1162,10 @@ export default function Page() {
     useState("");
 
   const [audience, setAudience] =
-    useState<Audience>("All");
+    useState<Audience>("Unisex");
 
   const [style, setStyle] =
-    useState<Style>("General");
+    useState<Style>("Everyday");
 
   /* =======================================================
      SHOPIFY SESSION
@@ -850,7 +1186,7 @@ export default function Page() {
 
     if (!token) {
       throw new Error(
-        "Shopify session token is unavailable. Reopen Virello AI Optimizer from Shopify Admin.",
+        "Shopify session token is unavailable. Reopen Virello from Shopify Admin.",
       );
     }
 
@@ -887,11 +1223,12 @@ export default function Page() {
       const data: unknown =
         await response.json();
 
-      const result = data as {
-        success?: boolean;
-        error?: string;
-        products?: ShopifyProduct[];
-      };
+      const result =
+        data as {
+          success?: boolean;
+          error?: string;
+          products?: ShopifyProduct[];
+        };
 
       if (
         !response.ok ||
@@ -904,9 +1241,13 @@ export default function Page() {
       }
 
       const normalized: Product[] =
-        Array.isArray(result.products)
+        Array.isArray(
+          result.products,
+        )
           ? result.products.map(
-              (product) =>
+              (
+                product: ShopifyProduct,
+              ) =>
                 toProduct(product),
             )
           : [];
@@ -915,14 +1256,20 @@ export default function Page() {
 
       if (normalized.length > 0) {
         setSelectedId(
-          (current) =>
-            current &&
-            normalized.some(
-              (product) =>
-                product.id === current,
-            )
+          (current) => {
+            const stillExists =
+              normalized.some(
+                (
+                  product,
+                ) =>
+                  product.id ===
+                  current,
+              );
+
+            return stillExists
               ? current
-              : normalized[0].id,
+              : normalized[0].id;
+          },
         );
       }
     } catch (err) {
@@ -985,7 +1332,7 @@ export default function Page() {
     }, [products, search]);
 
   /* =======================================================
-     RESET EDITOR WHEN PRODUCT CHANGES
+     RESET EDITOR
   ======================================================= */
 
   useEffect(() => {
@@ -997,9 +1344,13 @@ export default function Page() {
       selected.audience,
     );
 
-    setStyle(selected.style);
+    setStyle(
+      selected.style,
+    );
 
-    setTitle(selected.title);
+    setTitle(
+      selected.title,
+    );
 
     setProductType(
       selected.productType,
@@ -1014,13 +1365,9 @@ export default function Page() {
     );
 
     setSeoTitle("");
-
     setMetaDescription("");
-
     setOptimized(null);
-
     setMessage("");
-
     setError("");
   }, [selected]);
 
@@ -1048,7 +1395,7 @@ export default function Page() {
       setOptimized(result);
 
       setMessage(
-        "Optimization complete. Review the generated content before saving.",
+        "Optimization complete. Each field is generated separately. Review before saving to Shopify.",
       );
     } catch (err) {
       setError(
@@ -1062,7 +1409,7 @@ export default function Page() {
   }
 
   /* =======================================================
-     USE GENERATED CONTENT
+     APPLY GENERATED FIELD
   ======================================================= */
 
   function useGenerated(
@@ -1078,42 +1425,42 @@ export default function Page() {
       return;
     }
 
-    if (field === "title") {
-      setTitle(
-        optimized.title,
-      );
-    }
+    switch (field) {
+      case "title":
+        setTitle(
+          optimized.title,
+        );
+        break;
 
-    if (field === "productType") {
-      setProductType(
-        optimized.productType,
-      );
-    }
+      case "productType":
+        setProductType(
+          optimized.productType,
+        );
+        break;
 
-    if (field === "tags") {
-      setTags(
-        optimized.tags.join(", "),
-      );
-    }
+      case "tags":
+        setTags(
+          optimized.tags.join(", "),
+        );
+        break;
 
-    if (field === "description") {
-      setDescription(
-        optimized.description,
-      );
-    }
+      case "description":
+        setDescription(
+          optimized.description,
+        );
+        break;
 
-    if (field === "seoTitle") {
-      setSeoTitle(
-        optimized.seoTitle,
-      );
-    }
+      case "seoTitle":
+        setSeoTitle(
+          optimized.seoTitle,
+        );
+        break;
 
-    if (
-      field === "metaDescription"
-    ) {
-      setMetaDescription(
-        optimized.metaDescription,
-      );
+      case "metaDescription":
+        setMetaDescription(
+          optimized.metaDescription,
+        );
+        break;
     }
 
     setMessage(
@@ -1148,13 +1495,10 @@ export default function Page() {
       description.trim();
 
     const finalSeoTitle =
-      limit(seoTitle, 60);
+      clean(seoTitle);
 
     const finalMetaDescription =
-      limit(
-        metaDescription,
-        155,
-      );
+      clean(metaDescription);
 
     if (!finalTitle) {
       setError(
@@ -1170,6 +1514,25 @@ export default function Page() {
       return;
     }
 
+    if (
+      finalSeoTitle.length > 60
+    ) {
+      setError(
+        "SEO title must be 60 characters or fewer.",
+      );
+      return;
+    }
+
+    if (
+      finalMetaDescription.length >
+      160
+    ) {
+      setError(
+        "Meta description must be 160 characters or fewer.",
+      );
+      return;
+    }
+
     setSaving(true);
     setError("");
     setMessage("");
@@ -1181,22 +1544,16 @@ export default function Page() {
       const payload = {
         productId:
           selected.id,
-
         title:
           finalTitle,
-
         productType:
           finalProductType,
-
         tags:
           finalTags,
-
         description:
           finalDescription,
-
         seoTitle:
           finalSeoTitle,
-
         metaDescription:
           finalMetaDescription,
       };
@@ -1206,31 +1563,29 @@ export default function Page() {
           "/api/shopify/save-product",
           {
             method: "POST",
-
             headers: {
               "Content-Type":
                 "application/json",
-
               Authorization:
                 `Bearer ${token}`,
-
               "x-shopify-session-token":
                 token,
             },
-
-            body: JSON.stringify(
-              payload,
-            ),
+            body:
+              JSON.stringify(
+                payload,
+              ),
           },
         );
 
       const data: unknown =
         await response.json();
 
-      const result = data as {
-        success?: boolean;
-        error?: string;
-      };
+      const result =
+        data as {
+          success?: boolean;
+          error?: string;
+        };
 
       if (
         !response.ok ||
@@ -1263,7 +1618,9 @@ export default function Page() {
           ),
       );
 
-      setTitle(finalTitle);
+      setTitle(
+        finalTitle,
+      );
 
       setProductType(
         finalProductType,
@@ -1329,6 +1686,10 @@ export default function Page() {
         textarea,
         select {
           font: inherit;
+        }
+
+        button {
+          -webkit-tap-highlight-color: transparent;
         }
 
         .page {
@@ -1643,6 +2004,7 @@ export default function Page() {
         .result p {
           margin: 0;
           line-height: 1.55;
+          white-space: pre-wrap;
         }
 
         .result ul {
@@ -1651,31 +2013,10 @@ export default function Page() {
           line-height: 1.6;
         }
 
-        .spec-row {
-          display: flex;
-          justify-content: space-between;
-          gap: 20px;
-          padding: 10px 0;
-          border-bottom: 1px solid #e5e5e5;
-        }
-
-        .spec-row:last-child {
-          border-bottom: 0;
-        }
-
-        .spec-label {
-          font-weight: 700;
-        }
-
-        .spec-value {
-          text-align: right;
-          color: #555;
-        }
-
         .faq {
           border: 1px solid #ddd;
           border-radius: 14px;
-          background: white;
+          background: #fff;
           margin-bottom: 9px;
           overflow: hidden;
         }
@@ -1707,6 +2048,13 @@ export default function Page() {
           color: #555;
           font-size: 14px;
           line-height: 1.5;
+        }
+
+        .field-note {
+          margin-top: 7px;
+          font-size: 12px;
+          color: #777;
+          line-height: 1.4;
         }
 
         @media (max-width: 1000px) {
@@ -1763,20 +2111,11 @@ export default function Page() {
           .actions .button {
             flex: 1;
           }
-
-          .spec-row {
-            display: block;
-          }
-
-          .spec-value {
-            text-align: left;
-            margin-top: 4px;
-          }
         }
       `}</style>
 
       {/* =====================================================
-          TOP BAR
+          HEADER
       ===================================================== */}
 
       <header className="topbar">
@@ -1811,8 +2150,9 @@ export default function Page() {
             </h1>
 
             <p>
-              All-in-one Shopify product
-              optimization
+              Shopify product optimization
+              with separate product,
+              SEO and marketing content.
             </p>
           </div>
 
@@ -1823,7 +2163,7 @@ export default function Page() {
       </section>
 
       {/* =====================================================
-          CONTENT
+          MAIN
       ===================================================== */}
 
       <section className="content">
@@ -1924,9 +2264,9 @@ export default function Page() {
                     </h2>
 
                     <p>
-                      Review and edit
-                      the content before
-                      saving it to
+                      Changes remain in
+                      Virello until you
+                      press Save to
                       Shopify.
                     </p>
                   </div>
@@ -1978,7 +2318,7 @@ export default function Page() {
                 )}
 
                 {/* =================================================
-                    PRODUCT CONTEXT
+                    AUDIENCE / STYLE
                 ================================================= */}
 
                 <div className="grid-two">
@@ -1988,18 +2328,18 @@ export default function Page() {
                     </label>
 
                     <select
-                      value={audience}
-                      onChange={(event) =>
+                      value={
+                        audience
+                      }
+                      onChange={(
+                        event,
+                      ) =>
                         setAudience(
                           event.target
                             .value as Audience,
                         )
                       }
                     >
-                      <option value="All">
-                        All
-                      </option>
-
                       <option value="Women">
                         Women
                       </option>
@@ -2021,19 +2361,17 @@ export default function Page() {
 
                     <select
                       value={style}
-                      onChange={(event) =>
+                      onChange={(
+                        event,
+                      ) =>
                         setStyle(
                           event.target
                             .value as Style,
                         )
                       }
                     >
-                      <option value="General">
-                        General
-                      </option>
-
-                      <option value="Premium">
-                        Premium
+                      <option value="Premium / Luxury">
+                        Premium / Luxury
                       </option>
 
                       <option value="Professional">
@@ -2060,7 +2398,7 @@ export default function Page() {
                 </div>
 
                 {/* =================================================
-                    TITLE
+                    PRODUCT TITLE
                 ================================================= */}
 
                 <div className="field">
@@ -2076,6 +2414,13 @@ export default function Page() {
                       )
                     }
                   />
+
+                  <div className="field-note">
+                    Main Shopify product
+                    name. This is kept
+                    separate from the SEO
+                    title.
+                  </div>
                 </div>
 
                 {/* =================================================
@@ -2088,13 +2433,23 @@ export default function Page() {
                   </label>
 
                   <input
-                    value={productType}
-                    onChange={(event) =>
+                    value={
+                      productType
+                    }
+                    onChange={(
+                      event,
+                    ) =>
                       setProductType(
-                        event.target.value,
+                        event.target
+                          .value,
                       )
                     }
                   />
+
+                  <div className="field-note">
+                    Category only — not a
+                    product description.
+                  </div>
                 </div>
 
                 {/* =================================================
@@ -2110,15 +2465,21 @@ export default function Page() {
                     value={tags}
                     onChange={(event) =>
                       setTags(
-                        event.target.value,
+                        event.target
+                          .value,
                       )
                     }
-                    placeholder="product tags separated by commas"
+                    placeholder="watches, automatic, luxury"
                   />
+
+                  <div className="field-note">
+                    Separate Shopify tags
+                    with commas.
+                  </div>
                 </div>
 
                 {/* =================================================
-                    DESCRIPTION
+                    PRODUCT DESCRIPTION
                 ================================================= */}
 
                 <div className="field">
@@ -2127,13 +2488,25 @@ export default function Page() {
                   </label>
 
                   <textarea
-                    value={description}
-                    onChange={(event) =>
+                    value={
+                      description
+                    }
+                    onChange={(
+                      event,
+                    ) =>
                       setDescription(
-                        event.target.value,
+                        event.target
+                          .value,
                       )
                     }
                   />
+
+                  <div className="field-note">
+                    This is the actual
+                    product page content.
+                    FAQ is not inserted into
+                    this field.
+                  </div>
                 </div>
 
                 {/* =================================================
@@ -2142,7 +2515,7 @@ export default function Page() {
 
                 <div className="section">
                   <h3>
-                    SEO
+                    Google SEO
                   </h3>
 
                   <div className="field">
@@ -2151,11 +2524,16 @@ export default function Page() {
                     </label>
 
                     <input
-                      value={seoTitle}
+                      value={
+                        seoTitle
+                      }
                       maxLength={60}
-                      onChange={(event) =>
+                      onChange={(
+                        event,
+                      ) =>
                         setSeoTitle(
-                          event.target.value,
+                          event.target
+                            .value,
                         )
                       }
                     />
@@ -2166,19 +2544,28 @@ export default function Page() {
                       }
                       /60
                     </div>
+
+                    <div className="field-note">
+                      Separate Google
+                      search title. It is
+                      intentionally not a
+                      copy of Product Title.
+                    </div>
                   </div>
 
                   <div className="field">
                     <label>
-                      Meta Description · MAX 155
+                      Meta Description · MAX 160
                     </label>
 
                     <textarea
                       value={
                         metaDescription
                       }
-                      maxLength={155}
-                      onChange={(event) =>
+                      maxLength={160}
+                      onChange={(
+                        event,
+                      ) =>
                         setMetaDescription(
                           event.target
                             .value,
@@ -2190,7 +2577,14 @@ export default function Page() {
                       {
                         metaDescription.length
                       }
-                      /155
+                      /160
+                    </div>
+
+                    <div className="field-note">
+                      Separate Google search
+                      snippet. It is not a
+                      copy of the title or
+                      product description.
                     </div>
                   </div>
                 </div>
@@ -2202,7 +2596,7 @@ export default function Page() {
                 {optimized && (
                   <div className="section">
                     <h3>
-                      Generated Content
+                      Virello AI Generated
                     </h3>
 
                     {/* TITLE */}
@@ -2232,7 +2626,7 @@ export default function Page() {
                       </p>
                     </div>
 
-                    {/* PRODUCT TYPE */}
+                    {/* TYPE */}
 
                     <div className="result">
                       <div className="result-head">
@@ -2322,74 +2716,37 @@ export default function Page() {
                         </strong>
                       </div>
 
-                      {optimized
-                        .specifications
-                        .length > 0 ? (
-                        optimized.specifications.map(
-                          (
-                            spec,
-                            index,
-                          ) => (
-                            <div
-                              className="spec-row"
-                              key={`${spec.label}-${index}`}
-                            >
-                              <div className="spec-label">
-                                {
-                                  spec.label
+                      {optimized.specs
+                        .length >
+                      0 ? (
+                        <ul>
+                          {optimized.specs.map(
+                            (
+                              spec,
+                              index,
+                            ) => (
+                              <li
+                                key={
+                                  index
                                 }
-                              </div>
-
-                              <div className="spec-value">
-                                {
-                                  spec.value
-                                }
-                              </div>
-                            </div>
-                          ),
-                        )
+                              >
+                                {spec}
+                              </li>
+                            ),
+                          )}
+                        </ul>
                       ) : (
                         <p>
                           No explicit
                           specifications
                           were found in
                           the supplied
-                          Shopify product
-                          information.
+                          Shopify data.
                         </p>
                       )}
                     </div>
 
-                    {/* SELLING POINTS */}
-
-                    <div className="result">
-                      <div className="result-head">
-                        <strong>
-                          Key Selling Points
-                        </strong>
-                      </div>
-
-                      <ul>
-                        {optimized.sellingPoints.map(
-                          (
-                            point,
-                            index,
-                          ) => (
-                            <li
-                              key={
-                                index
-                              }
-                            >
-                              {point}
-                            </li>
-                          ),
-                        )}
-                      </ul>
-                    </div>
-
-                    {/* FAQ
-                        SEPARATE — NOT PART OF DESCRIPTION
-                    */}
+                    {/* FAQ */}
 
                     <div className="result">
                       <div className="result-head">
@@ -2410,15 +2767,11 @@ export default function Page() {
                             }
                           >
                             <summary>
-                              {
-                                item.question
-                              }
+                              {item.q}
                             </summary>
 
                             <div className="faq-answer">
-                              {
-                                item.answer
-                              }
+                              {item.a}
                             </div>
                           </details>
                         ),
@@ -2461,7 +2814,7 @@ export default function Page() {
                       </div>
                     </div>
 
-                    {/* META DESCRIPTION */}
+                    {/* META */}
 
                     <div className="result">
                       <div className="result-head">
@@ -2493,22 +2846,17 @@ export default function Page() {
                             .metaDescription
                             .length
                         }
-                        /155
+                        /160
                       </div>
                     </div>
 
                     <div className="saved-box">
-                      Virello uses the
-                      product information
-                      supplied by Shopify.
-                      It does not invent
-                      missing measurements,
-                      materials,
-                      specifications,
-                      compatibility,
-                      performance claims,
-                      or other technical
-                      details.
+                      Virello does not invent
+                      missing technical
+                      specifications. Available
+                      specifications are taken
+                      from the supplied Shopify
+                      product information.
                     </div>
                   </div>
                 )}
