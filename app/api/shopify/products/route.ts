@@ -21,7 +21,9 @@ function getShop(request: NextRequest, token: string) {
     ?.trim();
 
   if (headerShop) {
-    return headerShop.replace(/^https?:\/\//i, "").replace(/\/+$/, "");
+    return headerShop
+      .replace(/^https?:\/\//i, "")
+      .replace(/\/+$/, "");
   }
 
   try {
@@ -43,6 +45,75 @@ function getShop(request: NextRequest, token: string) {
   } catch {
     return "";
   }
+}
+
+/**
+ * Exchange the Shopify App Bridge ID token
+ * for an Admin API access token.
+ */
+async function exchangeToken(
+  shop: string,
+  idToken: string
+) {
+  const apiKey = process.env.SHOPIFY_API_KEY;
+  const apiSecret = process.env.SHOPIFY_API_SECRET;
+
+  if (!apiKey || !apiSecret) {
+    throw new Error(
+      "SHOPIFY_API_KEY or SHOPIFY_API_SECRET is missing in Vercel."
+    );
+  }
+
+  const response = await fetch(
+    `https://${shop}/admin/oauth/access_token`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: new URLSearchParams({
+        client_id: apiKey,
+        client_secret: apiSecret,
+        grant_type:
+          "urn:ietf:params:oauth:grant-type:token-exchange",
+        subject_token: idToken,
+        subject_token_type:
+          "urn:ietf:params:oauth:token-type:id_token",
+        requested_token_type:
+          "urn:shopify:params:oauth:token-type:online-access-token",
+      }).toString(),
+      cache: "no-store",
+    }
+  );
+
+  const text = await response.text();
+
+  let data: any;
+
+  try {
+    data = JSON.parse(text);
+  } catch {
+    throw new Error(
+      `Shopify token exchange returned non-JSON response (${response.status}).`
+    );
+  }
+
+  if (!response.ok) {
+    throw new Error(
+      data?.error_description ||
+        data?.error ||
+        data?.errors?.[0]?.message ||
+        `Shopify token exchange failed (${response.status}).`
+    );
+  }
+
+  if (!data?.access_token) {
+    throw new Error(
+      "Shopify did not return an Admin API access token."
+    );
+  }
+
+  return data.access_token as string;
 }
 
 async function shopifyGraphQL(
@@ -69,15 +140,18 @@ async function shopifyGraphQL(
                 tags
                 status
                 vendor
+
                 featuredImage {
                   url
                   altText
                 }
+
                 variants(first: 1) {
                   nodes {
                     price
                   }
                 }
+
                 images(first: 20) {
                   nodes {
                     url
@@ -125,20 +199,22 @@ async function shopifyGraphQL(
 
 export async function GET(request: NextRequest) {
   try {
-    const token = getToken(request);
+    // 1. Get Shopify App Bridge ID token
+    const idToken = getToken(request);
 
-    if (!token) {
+    if (!idToken) {
       return NextResponse.json(
         {
           success: false,
           error:
-            "Shopify session token is missing.",
+            "Shopify session token is missing. Open Virello from Shopify Admin.",
         },
         { status: 401 }
       );
     }
 
-    const shop = getShop(request, token);
+    // 2. Determine Shopify store
+    const shop = getShop(request, idToken);
 
     if (!shop) {
       return NextResponse.json(
@@ -151,50 +227,52 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const accessToken =
-      process.env.SHOPIFY_ADMIN_ACCESS_TOKEN ||
-      process.env.SHOPIFY_ACCESS_TOKEN ||
-      "";
+    // 3. Exchange Shopify ID token for Admin API token
+    const accessToken = await exchangeToken(
+      shop,
+      idToken
+    );
 
-    if (!accessToken) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "SHOPIFY_ADMIN_ACCESS_TOKEN is not configured in Vercel.",
-        },
-        { status: 500 }
-      );
-    }
-
+    // 4. Load products from Shopify Admin API
     const products = await shopifyGraphQL(
       shop,
       accessToken
     );
 
+    // 5. Normalize product data for Virello
     const normalized = products.map(
       (product: any) => ({
         id: product.id,
         title: product.title || "",
-        description: product.description || "",
-        productType: product.productType || "",
+        description:
+          product.description || "",
+        productType:
+          product.productType || "",
         tags: Array.isArray(product.tags)
           ? product.tags
           : [],
-        status: product.status || "",
-        vendor: product.vendor || "",
+        status:
+          product.status || "",
+        vendor:
+          product.vendor || "",
         price:
-          product.variants?.nodes?.[0]?.price || "",
-        images: Array.isArray(product.images?.nodes)
-          ? product.images.nodes.map(
-              (image: any) => ({
-                url: image.url,
-                altText: image.altText || null,
-              })
-            )
-          : [],
+          product.variants?.nodes?.[0]?.price ||
+          "",
+        images:
+          Array.isArray(
+            product.images?.nodes
+          )
+            ? product.images.nodes.map(
+                (image: any) => ({
+                  url: image.url,
+                  altText:
+                    image.altText || null,
+                })
+              )
+            : [],
         featuredImage:
-          product.featuredImage?.url || null,
+          product.featuredImage?.url ||
+          null,
       })
     );
 
