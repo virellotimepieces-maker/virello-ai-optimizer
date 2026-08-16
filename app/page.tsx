@@ -2,6 +2,10 @@
 
 import { useEffect, useMemo, useState } from "react";
 
+/* =========================================================
+   TYPES
+========================================================= */
+
 declare global {
   interface Window {
     shopify?: {
@@ -9,10 +13,6 @@ declare global {
     };
   }
 }
-
-/* =========================================================
-   TYPES
-========================================================= */
 
 type ShopifyImage = {
   url: string;
@@ -65,7 +65,7 @@ type Optimized = {
 };
 
 /* =========================================================
-   BASIC HELPERS
+   HELPERS
 ========================================================= */
 
 function clean(value: string) {
@@ -94,9 +94,7 @@ function stripHtml(value: string) {
 function limit(value: string, max: number) {
   const text = clean(value);
 
-  if (text.length <= max) {
-    return text;
-  }
+  if (text.length <= max) return text;
 
   const cut = text.slice(0, max + 1);
   const lastSpace = cut.lastIndexOf(" ");
@@ -137,7 +135,7 @@ function uniqueStrings(values: string[]) {
 }
 
 /* =========================================================
-   PRODUCT HELPERS
+   PRODUCT DETECTION
 ========================================================= */
 
 function productText(product: Product) {
@@ -224,8 +222,7 @@ function toProduct(product: ShopifyProduct): Product {
 }
 
 /* =========================================================
-   SPECIFICATION EXTRACTION
-   ONLY USE INFORMATION ACTUALLY SUPPLIED BY SHOPIFY.
+   SPECIFICATIONS
 ========================================================= */
 
 type SpecLabel =
@@ -344,10 +341,6 @@ function simpleSpecValue(value: string) {
     return "";
   }
 
-  if (/^(and|or|with|for|the|a|an|this|that)$/i.test(result)) {
-    return "";
-  }
-
   return result;
 }
 
@@ -377,9 +370,7 @@ function addSpec(
 ) {
   const value = parseSpecValue(label, rawValue);
 
-  if (!value) {
-    return;
-  }
+  if (!value) return;
 
   const item = `${label}: ${value}`;
 
@@ -407,15 +398,11 @@ function extractSpecs(description: string) {
       /^([A-Za-z][A-Za-z /_-]{1,35})\s*[:：-]\s*(.+)$/i,
     );
 
-    if (!match) {
-      continue;
-    }
+    if (!match) continue;
 
     const label = normalizeSpecLabel(match[1]);
 
-    if (!label) {
-      continue;
-    }
+    if (!label) continue;
 
     addSpec(specs, label, match[2]);
   }
@@ -483,7 +470,7 @@ function extractSpecs(description: string) {
 }
 
 /* =========================================================
-   TITLE
+   TITLE / PRODUCT TYPE / TAGS
 ========================================================= */
 
 function removeGenericTitleWords(value: string) {
@@ -501,7 +488,6 @@ function buildTitle(product: Product) {
   const source = removeGenericTitleWords(product.title);
 
   const rawWords = source.split(/\s+/).filter(Boolean);
-
   const seen = new Set<string>();
 
   const words = rawWords.filter((word) => {
@@ -514,7 +500,6 @@ function buildTitle(product: Product) {
     }
 
     seen.add(normalized);
-
     return true;
   });
 
@@ -531,10 +516,6 @@ function buildTitle(product: Product) {
 
   return clean(result || product.title || "Product");
 }
-
-/* =========================================================
-   PRODUCT TYPE
-========================================================= */
 
 function buildProductType(product: Product) {
   const source = productText(product).toLowerCase();
@@ -558,10 +539,6 @@ function buildProductType(product: Product) {
   return product.productType || "Watches";
 }
 
-/* =========================================================
-   TAGS
-========================================================= */
-
 function buildTags(product: Product) {
   const source = productText(product).toLowerCase();
   const tags: string[] = [];
@@ -569,9 +546,7 @@ function buildTags(product: Product) {
   const add = (tag: string) => {
     const value = clean(tag);
 
-    if (!value) {
-      return;
-    }
+    if (!value) return;
 
     if (
       !tags.some(
@@ -583,33 +558,13 @@ function buildTags(product: Product) {
     }
   };
 
-  if (/watch|timepiece/.test(source)) {
-    add("watches");
-  }
-
-  if (/chronograph/.test(source)) {
-    add("chronograph");
-  }
-
-  if (/automatic/.test(source)) {
-    add("automatic watch");
-  }
-
-  if (/mechanical/.test(source)) {
-    add("mechanical watch");
-  }
-
-  if (/quartz/.test(source)) {
-    add("quartz watch");
-  }
-
-  if (/sport|racing/.test(source)) {
-    add("sport watch");
-  }
-
-  if (/dress|elegant|formal/.test(source)) {
-    add("dress watch");
-  }
+  if (/watch|timepiece/.test(source)) add("watches");
+  if (/chronograph/.test(source)) add("chronograph");
+  if (/automatic/.test(source)) add("automatic watch");
+  if (/mechanical/.test(source)) add("mechanical watch");
+  if (/quartz/.test(source)) add("quartz watch");
+  if (/sport|racing/.test(source)) add("sport watch");
+  if (/dress|elegant|formal/.test(source)) add("dress watch");
 
   if (product.audience === "Men") {
     add("men's watches");
@@ -657,10 +612,7 @@ function removeExistingSpecLines(value: string) {
       /^([A-Za-z][A-Za-z /_-]{1,35})\s*[:：-]\s*(.+)$/i,
     );
 
-    if (
-      match &&
-      normalizeSpecLabel(match[1])
-    ) {
+    if (match && normalizeSpecLabel(match[1])) {
       continue;
     }
 
@@ -674,6 +626,8 @@ function buildDescription(
   product: Product,
   title: string,
   specs: string[],
+  bullets: string[],
+  faq: FAQ[],
 ) {
   const original = removeExistingSpecLines(
     product.description,
@@ -698,6 +652,16 @@ function buildDescription(
 
   let html = `<p>${escapeHtml(introduction)}</p>`;
 
+  if (bullets.length > 0) {
+    html += `<h3>Key Features</h3><ul>`;
+
+    for (const bullet of bullets) {
+      html += `<li>${escapeHtml(bullet)}</li>`;
+    }
+
+    html += `</ul>`;
+  }
+
   if (specs.length > 0) {
     html += `<h3>Specifications</h3><ul>`;
 
@@ -708,11 +672,21 @@ function buildDescription(
     html += `</ul>`;
   }
 
+  if (faq.length > 0) {
+    html += `<h3>FAQ</h3>`;
+
+    for (const item of faq) {
+      html += `<p><strong>${escapeHtml(
+        item.q,
+      )}</strong><br />${escapeHtml(item.a)}</p>`;
+    }
+  }
+
   return html;
 }
 
 /* =========================================================
-   SELLING POINTS
+   BULLETS / FAQ / SEO
 ========================================================= */
 
 function buildBullets(product: Product) {
@@ -723,23 +697,15 @@ function buildBullets(product: Product) {
       "Refined design with a polished wrist presence",
     );
 
-    if (
-      /chronograph/i.test(
-        productText(product),
-      )
-    ) {
+    if (/chronograph/i.test(productText(product))) {
       bullets.push(
         "Chronograph styling for a distinctive, versatile look",
       );
     }
 
-    if (
-      /automatic|mechanical/i.test(
-        productText(product),
-      )
-    ) {
+    if (/automatic|mechanical/i.test(productText(product))) {
       bullets.push(
-        "Mechanical-style movement positioning based on supplied product data",
+        "Movement information presented only from supplied product data",
       );
     }
 
@@ -760,16 +726,8 @@ function buildBullets(product: Product) {
     );
   }
 
-  bullets.push(
-    "Product details are based on supplied listing information",
-  );
-
   return bullets.slice(0, 5);
 }
-
-/* =========================================================
-   FAQ
-========================================================= */
 
 function buildFaq(
   product: Product,
@@ -781,7 +739,7 @@ function buildFaq(
       ? "men and women"
       : product.audience.toLowerCase();
 
-  const faq: FAQ[] = [
+  return [
     {
       q: "What type of product is this?",
       a: isWatch(product)
@@ -791,12 +749,6 @@ function buildFaq(
     {
       q: "Who is this product designed for?",
       a: `This product is positioned for ${audience}, based on the supplied product information.`,
-    },
-    {
-      q: "What makes this product versatile?",
-      a: isWatch(product)
-        ? "Its design can work across everyday, professional and occasion-based styling."
-        : "Its practical design makes it suitable for a range of everyday uses.",
     },
     {
       q: "What specifications are available?",
@@ -809,32 +761,21 @@ function buildFaq(
       q: "Can it be given as a gift?",
       a: "Yes. The product can be considered for gifting based on its presentation and intended use.",
     },
-    {
-      q: "Are technical claims invented by Virello?",
-      a: "No. Virello only presents technical specifications when they are available in the supplied product data. Missing measurements and performance claims are not invented.",
-    },
   ];
-
-  return faq;
 }
-
-/* =========================================================
-   SEO
-========================================================= */
 
 function buildSeoTitle(
   title: string,
-  product: Product,
 ) {
-  const options = [
+  const candidates = [
     `${title} | Horizon Timepieces`,
     `${title} - Horizon Timepieces`,
     title,
   ];
 
-  for (const option of options) {
-    if (clean(option).length <= 50) {
-      return clean(option);
+  for (const candidate of candidates) {
+    if (candidate.length <= 50) {
+      return clean(candidate);
     }
   }
 
@@ -862,44 +803,19 @@ function buildMetaDescription(
 
 function optimize(product: Product): Optimized {
   const title = buildTitle(product);
+  const productType = buildProductType(product);
+  const tags = buildTags(product);
+  const specs = extractSpecs(product.description);
+  const bullets = buildBullets(product);
+  const faq = buildFaq(product, title, specs);
 
-  const productType =
-    buildProductType(product);
-
-  const tags =
-    buildTags(product);
-
-  const specs =
-    extractSpecs(product.description);
-
-  const description =
-    buildDescription(
-      product,
-      title,
-      specs,
-    );
-
-  const bullets =
-    buildBullets(product);
-
-  const faq =
-    buildFaq(
-      product,
-      title,
-      specs,
-    );
-
-  const seoTitle =
-    buildSeoTitle(
-      title,
-      product,
-    );
-
-  const metaDescription =
-    buildMetaDescription(
-      title,
-      product,
-    );
+  const description = buildDescription(
+    product,
+    title,
+    specs,
+    bullets,
+    faq,
+  );
 
   return {
     title,
@@ -909,13 +825,16 @@ function optimize(product: Product): Optimized {
     bullets,
     specs,
     faq,
-    seoTitle,
-    metaDescription,
+    seoTitle: buildSeoTitle(title),
+    metaDescription: buildMetaDescription(
+      title,
+      product,
+    ),
   };
 }
 
 /* =========================================================
-   MAIN COMPONENT
+   PAGE
 ========================================================= */
 
 export default function Page() {
@@ -923,7 +842,7 @@ export default function Page() {
     useState<Product[]>([]);
 
   const [selectedId, setSelectedId] =
-    useState<string>("");
+    useState("");
 
   const [search, setSearch] =
     useState("");
@@ -971,7 +890,7 @@ export default function Page() {
     useState<Style>("Everyday");
 
   /* =======================================================
-     SHOPIFY SESSION TOKEN
+     SESSION
   ======================================================= */
 
   async function getSessionToken() {
@@ -989,7 +908,7 @@ export default function Page() {
 
     if (!token) {
       throw new Error(
-        "Shopify session token is unavailable. Please reopen Virello from Shopify Admin.",
+        "Shopify session token is unavailable. Reopen Virello from Shopify Admin.",
       );
     }
 
@@ -997,7 +916,7 @@ export default function Page() {
   }
 
   /* =======================================================
-     LOAD PRODUCTS
+     LOAD
   ======================================================= */
 
   async function loadProducts() {
@@ -1014,10 +933,8 @@ export default function Page() {
           {
             method: "GET",
             headers: {
-              Authorization:
-                `Bearer ${token}`,
-              "x-shopify-session-token":
-                token,
+              Authorization: `Bearer ${token}`,
+              "x-shopify-session-token": token,
             },
             cache: "no-store",
           },
@@ -1046,13 +963,15 @@ export default function Page() {
 
       setProducts(normalized);
 
-      if (
-        normalized.length > 0
-      ) {
-        setSelectedId(
-          (current) =>
-            current ||
-            normalized[0].id,
+      if (normalized.length > 0) {
+        setSelectedId((current) =>
+          current &&
+          normalized.some(
+            (product) =>
+              product.id === current,
+          )
+            ? current
+            : normalized[0].id,
         );
       }
     } catch (err) {
@@ -1071,7 +990,7 @@ export default function Page() {
   }, []);
 
   /* =======================================================
-     SELECTED PRODUCT
+     SELECTED
   ======================================================= */
 
   const selected =
@@ -1079,22 +998,15 @@ export default function Page() {
       () =>
         products.find(
           (product) =>
-            product.id ===
-            selectedId,
+            product.id === selectedId,
         ) || null,
       [products, selectedId],
     );
 
-  /* =======================================================
-     FILTERED PRODUCTS
-  ======================================================= */
-
   const filteredProducts =
     useMemo(() => {
       const query =
-        search
-          .toLowerCase()
-          .trim();
+        search.toLowerCase().trim();
 
       if (!query) {
         return products;
@@ -1111,88 +1023,57 @@ export default function Page() {
           product.productType
             .toLowerCase()
             .includes(query) ||
-          product.tags.some(
-            (tag) =>
-              tag
-                .toLowerCase()
-                .includes(query),
+          product.tags.some((tag) =>
+            tag
+              .toLowerCase()
+              .includes(query),
           ),
       );
     }, [products, search]);
 
   /* =======================================================
-     WHEN PRODUCT CHANGES
+     RESET EDITOR
   ======================================================= */
 
   useEffect(() => {
-    if (!selected) {
-      return;
-    }
+    if (!selected) return;
 
-    setAudience(
-      selected.audience,
-    );
-
-    setStyle(
-      selected.style,
-    );
-
-    setTitle(
-      selected.title,
-    );
-
-    setProductType(
-      selected.productType,
-    );
-
-    setTags(
-      selected.tags.join(", "),
-    );
-
-    setDescription(
-      selected.description,
-    );
+    setAudience(selected.audience);
+    setStyle(selected.style);
+    setTitle(selected.title);
+    setProductType(selected.productType);
+    setTags(selected.tags.join(", "));
+    setDescription(selected.description);
 
     setSeoTitle("");
-
     setMetaDescription("");
-
     setOptimized(null);
-
     setMessage("");
-  }, [selectedId]);
+    setError("");
+  }, [selected]);
 
   /* =======================================================
      OPTIMIZE
   ======================================================= */
 
-  async function handleOptimize() {
-    if (!selected) {
-      return;
-    }
+  function handleOptimize() {
+    if (!selected) return;
 
     setOptimizing(true);
     setError("");
     setMessage("");
 
     try {
-      /*
-       * The current Virello optimizer uses the supplied
-       * Shopify product data only.
-       *
-       * No technical specifications are invented.
-       */
-      const result =
-        optimize({
-          ...selected,
-          audience,
-          style,
-        });
+      const result = optimize({
+        ...selected,
+        audience,
+        style,
+      });
 
       setOptimized(result);
 
       setMessage(
-        "Content generated. Review it below before applying any changes.",
+        "Optimization complete. Review the generated content before saving.",
       );
     } catch (err) {
       setError(
@@ -1206,7 +1087,7 @@ export default function Page() {
   }
 
   /* =======================================================
-     APPLY GENERATED FIELD
+     USE GENERATED
   ======================================================= */
 
   function useGenerated(
@@ -1218,82 +1099,92 @@ export default function Page() {
       | "seoTitle"
       | "metaDescription",
   ) {
-    if (!optimized) {
-      return;
-    }
+    if (!optimized) return;
 
-    if (field === "title") {
-      setTitle(
-        optimized.title,
-      );
-    }
+    switch (field) {
+      case "title":
+        setTitle(optimized.title);
+        break;
 
-    if (
-      field ===
-      "productType"
-    ) {
-      setProductType(
-        optimized.productType,
-      );
-    }
+      case "productType":
+        setProductType(
+          optimized.productType,
+        );
+        break;
 
-    if (field === "tags") {
-      setTags(
-        optimized.tags.join(
-          ", ",
-        ),
-      );
-    }
+      case "tags":
+        setTags(
+          optimized.tags.join(", "),
+        );
+        break;
 
-    if (
-      field ===
-      "description"
-    ) {
-      setDescription(
-        optimized.description,
-      );
-    }
+      case "description":
+        setDescription(
+          optimized.description,
+        );
+        break;
 
-    if (
-      field ===
-      "seoTitle"
-    ) {
-      setSeoTitle(
-        optimized.seoTitle,
-      );
-    }
+      case "seoTitle":
+        setSeoTitle(
+          optimized.seoTitle,
+        );
+        break;
 
-    if (
-      field ===
-      "metaDescription"
-    ) {
-      setMetaDescription(
-        optimized.metaDescription,
-      );
+      case "metaDescription":
+        setMetaDescription(
+          optimized.metaDescription,
+        );
+        break;
     }
 
     setMessage(
-      "Generated content applied. Review it before saving to Shopify.",
+      "Generated content applied. Press Save to Shopify when ready.",
     );
   }
 
   /* =======================================================
-     SAVE TO SHOPIFY
+     SAVE
   ======================================================= */
 
   async function handleSave() {
-    if (!selected) {
-      return;
-    }
+    if (!selected) return;
 
-    if (!title.trim()) {
+    const finalTitle = clean(title);
+    const finalProductType =
+      clean(productType);
+
+    const finalTags =
+      uniqueStrings(
+        tags
+          .split(",")
+          .map(clean)
+          .filter(Boolean),
+      );
+
+    const finalDescription =
+      description.trim();
+
+    const finalSeoTitle =
+      limit(seoTitle, 50);
+
+    const finalMetaDescription =
+      limit(metaDescription, 150);
+
+    if (!finalTitle) {
       setError(
         "Product title is required.",
       );
       return;
     }
 
-    if (seoTitle.length > 50) {
+    if (!finalDescription) {
+      setError(
+        "Product description is required.",
+      );
+      return;
+    }
+
+    if (finalSeoTitle.length > 50) {
       setError(
         "SEO title must be 50 characters or fewer.",
       );
@@ -1301,7 +1192,7 @@ export default function Page() {
     }
 
     if (
-      metaDescription.length >
+      finalMetaDescription.length >
       150
     ) {
       setError(
@@ -1318,56 +1209,46 @@ export default function Page() {
       const token =
         await getSessionToken();
 
-      const cleanTags = uniqueStrings(
-        tags
-          .split(",")
-          .map((tag) =>
-            clean(tag),
-          )
-          .filter(Boolean),
-      );
+      const payload = {
+        productId: selected.id,
+
+        title: finalTitle,
+
+        productType:
+          finalProductType,
+
+        tags: finalTags,
+
+        description:
+          finalDescription,
+
+        seoTitle:
+          finalSeoTitle,
+
+        metaDescription:
+          finalMetaDescription,
+      };
 
       const response =
         await fetch(
           "/api/shopify/save-product",
           {
             method: "POST",
+
             headers: {
               "Content-Type":
                 "application/json",
+
               Authorization:
                 `Bearer ${token}`,
+
               "x-shopify-session-token":
                 token,
             },
-            body: JSON.stringify({
-              productId:
-                selected.id,
 
-              title:
-                clean(title),
-
-              description:
-                description,
-
-              productType:
-                clean(productType),
-
-              tags:
-                cleanTags,
-
-              seoTitle:
-                limit(
-                  seoTitle,
-                  50,
-                ),
-
-              metaDescription:
-                limit(
-                  metaDescription,
-                  150,
-                ),
-            }),
+            body: JSON.stringify(
+              payload,
+            ),
           },
         );
 
@@ -1380,39 +1261,41 @@ export default function Page() {
       ) {
         throw new Error(
           data?.error ||
-            "Unable to save product to Shopify.",
+            "Shopify rejected the product save.",
         );
       }
 
-      /*
-       * Update local product state so the app
-       * immediately reflects the saved Shopify data.
-       */
-      setProducts(
-        (current) =>
-          current.map(
-            (product) =>
-              product.id ===
-              selected.id
-                ? {
-                    ...product,
-                    title:
-                      clean(title),
-                    description:
-                      description,
-                    productType:
-                      clean(
-                        productType,
-                      ),
-                    tags:
-                      cleanTags,
-                  }
-                : product,
-          ),
+      setProducts((current) =>
+        current.map((product) =>
+          product.id === selected.id
+            ? {
+                ...product,
+                title: finalTitle,
+                productType:
+                  finalProductType,
+                tags: finalTags,
+                description:
+                  finalDescription,
+              }
+            : product,
+        ),
+      );
+
+      setTitle(finalTitle);
+      setProductType(
+        finalProductType,
+      );
+      setTags(finalTags.join(", "));
+      setDescription(
+        finalDescription,
+      );
+      setSeoTitle(finalSeoTitle);
+      setMetaDescription(
+        finalMetaDescription,
       );
 
       setMessage(
-        "Product saved to Shopify successfully.",
+        "Saved successfully to Shopify.",
       );
     } catch (err) {
       setError(
@@ -1457,6 +1340,10 @@ export default function Page() {
           font: inherit;
         }
 
+        button {
+          -webkit-tap-highlight-color: transparent;
+        }
+
         .page {
           min-height: 100vh;
           background: #f4f5f7;
@@ -1464,8 +1351,8 @@ export default function Page() {
         }
 
         .topbar {
-          height: 82px;
-          background: #ffffff;
+          min-height: 76px;
+          background: #fff;
           border-bottom: 1px solid #e3e3e3;
           display: flex;
           align-items: center;
@@ -1480,7 +1367,7 @@ export default function Page() {
           display: flex;
           align-items: center;
           gap: 12px;
-          font-size: 20px;
+          font-size: 19px;
           font-weight: 700;
         }
 
@@ -1491,7 +1378,6 @@ export default function Page() {
           border-radius: 9px;
           display: grid;
           place-items: center;
-          font-size: 16px;
         }
 
         .status {
@@ -1523,17 +1409,15 @@ export default function Page() {
           margin: 12px 0 0;
           color: #666;
           font-size: 18px;
-          line-height: 1.45;
         }
 
         .count {
           justify-self: end;
-          background: white;
+          background: #fff;
           border: 1px solid #ddd;
           border-radius: 999px;
           padding: 12px 18px;
           color: #555;
-          font-size: 15px;
         }
 
         .content {
@@ -1562,20 +1446,23 @@ export default function Page() {
           font-size: 20px;
         }
 
-        .search {
+        .search,
+        .field input,
+        .field textarea,
+        .field select {
           width: 100%;
           border: 1px solid #d6d6d6;
           background: #fff;
           border-radius: 14px;
-          padding: 14px 16px;
+          padding: 14px;
           outline: none;
         }
 
         .search:focus,
-        input:focus,
-        textarea:focus,
-        select:focus {
-          border-color: #888;
+        .field input:focus,
+        .field textarea:focus,
+        .field select:focus {
+          border-color: #777;
         }
 
         .product-list {
@@ -1687,10 +1574,6 @@ export default function Page() {
           border-color: #171717;
         }
 
-        .button.primary:hover {
-          background: #303030;
-        }
-
         .button:disabled {
           opacity: 0.55;
           cursor: not-allowed;
@@ -1728,17 +1611,6 @@ export default function Page() {
           color: #666;
           margin-bottom: 8px;
           text-transform: uppercase;
-        }
-
-        .field input,
-        .field textarea,
-        .field select {
-          width: 100%;
-          border: 1px solid #d7d7d7;
-          background: #fff;
-          border-radius: 14px;
-          padding: 14px;
-          outline: none;
         }
 
         .field textarea {
@@ -1781,13 +1653,8 @@ export default function Page() {
           margin-bottom: 12px;
         }
 
-        .result-head strong {
-          font-size: 16px;
-        }
-
         .result p {
           margin: 0;
-          white-space: pre-wrap;
           line-height: 1.55;
         }
 
@@ -1817,14 +1684,9 @@ export default function Page() {
           line-height: 1.5;
         }
 
-        .empty {
-          padding: 35px 20px;
-          text-align: center;
-          color: #777;
-        }
-
+        .empty,
         .loading {
-          padding: 50px;
+          padding: 45px 20px;
           text-align: center;
           color: #777;
         }
@@ -1836,6 +1698,7 @@ export default function Page() {
           background: #f5f5f5;
           color: #555;
           font-size: 14px;
+          line-height: 1.5;
         }
 
         @media (max-width: 1000px) {
@@ -1895,19 +1758,10 @@ export default function Page() {
         }
       `}</style>
 
-      {/* ===================================================
-          TOP BAR
-      =================================================== */}
-
       <header className="topbar">
         <div className="brand">
-          <div className="brand-icon">
-            ✦
-          </div>
-
-          <span>
-            Virello AI Optimizer
-          </span>
+          <div className="brand-icon">✦</div>
+          <span>Virello AI Optimizer</span>
         </div>
 
         <div className="status">
@@ -1916,10 +1770,6 @@ export default function Page() {
             : `${products.length} products`}
         </div>
       </header>
-
-      {/* ===================================================
-          HERO
-      =================================================== */}
 
       <section className="hero">
         <div className="hero-grid">
@@ -1942,30 +1792,17 @@ export default function Page() {
         </div>
       </section>
 
-      {/* ===================================================
-          CONTENT
-      =================================================== */}
-
       <section className="content">
-
-        {/* =================================================
-            PRODUCT LIST
-        ================================================= */}
-
         <aside className="card">
           <div className="card-header">
-            <h2>
-              Shopify Products
-            </h2>
+            <h2>Shopify Products</h2>
 
             <input
               className="search"
               placeholder="Search Shopify products..."
               value={search}
               onChange={(event) =>
-                setSearch(
-                  event.target.value,
-                )
+                setSearch(event.target.value)
               }
             />
           </div>
@@ -1985,15 +1822,12 @@ export default function Page() {
                   <button
                     key={product.id}
                     className={`product-row ${
-                      selectedId ===
-                      product.id
+                      selectedId === product.id
                         ? "active"
                         : ""
                     }`}
                     onClick={() =>
-                      setSelectedId(
-                        product.id,
-                      )
+                      setSelectedId(product.id)
                     }
                   >
                     <div className="product-name">
@@ -2003,8 +1837,7 @@ export default function Page() {
                     <div className="product-meta">
                       {product.productType ||
                         "Product"}{" "}
-                      ·{" "}
-                      {product.status}
+                      · {product.status}
                     </div>
                   </button>
                 ),
@@ -2013,17 +1846,11 @@ export default function Page() {
           )}
         </aside>
 
-        {/* =================================================
-            EDITOR
-        ================================================= */}
-
         <section className="card">
           <div className="editor">
-
             {!selected ? (
               <div className="empty">
-                Select a Shopify product to
-                begin.
+                Select a Shopify product to begin.
               </div>
             ) : (
               <>
@@ -2041,14 +1868,11 @@ export default function Page() {
 
                 <div className="editor-title">
                   <div>
-                    <h2>
-                      Edit product
-                    </h2>
+                    <h2>Edit product</h2>
 
                     <p>
-                      Changes stay in Virello
-                      until you press Save to
-                      Shopify.
+                      Changes stay in Virello until
+                      you press Save to Shopify.
                     </p>
                   </div>
 
@@ -2056,8 +1880,7 @@ export default function Page() {
                     <button
                       className="button primary"
                       disabled={
-                        optimizing ||
-                        saving
+                        optimizing || saving
                       }
                       onClick={
                         handleOptimize
@@ -2071,12 +1894,9 @@ export default function Page() {
                     <button
                       className="button"
                       disabled={
-                        saving ||
-                        optimizing
+                        saving || optimizing
                       }
-                      onClick={
-                        handleSave
-                      }
+                      onClick={handleSave}
                     >
                       {saving
                         ? "Saving..."
@@ -2085,34 +1905,23 @@ export default function Page() {
                   </div>
                 </div>
 
-                {/* IMAGE */}
-
                 {selected.featuredImage && (
                   <div className="image-wrap">
                     <img
                       src={
                         selected.featuredImage
                       }
-                      alt={
-                        selected.title
-                      }
+                      alt={selected.title}
                     />
                   </div>
                 )}
 
-                {/* BASIC INFO */}
-
                 <div className="grid-two">
-
                   <div className="field">
-                    <label>
-                      Audience
-                    </label>
+                    <label>Audience</label>
 
                     <select
-                      value={
-                        audience
-                      }
+                      value={audience}
                       onChange={(event) =>
                         setAudience(
                           event.target
@@ -2123,11 +1932,9 @@ export default function Page() {
                       <option value="Women">
                         Women
                       </option>
-
                       <option value="Men">
                         Men
                       </option>
-
                       <option value="Unisex">
                         Unisex
                       </option>
@@ -2135,14 +1942,10 @@ export default function Page() {
                   </div>
 
                   <div className="field">
-                    <label>
-                      Style
-                    </label>
+                    <label>Style</label>
 
                     <select
-                      value={
-                        style
-                      }
+                      value={style}
                       onChange={(event) =>
                         setStyle(
                           event.target
@@ -2153,37 +1956,27 @@ export default function Page() {
                       <option value="Premium / Luxury">
                         Premium / Luxury
                       </option>
-
                       <option value="Professional">
                         Professional
                       </option>
-
                       <option value="Everyday">
                         Everyday
                       </option>
-
                       <option value="Casual">
                         Casual
                       </option>
-
                       <option value="Sport">
                         Sport
                       </option>
-
                       <option value="Gift">
                         Gift
                       </option>
                     </select>
                   </div>
-
                 </div>
 
-                {/* TITLE */}
-
                 <div className="field">
-                  <label>
-                    Product Title
-                  </label>
+                  <label>Product Title</label>
 
                   <input
                     value={title}
@@ -2192,77 +1985,51 @@ export default function Page() {
                         event.target.value,
                       )
                     }
-                    placeholder="Product title"
                   />
                 </div>
 
-                {/* PRODUCT TYPE */}
-
                 <div className="field">
-                  <label>
-                    Product Type
-                  </label>
+                  <label>Product Type</label>
 
                   <input
-                    value={
-                      productType
-                    }
+                    value={productType}
                     onChange={(event) =>
                       setProductType(
-                        event.target
-                          .value,
+                        event.target.value,
                       )
                     }
-                    placeholder="Product type"
                   />
                 </div>
 
-                {/* TAGS */}
-
                 <div className="field">
-                  <label>
-                    Tags
-                  </label>
+                  <label>Tags</label>
 
                   <input
                     value={tags}
                     onChange={(event) =>
                       setTags(
-                        event.target
-                          .value,
+                        event.target.value,
                       )
                     }
                     placeholder="watches, chronograph, luxury watches"
                   />
                 </div>
 
-                {/* DESCRIPTION */}
-
                 <div className="field">
-                  <label>
-                    Description
-                  </label>
+                  <label>Description</label>
 
                   <textarea
-                    value={
-                      description
-                    }
+                    value={description}
                     onChange={(event) =>
                       setDescription(
-                        event.target
-                          .value,
+                        event.target.value,
                       )
                     }
-                    placeholder="Product description"
                   />
                 </div>
 
-                {/* SEO */}
-
                 <div className="section">
-                  <h3>
-                    SEO
-                  </h3>
+                  <h3>SEO</h3>
 
                   <div className="field">
                     <label>
@@ -2270,24 +2037,17 @@ export default function Page() {
                     </label>
 
                     <input
-                      value={
-                        seoTitle
-                      }
+                      value={seoTitle}
                       maxLength={50}
                       onChange={(event) =>
                         setSeoTitle(
-                          event.target
-                            .value,
+                          event.target.value,
                         )
                       }
-                      placeholder="SEO title"
                     />
 
                     <div className="counter">
-                      {
-                        seoTitle.length
-                      }
-                      /50
+                      {seoTitle.length}/50
                     </div>
                   </div>
 
@@ -2297,38 +2057,26 @@ export default function Page() {
                     </label>
 
                     <textarea
-                      value={
-                        metaDescription
-                      }
+                      value={metaDescription}
                       maxLength={150}
                       onChange={(event) =>
                         setMetaDescription(
-                          event.target
-                            .value,
+                          event.target.value,
                         )
                       }
-                      placeholder="Meta description"
                     />
 
                     <div className="counter">
-                      {
-                        metaDescription.length
-                      }
-                      /150
+                      {metaDescription.length}/150
                     </div>
                   </div>
                 </div>
 
-                {/* GENERATED CONTENT */}
-
                 {optimized && (
                   <div className="section">
                     <h3>
-                      Generated content —
-                      Review before applying
+                      Generated Content
                     </h3>
-
-                    {/* TITLE */}
 
                     <div className="result">
                       <div className="result-head">
@@ -2349,13 +2097,9 @@ export default function Page() {
                       </div>
 
                       <p>
-                        {
-                          optimized.title
-                        }
+                        {optimized.title}
                       </p>
                     </div>
-
-                    {/* PRODUCT TYPE */}
 
                     <div className="result">
                       <div className="result-head">
@@ -2382,8 +2126,6 @@ export default function Page() {
                       </p>
                     </div>
 
-                    {/* TAGS */}
-
                     <div className="result">
                       <div className="result-head">
                         <strong>
@@ -2408,8 +2150,6 @@ export default function Page() {
                         )}
                       </p>
                     </div>
-
-                    {/* DESCRIPTION */}
 
                     <div className="result">
                       <div className="result-head">
@@ -2436,45 +2176,14 @@ export default function Page() {
                       </p>
                     </div>
 
-                    {/* KEY SELLING POINTS */}
-
                     <div className="result">
                       <div className="result-head">
                         <strong>
-                          Key selling points
+                          Specifications
                         </strong>
                       </div>
 
-                      <ul>
-                        {optimized.bullets.map(
-                          (
-                            bullet,
-                            index,
-                          ) => (
-                            <li
-                              key={
-                                index
-                              }
-                            >
-                              {bullet}
-                            </li>
-                          ),
-                        )}
-                      </ul>
-                    </div>
-
-                    {/* SPECIFICATIONS */}
-
-                    <div className="result">
-                      <div className="result-head">
-                        <strong>
-                          Specifications —
-                          supplied data only
-                        </strong>
-                      </div>
-
-                      {optimized.specs
-                        .length >
+                      {optimized.specs.length >
                       0 ? (
                         <ul>
                           {optimized.specs.map(
@@ -2495,16 +2204,37 @@ export default function Page() {
                       ) : (
                         <p>
                           No explicit technical
-                          specifications were
-                          found in the supplied
-                          Shopify product data.
-                          Virello will not invent
-                          missing specifications.
+                          specifications were found
+                          in the supplied Shopify
+                          data.
                         </p>
                       )}
                     </div>
 
-                    {/* FAQ */}
+                    <div className="result">
+                      <div className="result-head">
+                        <strong>
+                          Key Selling Points
+                        </strong>
+                      </div>
+
+                      <ul>
+                        {optimized.bullets.map(
+                          (
+                            bullet,
+                            index,
+                          ) => (
+                            <li
+                              key={
+                                index
+                              }
+                            >
+                              {bullet}
+                            </li>
+                          ),
+                        )}
+                      </ul>
+                    </div>
 
                     <div className="result">
                       <div className="result-head">
@@ -2536,12 +2266,10 @@ export default function Page() {
                       )}
                     </div>
 
-                    {/* SEO TITLE */}
-
                     <div className="result">
                       <div className="result-head">
                         <strong>
-                          SEO title
+                          SEO Title
                         </strong>
 
                         <button
@@ -2568,16 +2296,14 @@ export default function Page() {
                             .seoTitle
                             .length
                         }
-                        /50 characters
+                        /50
                       </div>
                     </div>
-
-                    {/* META DESCRIPTION */}
 
                     <div className="result">
                       <div className="result-head">
                         <strong>
-                          Meta description
+                          Meta Description
                         </strong>
 
                         <button
@@ -2604,19 +2330,19 @@ export default function Page() {
                             .metaDescription
                             .length
                         }
-                        /150 characters
+                        /150
                       </div>
                     </div>
 
                     <div className="saved-box">
-                      Virello does not invent
-                      technical measurements,
-                      materials, water resistance,
-                      movement specifications, or
-                      performance claims. Technical
-                      information is used only when
-                      supplied by the original
-                      product data.
+                      Technical specifications
+                      are taken only from the
+                      supplied product information.
+                      Virello does not invent missing
+                      measurements, materials,
+                      movement specifications,
+                      water resistance, or performance
+                      claims.
                     </div>
                   </div>
                 )}
