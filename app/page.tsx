@@ -45,23 +45,48 @@ type Product = ShopifyProduct & {
   style: Style;
 };
 
-type OptimizedProduct = {
+type AIAnalysis = {
+  targetCustomer: string;
+  purchaseMotivation: string;
+  strongestFeatures: string[];
+  weaknesses: string[];
+  missingInformation: string[];
+  seoOpportunities: string[];
+  conversionOpportunities: string[];
+};
+
+type AIScore = {
+  title: number;
+  description: number;
+  seo: number;
+  productClarity: number;
+  conversionPotential: number;
+  overall: number;
+};
+
+type AIOptimization = {
   title: string;
-  productType: string;
-  tags: string[];
   description: string;
   features: string[];
   specifications: string[];
   seoTitle: string;
   metaDescription: string;
+  tags: string[];
+};
+
+type AIResult = {
+  analysis: AIAnalysis;
+  score: AIScore;
+  optimization: AIOptimization;
+  reasoning: string;
 };
 
 /* =========================================================
    HELPERS
 ========================================================= */
 
-function clean(value: string) {
-  return String(value || "")
+function clean(value: unknown) {
+  return String(value ?? "")
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -77,8 +102,6 @@ function stripHtml(value: string) {
     .replace(/&#39;|&#x27;/gi, "'")
     .replace(/&ndash;/gi, "–")
     .replace(/&mdash;/gi, "—")
-    .replace(/&#8211;/gi, "–")
-    .replace(/&#8212;/gi, "—")
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -98,7 +121,10 @@ function unique(values: string[]) {
   });
 }
 
-function limitCharacters(value: string, max: number) {
+function limitCharacters(
+  value: string,
+  max: number,
+) {
   const text = clean(value);
 
   if (text.length <= max) {
@@ -106,6 +132,7 @@ function limitCharacters(value: string, max: number) {
   }
 
   let result = text.slice(0, max);
+
   const lastSpace = result.lastIndexOf(" ");
 
   if (lastSpace > Math.floor(max * 0.65)) {
@@ -131,18 +158,20 @@ function escapeHtml(value: string) {
   );
 }
 
-/* =========================================================
-   PRODUCT SOURCE DATA
-========================================================= */
-
-function getProductText(product: ShopifyProduct) {
-  return [
-    product.title,
-    product.productType,
-    product.vendor,
-    product.tags.join(" "),
-    stripHtml(product.description),
-  ].join(" ");
+function descriptionToHtml(
+  description: string,
+) {
+  return description
+    .split(/\n\s*\n/)
+    .map(clean)
+    .filter(Boolean)
+    .map(
+      (paragraph) =>
+        `<p>${escapeHtml(
+          paragraph,
+        )}</p>`,
+    )
+    .join("");
 }
 
 /* =========================================================
@@ -152,8 +181,15 @@ function getProductText(product: ShopifyProduct) {
 function detectAudience(
   product: ShopifyProduct,
 ): Audience {
-  const text =
-    getProductText(product).toLowerCase();
+  const text = [
+    product.title,
+    product.productType,
+    product.vendor,
+    product.tags.join(" "),
+    stripHtml(product.description),
+  ]
+    .join(" ")
+    .toLowerCase();
 
   if (
     /\bwomen\b|\bwomen's\b|\bladies\b|\blady\b|\bfemale\b/.test(
@@ -176,13 +212,23 @@ function detectAudience(
 
 /* =========================================================
    STYLE
+   NOTE:
+   This is only initial context for the AI.
+   It does NOT generate the content.
 ========================================================= */
 
 function detectStyle(
   product: ShopifyProduct,
 ): Style {
-  const text =
-    getProductText(product).toLowerCase();
+  const text = [
+    product.title,
+    product.productType,
+    product.vendor,
+    product.tags.join(" "),
+    stripHtml(product.description),
+  ]
+    .join(" ")
+    .toLowerCase();
 
   if (
     /luxury|premium|elegant|sapphire|automatic|mechanical|formal|dress watch/.test(
@@ -206,9 +252,7 @@ function detectStyle(
     return "Casual";
   }
 
-  if (
-    /gift|present/.test(text)
-  ) {
+  if (/gift|present/.test(text)) {
     return "Gift";
   }
 
@@ -230,917 +274,6 @@ function toProduct(
     ...product,
     audience: detectAudience(product),
     style: detectStyle(product),
-  };
-}
-
-/* =========================================================
-   PRODUCT TYPE
-========================================================= */
-
-function buildProductType(
-  product: Product,
-) {
-  const existing =
-    clean(product.productType);
-
-  if (
-    existing &&
-    !/^product$/i.test(existing) &&
-    !/^products$/i.test(existing)
-  ) {
-    return existing;
-  }
-
-  const text =
-    getProductText(product).toLowerCase();
-
-  if (
-    /watch|timepiece|chronograph|quartz|automatic|mechanical/.test(
-      text,
-    )
-  ) {
-    return "Watches";
-  }
-
-  if (
-    /shoe|sneaker|footwear/.test(text)
-  ) {
-    return "Shoes";
-  }
-
-  if (
-    /shirt|blouse|top/.test(text)
-  ) {
-    return "Tops";
-  }
-
-  if (/dress/.test(text)) {
-    return "Dresses";
-  }
-
-  if (
-    /bag|handbag|purse/.test(text)
-  ) {
-    return "Bags";
-  }
-
-  if (
-    /jewelry|jewellery|necklace|bracelet|ring/.test(
-      text,
-    )
-  ) {
-    return "Jewelry";
-  }
-
-  return "Products";
-}
-
-/* =========================================================
-   SUPPLIER NOISE
-========================================================= */
-
-function removeSupplierNoise(
-  value: string,
-) {
-  return clean(value)
-    .replace(
-      /\b(elevate|dropshipping|wholesale|supplier|cheap|hot sale|hot selling|free shipping|best seller|new arrival|new product|2024|2025|2026)\b/gi,
-      "",
-    )
-    .replace(
-      /\s+/g,
-      " ",
-    )
-    .trim();
-}
-
-/* =========================================================
-   PRODUCT TITLE
-   CONVERSION FIRST
-   NOT AN SEO TITLE
-========================================================= */
-
-function buildProductTitle(
-  product: Product,
-) {
-  const source =
-    removeSupplierNoise(
-      product.title,
-    );
-
-  const text =
-    getProductText(product).toLowerCase();
-
-  const type =
-    /chronograph/.test(text)
-      ? "Chronograph Watch"
-      : /automatic/.test(text)
-        ? "Automatic Watch"
-        : /mechanical/.test(text)
-          ? "Mechanical Watch"
-          : /quartz/.test(text)
-            ? "Quartz Watch"
-            : /watch|timepiece/.test(text)
-              ? "Watch"
-              : clean(
-                    product.productType,
-                  ) || "Product";
-
-  const audience =
-    product.audience === "Men"
-      ? "Men's"
-      : product.audience === "Women"
-        ? "Women's"
-        : "";
-
-  const premium =
-    /luxury|premium|elegant|refined|sapphire/.test(
-      text,
-    );
-
-  const sport =
-    /sport|racing|diving|diver/.test(
-      text,
-    );
-
-  let positioning = "Classic";
-
-  if (premium) {
-    positioning = "Refined";
-  } else if (sport) {
-    positioning = "Sport";
-  }
-
-  const sourceWords =
-    source
-      .replace(
-        /[|:;,()[\]{}]+/g,
-        " ",
-      )
-      .split(/\s+/)
-      .filter(Boolean);
-
-  const usefulWords =
-    sourceWords
-      .filter(
-        (word) =>
-          !/^(men|women|mens|womens|watch|watches|fashion|luxury|premium)$/i.test(
-            word,
-          ),
-      )
-      .slice(0, 4);
-
-  const candidates = [
-    `${usefulWords.join(" ")} ${type}`,
-    `${positioning} ${type} ${audience}`,
-    `${positioning} ${type}`,
-    `${type} ${audience}`,
-  ];
-
-  for (const candidate of candidates) {
-    const result = clean(candidate);
-
-    if (
-      result.length >= 15 &&
-      result.length <= 70
-    ) {
-      return result;
-    }
-  }
-
-  return `${positioning} ${type}`;
-}
-
-/* =========================================================
-   TAGS
-========================================================= */
-
-function buildTags(
-  product: Product,
-) {
-  const text =
-    getProductText(product).toLowerCase();
-
-  const result: string[] = [];
-
-  const add = (value: string) => {
-    result.push(value);
-  };
-
-  if (
-    /watch|timepiece|chronograph|quartz|automatic|mechanical/.test(
-      text,
-    )
-  ) {
-    add("watches");
-  }
-
-  if (/automatic/.test(text)) {
-    add("automatic watch");
-  }
-
-  if (/mechanical/.test(text)) {
-    add("mechanical watch");
-  }
-
-  if (/quartz/.test(text)) {
-    add("quartz watch");
-  }
-
-  if (/chronograph/.test(text)) {
-    add("chronograph");
-  }
-
-  if (/stainless steel/.test(text)) {
-    add("stainless steel");
-  }
-
-  if (/sapphire/.test(text)) {
-    add("sapphire crystal");
-  }
-
-  if (/sport|racing/.test(text)) {
-    add("sport watch");
-  }
-
-  if (
-    /luxury|premium|elegant|refined/.test(
-      text,
-    )
-  ) {
-    add("luxury");
-  }
-
-  if (product.audience === "Men") {
-    add("men");
-  }
-
-  if (product.audience === "Women") {
-    add("women");
-  }
-
-  if (product.audience === "Unisex") {
-    add("unisex");
-  }
-
-  for (const tag of product.tags) {
-    const cleanedTag =
-      removeSupplierNoise(tag);
-
-    if (
-      cleanedTag &&
-      !/elevate|dropshipping|wholesale|supplier|cheap|hot sale|hot selling|best seller|new arrival/i.test(
-        cleanedTag,
-      )
-    ) {
-      add(cleanedTag);
-    }
-  }
-
-  return unique(result).slice(
-    0,
-    15,
-  );
-}
-
-/* =========================================================
-   SPECIFICATIONS
-========================================================= */
-
-const SPEC_LABELS = [
-  "Material",
-  "Movement",
-  "Case Material",
-  "Case Size",
-  "Case Diameter",
-  "Case Thickness",
-  "Water Resistance",
-  "Strap Material",
-  "Band Material",
-  "Strap Width",
-  "Band Width",
-  "Crystal",
-  "Dial Color",
-  "Case Color",
-  "Band Color",
-  "Power Reserve",
-  "Battery",
-  "Dimensions",
-  "Weight",
-  "Capacity",
-  "Size",
-  "Color",
-  "Finish",
-  "Clasp Type",
-  "Dial Type",
-  "Display Type",
-  "Functions",
-  "Closure Type",
-] as const;
-
-function normalizeLabel(
-  value: string,
-) {
-  const normalized =
-    clean(value).toLowerCase();
-
-  return SPEC_LABELS.find(
-    (label) =>
-      label.toLowerCase() ===
-      normalized,
-  );
-}
-
-function extractSpecifications(
-  description: string,
-  product: ShopifyProduct,
-) {
-  const source =
-    stripHtml(description);
-
-  const specifications: string[] =
-    [];
-
-  const pattern =
-    /(Material|Movement|Case Material|Case Size|Case Diameter|Case Thickness|Water Resistance|Strap Material|Band Material|Strap Width|Band Width|Crystal|Dial Color|Case Color|Band Color|Power Reserve|Battery|Dimensions|Weight|Capacity|Size|Color|Finish|Clasp Type|Dial Type|Display Type|Functions|Closure Type)\s*[:：-]\s*([^,.;\n]{1,100})/gi;
-
-  let match: RegExpExecArray | null;
-
-  while (
-    (match =
-      pattern.exec(source)) !==
-    null
-  ) {
-    const label =
-      normalizeLabel(match[1]);
-
-    const value =
-      clean(match[2]);
-
-    if (
-      label &&
-      value &&
-      value.length <= 120
-    ) {
-      specifications.push(
-        `${label}: ${value}`,
-      );
-    }
-  }
-
-  const text =
-    getProductText(product).toLowerCase();
-
-  if (/automatic/.test(text)) {
-    specifications.push(
-      "Movement: Automatic",
-    );
-  }
-
-  if (/mechanical/.test(text)) {
-    specifications.push(
-      "Movement: Mechanical",
-    );
-  }
-
-  if (/quartz/.test(text)) {
-    specifications.push(
-      "Movement: Quartz",
-    );
-  }
-
-  if (/chronograph/.test(text)) {
-    specifications.push(
-      "Functions: Chronograph",
-    );
-  }
-
-  if (/stainless steel/.test(text)) {
-    specifications.push(
-      "Case Material: Stainless Steel",
-    );
-  }
-
-  if (/sapphire/.test(text)) {
-    specifications.push(
-      "Crystal: Sapphire",
-    );
-  }
-
-  const waterMatch =
-    text.match(
-      /(\d+\s*(?:m|meter|meters|atm|bar))\s*(?:water resistant|water resistance)/i,
-    );
-
-  if (waterMatch) {
-    specifications.push(
-      `Water Resistance: ${waterMatch[1]}`,
-    );
-  }
-
-  return unique(
-    specifications,
-  ).slice(0, 20);
-}
-
-/* =========================================================
-   FEATURES
-========================================================= */
-
-function buildFeatures(
-  product: Product,
-) {
-  const text =
-    getProductText(product).toLowerCase();
-
-  const features: string[] = [];
-
-  const add = (value: string) => {
-    features.push(value);
-  };
-
-  const isWatch =
-    /watch|timepiece|chronograph|quartz|automatic|mechanical/.test(
-      text,
-    );
-
-  if (isWatch) {
-    if (/chronograph/.test(text)) {
-      add(
-        "Chronograph styling adds a distinctive, functional look",
-      );
-    }
-
-    if (/automatic/.test(text)) {
-      add(
-        "Automatic movement delivers a classic mechanical experience",
-      );
-    } else if (/mechanical/.test(text)) {
-      add(
-        "Mechanical movement brings traditional watchmaking appeal",
-      );
-    } else if (/quartz/.test(text)) {
-      add(
-        "Quartz movement provides dependable everyday timekeeping",
-      );
-    }
-
-    if (/stainless steel/.test(text)) {
-      add(
-        "Stainless steel construction for a polished, versatile finish",
-      );
-    }
-
-    if (/sapphire/.test(text)) {
-      add(
-        "Sapphire crystal adds a premium watchmaking detail",
-      );
-    }
-
-    if (
-      /sport|racing|diving|diver/.test(
-        text,
-      )
-    ) {
-      add(
-        "Sport-inspired design suited to active styling",
-      );
-    }
-
-    if (
-      /luxury|premium|elegant|refined/.test(
-        text,
-      )
-    ) {
-      add(
-        "Refined finishing designed for polished everyday wear",
-      );
-    }
-
-    add(
-      "Versatile styling for work, weekends, and evenings",
-    );
-  } else {
-    add(
-      "Refined design for everyday use",
-    );
-
-    add(
-      "Versatile styling for different occasions",
-    );
-
-    add(
-      "Thoughtful details designed for practical everyday use",
-    );
-  }
-
-  return unique(features).slice(
-    0,
-    7,
-  );
-}
-
-/* =========================================================
-   ORIGINAL DESCRIPTION CLEANUP
-========================================================= */
-
-function cleanOriginalDescription(
-  value: string,
-) {
-  let result =
-    stripHtml(value);
-
-  result = result
-    .replace(
-      /\b(shop now|buy now|upgrade your|elevate your|free shipping|order now|click here)\b[^.?!]*[.?!]?/gi,
-      "",
-    )
-    .replace(
-      /\b(key features|specifications|product details|product description)\b:?/gi,
-      "",
-    )
-    .replace(
-      /\b(high quality|high-quality|top quality|premium quality)\b/gi,
-      "quality",
-    )
-    .replace(
-      /\b(must have|must-have)\b/gi,
-      "",
-    )
-    .replace(
-      /\s+/g,
-      " ",
-    )
-    .trim();
-
-  const seen = new Set<string>();
-
-  return result
-    .split(
-      /(?<=[.!?])\s+/,
-    )
-    .map(clean)
-    .filter((sentence) => {
-      const key =
-        sentence
-          .toLowerCase()
-          .replace(
-            /[^a-z0-9 ]/g,
-            "",
-          )
-          .trim();
-
-      if (
-        !key ||
-        seen.has(key)
-      ) {
-        return false;
-      }
-
-      seen.add(key);
-      return true;
-    })
-    .join(" ");
-}
-
-/* =========================================================
-   HIGH-CONVERTING PRODUCT DESCRIPTION
-
-   IMPORTANT:
-   This is NOT the SEO title.
-   This is NOT the meta description.
-   This is NOT a list of specifications.
-========================================================= */
-
-function buildDescription(
-  product: Product,
-  title: string,
-) {
-  const text =
-    getProductText(product).toLowerCase();
-
-  const isWatch =
-    /watch|timepiece|chronograph|quartz|automatic|mechanical/.test(
-      text,
-    );
-
-  const audience =
-    product.audience === "Men"
-      ? "men"
-      : product.audience === "Women"
-        ? "women"
-        : "those who appreciate refined style";
-
-  const original =
-    cleanOriginalDescription(
-      product.description,
-    );
-
-  let opening = "";
-
-  if (isWatch) {
-    opening =
-      `Make a sharper impression with the ${title}. Designed for ${audience}, this timepiece brings confident detail and polished style to the moments that matter.`;
-  } else {
-    opening =
-      `Bring a more considered finish to everyday life with the ${title}. Designed for ${audience}, it combines useful details with a polished, versatile look.`;
-  }
-
-  let benefit = "";
-
-  if (/automatic/.test(text)) {
-    benefit =
-      "The automatic movement gives the watch a traditional mechanical character, while the considered design makes it easy to wear beyond formal occasions.";
-  } else if (/chronograph/.test(text)) {
-    benefit =
-      "The chronograph-inspired design adds visual depth and a distinctive presence without making the overall look difficult to style.";
-  } else if (/quartz/.test(text)) {
-    benefit =
-      "Quartz movement provides dependable everyday timekeeping, making the watch a practical choice when reliability and presentation both matter.";
-  } else if (/stainless steel/.test(text)) {
-    benefit =
-      "The polished case and stainless steel detailing create a versatile appearance that works naturally with tailored, smart-casual, and evening looks.";
-  } else if (isWatch) {
-    benefit =
-      "The balanced combination of case, dial, and bracelet creates a polished look that transitions naturally from professional settings to weekends and evenings.";
-  } else {
-    benefit =
-      "Thoughtful construction and versatile styling make it easy to incorporate into everyday routines while keeping the overall look polished.";
-  }
-
-  let sourceSection = "";
-
-  if (original.length >= 80) {
-    sourceSection =
-      limitCharacters(
-        original,
-        500,
-      );
-  }
-
-  const closing = isWatch
-    ? "A versatile choice when you want one timepiece that feels appropriate for workdays, weekends, and special occasions."
-    : "A practical choice when you want everyday function without a generic appearance.";
-
-  return [
-    opening,
-    benefit,
-    sourceSection,
-    closing,
-  ]
-    .filter(Boolean)
-    .join("\n\n");
-}
-
-/* =========================================================
-   HTML DESCRIPTION
-========================================================= */
-
-function descriptionToHtml(
-  description: string,
-) {
-  return description
-    .split(/\n\s*\n/)
-    .map(clean)
-    .filter(Boolean)
-    .map(
-      (paragraph) =>
-        `<p>${escapeHtml(
-          paragraph,
-        )}</p>`,
-    )
-    .join("");
-}
-
-/* =========================================================
-   SEO TITLE
-
-   MAX 50 CHARACTERS.
-
-   PURPOSE:
-   Search intent, not storefront conversion copy.
-========================================================= */
-
-function buildSeoTitle(
-  product: Product,
-) {
-  const text =
-    getProductText(product).toLowerCase();
-
-  let keyword =
-    "Luxury Watch";
-
-  if (/chronograph/.test(text)) {
-    keyword =
-      "Chronograph Watch";
-  } else if (/automatic/.test(text)) {
-    keyword =
-      "Automatic Watch";
-  } else if (/mechanical/.test(text)) {
-    keyword =
-      "Mechanical Watch";
-  } else if (/quartz/.test(text)) {
-    keyword =
-      "Quartz Watch";
-  } else if (/watch|timepiece/.test(text)) {
-    keyword =
-      "Luxury Watch";
-  } else {
-    keyword =
-      clean(product.productType) ||
-      "Product";
-  }
-
-  const audience =
-    product.audience === "Men"
-      ? "Men"
-      : product.audience === "Women"
-        ? "Women"
-        : "";
-
-  const style =
-    product.style ===
-    "Premium / Luxury"
-      ? "Premium"
-      : product.style ===
-          "Sport"
-        ? "Sport"
-        : "Refined";
-
-  const candidates = [
-    `${keyword} ${style} Style`,
-    `${audience} ${keyword}`.trim(),
-    `${keyword} for ${audience}`.trim(),
-    `${style} ${keyword}`,
-    `${keyword} Online`,
-    keyword,
-  ];
-
-  const valid =
-    unique(candidates).filter(
-      (candidate) =>
-        candidate.length <= 50,
-    );
-
-  if (valid.length) {
-    return valid.sort(
-      (a, b) =>
-        b.length - a.length,
-    )[0];
-  }
-
-  return limitCharacters(
-    keyword,
-    50,
-  );
-}
-
-/* =========================================================
-   META DESCRIPTION
-
-   MAX 150 CHARACTERS.
-
-   PURPOSE:
-   Convince the searcher to click.
-
-   It deliberately does NOT copy:
-   - Product Title
-   - SEO Title
-   - Product Description
-========================================================= */
-
-function buildMetaDescription(
-  product: Product,
-) {
-  const text =
-    getProductText(product).toLowerCase();
-
-  const audience =
-    product.audience === "Unisex"
-      ? "men and women"
-      : product.audience.toLowerCase();
-
-  let benefit =
-    "refined everyday styling";
-
-  if (/automatic/.test(text)) {
-    benefit =
-      "classic automatic movement";
-  } else if (/chronograph/.test(text)) {
-    benefit =
-      "distinctive chronograph styling";
-  } else if (/quartz/.test(text)) {
-    benefit =
-      "dependable quartz timekeeping";
-  } else if (/sapphire/.test(text)) {
-    benefit =
-      "premium sapphire crystal";
-  } else if (/stainless steel/.test(text)) {
-    benefit =
-      "polished stainless steel design";
-  }
-
-  let occasion =
-    "work, weekends, and evenings";
-
-  if (
-    /sport|racing|diving|diver/.test(
-      text,
-    )
-  ) {
-    occasion =
-      "active days and weekends";
-  }
-
-  if (
-    /formal|dress|professional|office/.test(
-      text,
-    )
-  ) {
-    occasion =
-      "work and special occasions";
-  }
-
-  const candidates = [
-    `Find refined style for ${audience} with ${benefit}. A versatile choice for ${occasion}.`,
-    `Discover ${benefit} in a versatile design made for ${occasion}.`,
-    `Choose ${benefit} designed for ${audience}, from everyday wear to special occasions.`,
-    `Refined timekeeping with ${benefit}, designed for everyday wear.`,
-  ];
-
-  const valid =
-    candidates.filter(
-      (candidate) =>
-        candidate.length <= 150,
-    );
-
-  if (valid.length) {
-    return valid.sort(
-      (a, b) =>
-        b.length - a.length,
-    )[0];
-  }
-
-  return limitCharacters(
-    candidates[
-      candidates.length - 1
-    ],
-    150,
-  );
-}
-
-/* =========================================================
-   OPTIMIZER
-========================================================= */
-
-function optimizeProduct(
-  product: Product,
-): OptimizedProduct {
-  const title =
-    buildProductTitle(product);
-
-  const productType =
-    buildProductType(product);
-
-  const tags =
-    buildTags(product);
-
-  const specifications =
-    extractSpecifications(
-      product.description,
-      product,
-    );
-
-  const features =
-    buildFeatures(product);
-
-  const description =
-    buildDescription(
-      product,
-      title,
-    );
-
-  const seoTitle =
-    buildSeoTitle({
-      ...product,
-      title,
-    });
-
-  const metaDescription =
-    buildMetaDescription({
-      ...product,
-      title,
-    });
-
-  return {
-    title,
-    productType,
-    tags,
-    description,
-    features,
-    specifications,
-    seoTitle,
-    metaDescription,
   };
 }
 
@@ -1173,10 +306,8 @@ export default function Page() {
   const [message, setMessage] =
     useState("");
 
-  const [optimized, setOptimized] =
-    useState<OptimizedProduct | null>(
-      null,
-    );
+  const [aiResult, setAiResult] =
+    useState<AIResult | null>(null);
 
   const [title, setTitle] =
     useState("");
@@ -1213,13 +344,12 @@ export default function Page() {
     useState<Style>("Everyday");
 
   /* =======================================================
-     SHOPIFY SESSION
+     SHOPIFY SESSION TOKEN
   ======================================================= */
 
   async function getSessionToken() {
     if (
-      typeof window ===
-        "undefined" ||
+      typeof window === "undefined" ||
       !window.shopify?.idToken
     ) {
       throw new Error(
@@ -1240,7 +370,7 @@ export default function Page() {
   }
 
   /* =======================================================
-     LOAD PRODUCTS
+     LOAD SHOPIFY PRODUCTS
   ======================================================= */
 
   async function loadProducts() {
@@ -1292,7 +422,7 @@ export default function Page() {
 
       setProducts(normalized);
 
-      if (normalized.length) {
+      if (normalized.length > 0) {
         setSelectedId(
           normalized[0].id,
         );
@@ -1324,14 +454,11 @@ export default function Page() {
             product.id ===
             selectedId,
         ) || null,
-      [
-        products,
-        selectedId,
-      ],
+      [products, selectedId],
     );
 
   /* =======================================================
-     SEARCH
+     FILTER PRODUCTS
   ======================================================= */
 
   const filteredProducts =
@@ -1363,13 +490,10 @@ export default function Page() {
                 .includes(query),
           ),
       );
-    }, [
-      products,
-      search,
-    ]);
+    }, [products, search]);
 
   /* =======================================================
-     LOAD SELECTED PRODUCT INTO EDITOR
+     LOAD PRODUCT INTO EDITOR
   ======================================================= */
 
   useEffect(() => {
@@ -1386,9 +510,7 @@ export default function Page() {
     );
 
     setTitle(
-      stripHtml(
-        selected.title,
-      ),
+      stripHtml(selected.title),
     );
 
     setProductType(
@@ -1411,56 +533,23 @@ export default function Page() {
     setSpecifications([]);
     setSeoTitle("");
     setMetaDescription("");
-    setOptimized(null);
+    setAiResult(null);
     setMessage("");
     setError("");
   }, [selected]);
 
   /* =======================================================
-     TITLE CHANGE
-     SEO + META UPDATE AUTOMATICALLY
+     REAL AI OPTIMIZATION
+     
+     IMPORTANT:
+     There is NO local buildProductTitle().
+     There is NO local buildDescription().
+     There is NO local buildSeoTitle().
+     
+     The AI backend does the actual analysis.
   ======================================================= */
 
-  function syncSeoMeta(
-    nextTitle: string,
-  ) {
-    if (!selected) {
-      return;
-    }
-
-    const context: Product = {
-      ...selected,
-      title: nextTitle,
-      audience,
-      style,
-    };
-
-    setSeoTitle(
-      buildSeoTitle(context),
-    );
-
-    setMetaDescription(
-      buildMetaDescription(
-        context,
-      ),
-    );
-  }
-
-  function handleTitleChange(
-    nextTitle: string,
-  ) {
-    setTitle(nextTitle);
-
-    syncSeoMeta(
-      nextTitle,
-    );
-  }
-
-  /* =======================================================
-     OPTIMIZE
-  ======================================================= */
-
-  function handleOptimize() {
+  async function handleOptimize() {
     if (!selected) {
       return;
     }
@@ -1468,57 +557,248 @@ export default function Page() {
     setOptimizing(true);
     setError("");
     setMessage("");
+    setAiResult(null);
 
     try {
+      const token =
+        await getSessionToken();
+
+      const response =
+        await fetch(
+          "/api/ai/analyze",
+          {
+            method: "POST",
+
+            headers: {
+              "Content-Type":
+                "application/json",
+
+              Authorization:
+                `Bearer ${token}`,
+
+              "x-shopify-session-token":
+                token,
+            },
+
+            body: JSON.stringify({
+              product: {
+                id: selected.id,
+
+                title:
+                  stripHtml(
+                    selected.title,
+                  ),
+
+                description:
+                  stripHtml(
+                    selected.description,
+                  ),
+
+                productType:
+                  selected.productType,
+
+                vendor:
+                  selected.vendor,
+
+                tags:
+                  selected.tags,
+
+                price:
+                  selected.price,
+
+                audience,
+
+                style,
+              },
+            }),
+          },
+        );
+
+      const data =
+        await response.json();
+
+      if (
+        !response.ok ||
+        !data.success
+      ) {
+        throw new Error(
+          data.error ||
+            "Virello AI analysis failed.",
+        );
+      }
+
+      /*
+       * The existing AI route returns the
+       * structured result. This also supports
+       * slightly different response wrappers
+       * so the frontend is more resilient.
+       */
+
       const result =
-        optimizeProduct({
-          ...selected,
-          audience,
-          style,
-        });
+        (data.result ||
+          data.data ||
+          data.analysis) as
+          | AIResult
+          | undefined;
 
-      setOptimized(result);
+      if (
+        !result ||
+        !result.optimization
+      ) {
+        throw new Error(
+          "Virello AI returned an incomplete optimization.",
+        );
+      }
 
-      setTitle(
-        result.title,
+      const optimization =
+        result.optimization;
+
+      const normalizedTitle =
+        clean(
+          optimization.title,
+        );
+
+      const normalizedProductType =
+        clean(
+          selected.productType ||
+            "Products",
+        );
+
+      const normalizedTags =
+        unique(
+          Array.isArray(
+            optimization.tags,
+          )
+            ? optimization.tags.map(
+                clean,
+              )
+            : [],
+        );
+
+      const normalizedDescription =
+        clean(
+          optimization.description,
+        );
+
+      const normalizedFeatures =
+        unique(
+          Array.isArray(
+            optimization.features,
+          )
+            ? optimization.features.map(
+                clean,
+              )
+            : [],
+        );
+
+      const normalizedSpecifications =
+        unique(
+          Array.isArray(
+            optimization.specifications,
+          )
+            ? optimization.specifications.map(
+                clean,
+              )
+            : [],
+        );
+
+      const normalizedSeoTitle =
+        limitCharacters(
+          optimization.seoTitle,
+          50,
+        );
+
+      const normalizedMetaDescription =
+        limitCharacters(
+          optimization.metaDescription,
+          150,
+        );
+
+      const normalizedResult: AIResult =
+        {
+          ...result,
+
+          optimization: {
+            ...optimization,
+
+            title:
+              normalizedTitle,
+
+            /*
+             * AI currently does not have to
+             * change Shopify Product Type
+             * unless it is explicitly supplied
+             * by the backend.
+             */
+            description:
+              normalizedDescription,
+
+            features:
+              normalizedFeatures,
+
+            specifications:
+              normalizedSpecifications,
+
+            seoTitle:
+              normalizedSeoTitle,
+
+            metaDescription:
+              normalizedMetaDescription,
+
+            tags:
+              normalizedTags,
+          },
+        };
+
+      setAiResult(
+        normalizedResult,
       );
 
+      setTitle(
+        normalizedTitle,
+      );
+
+      /*
+       * Product Type remains separately
+       * editable in the Virello UI.
+       */
       setProductType(
-        result.productType,
+        selected.productType ||
+          "Products",
       );
 
       setTags(
-        result.tags.join(", "),
+        normalizedTags.join(", "),
       );
 
       setDescription(
-        result.description,
+        normalizedDescription,
       );
 
       setFeatures(
-        result.features,
+        normalizedFeatures,
       );
 
       setSpecifications(
-        result.specifications,
+        normalizedSpecifications,
       );
 
       setSeoTitle(
-        result.seoTitle,
+        normalizedSeoTitle,
       );
 
       setMetaDescription(
-        result.metaDescription,
+        normalizedMetaDescription,
       );
 
       setMessage(
-        "Optimization complete. Product Title, SEO Title, Meta Description, Product Description, Features and Specifications are separately optimized.",
+        "Virello AI analyzed the product and generated new conversion, SEO, feature, specification and tag recommendations.",
       );
     } catch (err) {
       setError(
         err instanceof Error
           ? err.message
-          : "Optimization failed.",
+          : "Virello AI optimization failed.",
       );
     } finally {
       setOptimizing(false);
@@ -1527,6 +807,11 @@ export default function Page() {
 
   /* =======================================================
      SAVE TO SHOPIFY
+     
+     IMPORTANT:
+     We save the AI-generated SEO fields directly.
+     We DO NOT regenerate them with hard-coded
+     functions anymore.
   ======================================================= */
 
   async function handleSave() {
@@ -1549,7 +834,13 @@ export default function Page() {
       );
 
     const finalDescription =
-      description.trim();
+      clean(description);
+
+    const finalSeoTitle =
+      clean(seoTitle);
+
+    const finalMetaDescription =
+      clean(metaDescription);
 
     if (!finalTitle) {
       setError(
@@ -1572,29 +863,25 @@ export default function Page() {
       return;
     }
 
-    const context: Product = {
-      ...selected,
-      title: finalTitle,
-      productType:
-        finalProductType,
-      audience,
-      style,
-    };
-
-    const finalSeoTitle =
-      buildSeoTitle(context);
-
-    const finalMetaDescription =
-      buildMetaDescription(
-        context,
+    if (!finalSeoTitle) {
+      setError(
+        "SEO Title is required.",
       );
+      return;
+    }
 
     if (
-      finalSeoTitle.length >
-      50
+      finalSeoTitle.length > 50
     ) {
       setError(
         "SEO Title must be 50 characters or fewer.",
+      );
+      return;
+    }
+
+    if (!finalMetaDescription) {
+      setError(
+        "Meta Description is required.",
       );
       return;
     }
@@ -1647,15 +934,6 @@ export default function Page() {
               tags:
                 finalTags,
 
-              /*
-               * IMPORTANT:
-               * Only the Product Description
-               * is sent here.
-               *
-               * Features and Specifications
-               * remain separate in Virello.
-               */
-
               description:
                 descriptionToHtml(
                   finalDescription,
@@ -1671,10 +949,7 @@ export default function Page() {
         );
 
       const data =
-        (await response.json()) as {
-          success?: boolean;
-          error?: string;
-        };
+        await response.json();
 
       if (
         !response.ok ||
@@ -1694,12 +969,16 @@ export default function Page() {
               selected.id
                 ? {
                     ...product,
+
                     title:
                       finalTitle,
+
                     productType:
                       finalProductType,
+
                     tags:
                       finalTags,
+
                     description:
                       finalDescription,
                   }
@@ -1732,7 +1011,7 @@ export default function Page() {
       );
 
       setMessage(
-        "Successfully saved to Shopify.",
+        "Successfully saved the AI-optimized product to Shopify.",
       );
     } catch (err) {
       setError(
@@ -2075,6 +1354,57 @@ export default function Page() {
           line-height: 1.5;
         }
 
+        .analysis-grid {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 16px;
+        }
+
+        .analysis-card {
+          border: 1px solid #dedede;
+          border-radius: 14px;
+          padding: 18px;
+          background: #fafafa;
+        }
+
+        .analysis-card h3 {
+          margin: 0 0 10px;
+          font-size: 16px;
+        }
+
+        .analysis-card p {
+          margin: 0;
+          color: #444;
+          line-height: 1.55;
+        }
+
+        .score-grid {
+          display: grid;
+          grid-template-columns:
+            repeat(3, 1fr);
+          gap: 10px;
+          margin-bottom: 16px;
+        }
+
+        .score {
+          border: 1px solid #dedede;
+          border-radius: 12px;
+          padding: 14px;
+          text-align: center;
+          background: #fafafa;
+        }
+
+        .score-number {
+          font-size: 25px;
+          font-weight: 800;
+        }
+
+        .score-label {
+          font-size: 11px;
+          color: #777;
+          margin-top: 3px;
+        }
+
         .generated {
           border: 1px solid #dedede;
           border-radius: 14px;
@@ -2084,10 +1414,7 @@ export default function Page() {
         }
 
         .generated-head {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          gap: 12px;
+          font-weight: 800;
           margin-bottom: 10px;
         }
 
@@ -2121,6 +1448,17 @@ export default function Page() {
           margin-top: 7px;
         }
 
+        .ai-badge {
+          display: inline-block;
+          padding: 5px 9px;
+          border-radius: 999px;
+          background: #171717;
+          color: #fff;
+          font-size: 11px;
+          font-weight: 800;
+          margin-bottom: 12px;
+        }
+
         @media (max-width: 950px) {
           .container {
             grid-template-columns: 1fr;
@@ -2132,8 +1470,14 @@ export default function Page() {
         }
 
         @media (max-width: 700px) {
-          .details-grid {
+          .details-grid,
+          .analysis-grid {
             grid-template-columns: 1fr;
+          }
+
+          .score-grid {
+            grid-template-columns:
+              repeat(2, 1fr);
           }
         }
 
@@ -2254,9 +1598,7 @@ export default function Page() {
                     }
                   >
                     <div className="product-name">
-                      {
-                        product.title
-                      }
+                      {product.title}
                     </div>
 
                     <div className="product-info">
@@ -2300,21 +1642,20 @@ export default function Page() {
 
                 <div className="editor-head">
                   <div>
+                    <div className="ai-badge">
+                      REAL AI ANALYSIS
+                    </div>
+
                     <h1>
                       Product Optimizer
                     </h1>
 
                     <div className="subtitle">
-                      Virello creates
-                      separate
-                      conversion copy
-                      for the
-                      storefront,
-                      Google SEO,
-                      meta snippet,
-                      description,
-                      features, and
-                      specifications.
+                      Virello AI analyzes
+                      the actual Shopify
+                      product data before
+                      generating the
+                      optimized content.
                     </div>
                   </div>
 
@@ -2331,8 +1672,8 @@ export default function Page() {
                       }
                     >
                       {optimizing
-                        ? "Optimizing..."
-                        : "Optimize"}
+                        ? "AI Analyzing..."
+                        : "Analyze with AI"}
                     </button>
 
                     <button
@@ -2414,8 +1755,7 @@ export default function Page() {
                       }
                     >
                       <option value="Premium / Luxury">
-                        Premium /
-                        Luxury
+                        Premium / Luxury
                       </option>
 
                       <option value="Professional">
@@ -2452,7 +1792,7 @@ export default function Page() {
                   <input
                     value={title}
                     onChange={(event) =>
-                      handleTitleChange(
+                      setTitle(
                         event.target
                           .value,
                       )
@@ -2460,11 +1800,10 @@ export default function Page() {
                   />
 
                   <div className="small-note">
-                    Storefront title
-                    focused on
-                    product appeal.
-                    It is NOT used
-                    as the SEO Title.
+                    Generated by the AI
+                    optimizer. You can
+                    manually edit it
+                    before saving.
                   </div>
                 </div>
 
@@ -2503,12 +1842,13 @@ export default function Page() {
                           .value,
                       )
                     }
-                    placeholder="watch, luxury, chronograph"
+                    placeholder="watch, automatic, stainless steel"
                   />
 
                   <div className="small-note">
-                    Separate tags
-                    with commas.
+                    AI-generated relevant
+                    tags. Separate with
+                    commas.
                   </div>
                 </div>
 
@@ -2530,18 +1870,14 @@ export default function Page() {
                           .value,
                       )
                     }
-                    placeholder="Your conversion-focused product description will appear here..."
+                    placeholder="AI-generated conversion-focused product description..."
                   />
 
                   <div className="small-note">
-                    The description
-                    is selling copy.
-                    It is separate
-                    from the SEO
-                    Title, Meta
-                    Description,
-                    Features, and
-                    Specifications.
+                    This is the customer-facing
+                    selling copy. It is
+                    separate from the SEO
+                    fields.
                   </div>
                 </div>
 
@@ -2579,9 +1915,10 @@ export default function Page() {
                         </ul>
                       ) : (
                         <div className="empty-detail">
-                          Features will
-                          appear after
-                          optimization.
+                          Run AI analysis
+                          to generate
+                          verified
+                          features.
                         </div>
                       )}
                     </div>
@@ -2611,12 +1948,12 @@ export default function Page() {
                         </ul>
                       ) : (
                         <div className="empty-detail">
-                          Supplier
+                          AI will only
+                          show
                           specifications
-                          will appear
-                          here when
-                          detected from
-                          the source
+                          actually
+                          present in
+                          the supplied
                           product data.
                         </div>
                       )}
@@ -2656,15 +1993,6 @@ export default function Page() {
                       }
                       /50
                     </div>
-
-                    <div className="small-note">
-                      Search-intent
-                      title. This is
-                      intentionally
-                      different from
-                      the Product
-                      Title.
-                    </div>
                   </div>
 
                   <div className="field">
@@ -2692,177 +2020,218 @@ export default function Page() {
                       }
                       /150
                     </div>
-
-                    <div className="small-note">
-                      Written to
-                      improve search
-                      result
-                      click-through.
-                      It is not a
-                      copy of the
-                      Product
-                      Description.
-                    </div>
                   </div>
                 </div>
 
-                {/* GENERATED CONTENT */}
+                {/* =================================================
+                    AI ANALYSIS
+                ================================================= */}
 
-                {optimized && (
+                {aiResult && (
                   <div className="section">
                     <div className="section-title">
-                      Generated Content
+                      Virello AI Analysis
                     </div>
 
-                    <div className="generated">
-                      <div className="generated-head">
-                        <strong>
-                          Product Title
-                        </strong>
+                    <div className="score-grid">
+
+                      <div className="score">
+                        <div className="score-number">
+                          {
+                            aiResult
+                              .score
+                              .overall
+                          }
+                        </div>
+
+                        <div className="score-label">
+                          Overall
+                        </div>
                       </div>
 
-                      <div className="generated-content">
-                        {
-                          optimized.title
-                        }
+                      <div className="score">
+                        <div className="score-number">
+                          {
+                            aiResult
+                              .score
+                              .conversionPotential
+                          }
+                        </div>
+
+                        <div className="score-label">
+                          Conversion
+                        </div>
                       </div>
+
+                      <div className="score">
+                        <div className="score-number">
+                          {
+                            aiResult
+                              .score
+                              .seo
+                          }
+                        </div>
+
+                        <div className="score-label">
+                          SEO
+                        </div>
+                      </div>
+
+                      <div className="score">
+                        <div className="score-number">
+                          {
+                            aiResult
+                              .score
+                              .title
+                          }
+                        </div>
+
+                        <div className="score-label">
+                          Title
+                        </div>
+                      </div>
+
+                      <div className="score">
+                        <div className="score-number">
+                          {
+                            aiResult
+                              .score
+                              .description
+                          }
+                        </div>
+
+                        <div className="score-label">
+                          Description
+                        </div>
+                      </div>
+
+                      <div className="score">
+                        <div className="score-number">
+                          {
+                            aiResult
+                              .score
+                              .productClarity
+                          }
+                        </div>
+
+                        <div className="score-label">
+                          Clarity
+                        </div>
+                      </div>
+
                     </div>
 
-                    <div className="generated">
-                      <div className="generated-head">
-                        <strong>
-                          Product Type
-                        </strong>
+                    <div className="analysis-grid">
+
+                      <div className="analysis-card">
+                        <h3>
+                          Target Customer
+                        </h3>
+
+                        <p>
+                          {
+                            aiResult
+                              .analysis
+                              .targetCustomer
+                          }
+                        </p>
                       </div>
 
-                      <div className="generated-content">
-                        {
-                          optimized.productType
-                        }
-                      </div>
-                    </div>
+                      <div className="analysis-card">
+                        <h3>
+                          Purchase Motivation
+                        </h3>
 
-                    <div className="generated">
-                      <div className="generated-head">
-                        <strong>
-                          Tags
-                        </strong>
+                        <p>
+                          {
+                            aiResult
+                              .analysis
+                              .purchaseMotivation
+                          }
+                        </p>
                       </div>
 
-                      <div className="generated-content">
-                        {optimized.tags.join(
-                          ", ",
+                      <div className="analysis-card">
+                        <h3>
+                          Weaknesses
+                        </h3>
+
+                        {aiResult
+                          .analysis
+                          .weaknesses
+                          .length > 0 ? (
+                          <ul className="specs">
+                            {aiResult
+                              .analysis
+                              .weaknesses
+                              .map(
+                                (
+                                  item,
+                                  index,
+                                ) => (
+                                  <li
+                                    key={`${item}-${index}`}
+                                  >
+                                    {item}
+                                  </li>
+                                ),
+                              )}
+                          </ul>
+                        ) : (
+                          <p>
+                            No major
+                            weaknesses
+                            identified.
+                          </p>
                         )}
                       </div>
+
+                      <div className="analysis-card">
+                        <h3>
+                          Missing Information
+                        </h3>
+
+                        {aiResult
+                          .analysis
+                          .missingInformation
+                          .length > 0 ? (
+                          <ul className="specs">
+                            {aiResult
+                              .analysis
+                              .missingInformation
+                              .map(
+                                (
+                                  item,
+                                  index,
+                                ) => (
+                                  <li
+                                    key={`${item}-${index}`}
+                                  >
+                                    {item}
+                                  </li>
+                                ),
+                              )}
+                          </ul>
+                        ) : (
+                          <p>
+                            No important
+                            missing
+                            information
+                            detected.
+                          </p>
+                        )}
+                      </div>
+
                     </div>
 
                     <div className="generated">
                       <div className="generated-head">
-                        <strong>
-                          Product
-                          Description
-                        </strong>
+                        AI Reasoning
                       </div>
 
                       <div className="generated-content">
                         {
-                          optimized.description
-                        }
-                      </div>
-                    </div>
-
-                    <div className="generated">
-                      <div className="generated-head">
-                        <strong>
-                          Key Features
-                        </strong>
-                      </div>
-
-                      {optimized.features.length >
-                      0 ? (
-                        <ul className="specs">
-                          {optimized.features.map(
-                            (
-                              feature,
-                              index,
-                            ) => (
-                              <li
-                                key={`${feature}-${index}`}
-                              >
-                                {
-                                  feature
-                                }
-                              </li>
-                            ),
-                          )}
-                        </ul>
-                      ) : (
-                        <div className="generated-content">
-                          No features
-                          generated.
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="generated">
-                      <div className="generated-head">
-                        <strong>
-                          Specifications
-                        </strong>
-                      </div>
-
-                      {optimized.specifications.length >
-                      0 ? (
-                        <ul className="specs">
-                          {optimized.specifications.map(
-                            (
-                              specification,
-                              index,
-                            ) => (
-                              <li
-                                key={`${specification}-${index}`}
-                              >
-                                {
-                                  specification
-                                }
-                              </li>
-                            ),
-                          )}
-                        </ul>
-                      ) : (
-                        <div className="generated-content">
-                          No explicit
-                          supplier
-                          specifications
-                          were found.
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="generated">
-                      <div className="generated-head">
-                        <strong>
-                          SEO Title
-                        </strong>
-                      </div>
-
-                      <div className="generated-content">
-                        {
-                          optimized.seoTitle
-                        }
-                      </div>
-                    </div>
-
-                    <div className="generated">
-                      <div className="generated-head">
-                        <strong>
-                          Meta Description
-                        </strong>
-                      </div>
-
-                      <div className="generated-content">
-                        {
-                          optimized.metaDescription
+                          aiResult.reasoning
                         }
                       </div>
                     </div>
