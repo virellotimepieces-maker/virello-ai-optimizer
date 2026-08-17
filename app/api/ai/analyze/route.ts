@@ -98,7 +98,10 @@ function unique(values: string[]): string[] {
     });
 }
 
-function limitCharacters(value: string, max: number): string {
+function limitCharacters(
+  value: string,
+  max: number,
+): string {
   const text = clean(value);
 
   if (text.length <= max) {
@@ -125,7 +128,10 @@ function clampScore(value: unknown): number {
     return 0;
   }
 
-  return Math.max(0, Math.min(100, Math.round(number)));
+  return Math.max(
+    0,
+    Math.min(100, Math.round(number)),
+  );
 }
 
 /* =========================================================
@@ -148,10 +154,6 @@ function detectAudience(
   const description = stripHtml(
     clean(product.description),
   ).toLowerCase();
-
-  /*
-   * Strong fields have priority.
-   */
 
   const primaryText = [
     title,
@@ -176,10 +178,6 @@ function detectAudience(
   if (womenStrong && !menStrong) {
     return "Women";
   }
-
-  /*
-   * Description is secondary evidence.
-   */
 
   const menDescription =
     /\bmen\b|\bmen's\b|\bmens\b|\bgentlemen\b|\bgents\b|\bmale\b|\bman\b/.test(
@@ -206,7 +204,9 @@ function detectAudience(
    OPENAI OUTPUT EXTRACTION
 ========================================================= */
 
-function extractOutputText(data: any): string {
+function extractOutputText(
+  data: any,
+): string {
   if (
     typeof data?.output_text === "string" &&
     data.output_text.trim()
@@ -242,32 +242,47 @@ function extractOutputText(data: any): string {
    NORMALIZE RESULT
 ========================================================= */
 
-function normalizeResult(raw: any): AIResult {
-  const analysis = raw?.analysis || {};
-  const score = raw?.score || {};
-  const optimization = raw?.optimization || {};
+function normalizeResult(
+  raw: any,
+): AIResult {
+  const analysis =
+    raw?.analysis || {};
+
+  const score =
+    raw?.score || {};
+
+  const optimization =
+    raw?.optimization || {};
 
   const normalizedScore: AIScore = {
-    title: clampScore(score.title),
+    title: clampScore(
+      score.title,
+    ),
 
     description: clampScore(
       score.description,
     ),
 
-    seo: clampScore(score.seo),
+    seo: clampScore(
+      score.seo,
+    ),
 
     productClarity: clampScore(
       score.productClarity,
     ),
 
-    conversionPotential: clampScore(
-      score.conversionPotential,
-    ),
+    conversionPotential:
+      clampScore(
+        score.conversionPotential,
+      ),
 
-    overall: clampScore(score.overall),
+    overall: clampScore(
+      score.overall,
+    ),
   };
 
-  const normalizedOptimization: AIOptimization = {
+  const normalizedOptimization:
+    AIOptimization = {
     title: clean(
       optimization.title,
     ),
@@ -277,7 +292,9 @@ function normalizeResult(raw: any): AIResult {
     ),
 
     features: unique(
-      Array.isArray(optimization.features)
+      Array.isArray(
+        optimization.features,
+      )
         ? optimization.features
         : [],
     ),
@@ -291,19 +308,24 @@ function normalizeResult(raw: any): AIResult {
     ),
 
     seoTitle: limitCharacters(
-      clean(optimization.seoTitle),
+      clean(
+        optimization.seoTitle,
+      ),
       50,
     ),
 
-    metaDescription: limitCharacters(
-      clean(
-        optimization.metaDescription,
+    metaDescription:
+      limitCharacters(
+        clean(
+          optimization.metaDescription,
+        ),
+        160,
       ),
-      160,
-    ),
 
     tags: unique(
-      Array.isArray(optimization.tags)
+      Array.isArray(
+        optimization.tags,
+      )
         ? optimization.tags
         : [],
     ),
@@ -328,7 +350,9 @@ function normalizeResult(raw: any): AIResult {
       ),
 
       weaknesses: unique(
-        Array.isArray(analysis.weaknesses)
+        Array.isArray(
+          analysis.weaknesses,
+        )
           ? analysis.weaknesses
           : [],
       ),
@@ -349,16 +373,18 @@ function normalizeResult(raw: any): AIResult {
           : [],
       ),
 
-      conversionOpportunities: unique(
-        Array.isArray(
-          analysis.conversionOpportunities,
-        )
-          ? analysis.conversionOpportunities
-          : [],
-      ),
+      conversionOpportunities:
+        unique(
+          Array.isArray(
+            analysis.conversionOpportunities,
+          )
+            ? analysis.conversionOpportunities
+            : [],
+        ),
     },
 
-    score: normalizedScore,
+    score:
+      normalizedScore,
 
     optimization:
       normalizedOptimization,
@@ -606,29 +632,39 @@ export async function POST(
        3. CLEAN PRODUCT DATA
     ----------------------------------------------------- */
 
-    const title = clean(
-      product.title,
-    );
+    const title =
+      clean(product.title);
 
     const description =
       stripHtml(
-        clean(product.description),
+        clean(
+          product.description,
+        ),
       );
 
     const productType =
-      clean(product.productType);
+      clean(
+        product.productType,
+      );
 
     const vendor =
-      clean(product.vendor);
+      clean(
+        product.vendor,
+      );
 
-    const tags = unique(
-      Array.isArray(product.tags)
-        ? product.tags
-        : [],
-    );
+    const tags =
+      unique(
+        Array.isArray(
+          product.tags,
+        )
+          ? product.tags
+          : [],
+      );
 
     const price =
-      clean(product.price);
+      clean(
+        product.price,
+      );
 
     if (!title) {
       return NextResponse.json(
@@ -648,15 +684,9 @@ export async function POST(
     ----------------------------------------------------- */
 
     const detectedAudience =
-      detectAudience(product);
-
-    /*
-     * Backend audience detection is authoritative.
-     *
-     * Men's watch = Men
-     * Women's watch = Women
-     * Unknown = Unisex
-     */
+      detectAudience(
+        product,
+      );
 
     const suppliedAudience =
       product.audience ||
@@ -667,7 +697,8 @@ export async function POST(
     ----------------------------------------------------- */
 
     const productContext = {
-      id: clean(product.id),
+      id:
+        clean(product.id),
 
       title,
 
@@ -686,7 +717,9 @@ export async function POST(
       suppliedAudience,
 
       suppliedStyle:
-        clean(product.style),
+        clean(
+          product.style,
+        ),
     };
 
     /* -----------------------------------------------------
@@ -700,27 +733,28 @@ You are an expert ecommerce product analyst,
 Shopify SEO specialist, conversion copywriter,
 and luxury watch merchandising assistant.
 
-Analyze the REAL product information provided
-by the merchant.
+Your job is to analyze the REAL product information
+provided by the merchant and generate optimized
+Shopify product content.
 
-Do not invent product facts.
+The product information is authoritative.
 
 ========================================================
 CRITICAL AUDIENCE RULE
 ========================================================
 
-The backend detected audience is:
+Audience classification must be accurate.
+
+The detected audience supplied by the backend is:
 
 ${detectedAudience}
 
-This value is authoritative.
-
 If detectedAudience is "Men":
 
-The product MUST be treated as a MEN'S product.
+You MUST treat the product as a MEN'S product.
 
-Never classify it as Women's because of generic
-words such as:
+Never classify it as Women's because of generic terms
+such as:
 
 fashion
 elegant
@@ -731,21 +765,20 @@ luxury
 beautiful
 classic
 
-If detectedAudience is "Women":
+If the product is explicitly men's, keep the customer
+positioning male.
 
-The product MUST be treated as a WOMEN'S product.
+If detectedAudience is "Women", keep the positioning
+female.
 
-If detectedAudience is "Unisex":
-
-Do not force a gender unless the actual product
-information supports it.
+If detectedAudience is "Unisex", do not force a gender
+unless the actual product information supports it.
 
 ========================================================
-WATCH ANALYSIS
+WATCH-SPECIFIC RULES
 ========================================================
 
-For watches, inspect the actual product information
-for:
+For watches, inspect the real product information for:
 
 - men's or women's positioning
 - automatic movement
@@ -768,46 +801,51 @@ for:
 - luxury positioning
 - premium positioning
 
-NEVER invent specifications.
+NEVER invent any of these specifications.
 
-If a specification is not provided,
+If the information is not provided,
 do not claim that the product has it.
 
 ========================================================
-TITLE
+TITLE RULES
 ========================================================
 
-Create a premium ecommerce title.
+Create a clean, premium ecommerce title.
 
 Prefer approximately 4–8 meaningful words.
 
 Do not keyword stuff.
 
-Do not unnecessarily repeat words.
+Do not repeat the same word unnecessarily.
 
-Do not use supplier names unless legitimately
-present in the product information.
+Do not use supplier names unless they are part of
+the legitimate product information.
 
 Do not make the title sound like a dropshipping listing.
 
-For men's watches, make the men's positioning
-clear when supported by the actual product data.
+For men's watches, the title should make the men's
+positioning clear when supported by the product.
 
 ========================================================
-DESCRIPTION
+DESCRIPTION RULES
 ========================================================
 
-Write a premium Shopify description.
+Write a premium Shopify product description.
 
 Focus on:
 
 - what the product is
 - who it is for
-- verified benefits
-- verified features
+- strongest verified benefits
+- important verified features
 - style
 - practical use
 - purchase motivation
+
+The description should help a shopper make a
+purchase decision.
+
+Use clear, confident, premium language.
 
 Do not invent specifications.
 
@@ -816,24 +854,24 @@ performance, durability, or certification claims.
 
 Avoid supplier language.
 
-Never use:
+Avoid phrases such as:
 
-Dear customer
-best seller guaranteed
-cheap
-factory direct
-AliExpress
-wholesale
-dropshipping
+"Dear customer"
+"best seller guaranteed"
+"cheap"
+"factory direct"
+"AliExpress"
+"wholesale"
+"dropshipping"
 
 ========================================================
-SEO
+SEO RULES
 ========================================================
 
 SEO title:
 
-- natural
 - concise
+- natural
 - keyword relevant
 - maximum 50 characters
 
@@ -842,42 +880,184 @@ Meta description:
 - maximum 160 characters
 - natural
 - compelling
-- accurate
+- accurately describes the product
 
 Tags:
 
 Create relevant Shopify tags.
 
-Avoid duplicates.
+Avoid duplicate tags.
 
 Avoid irrelevant keywords.
 
 ========================================================
-SCORING
+CONVERSION SCORING FRAMEWORK
 ========================================================
 
-Score the current product from 0 to 100.
+Score the CURRENT product listing honestly from 0 to 100.
 
-Evaluate:
+The conversion score must measure how effectively
+the CURRENT listing could persuade a qualified shopper
+to consider purchasing.
 
-Title:
-clarity, relevance, readability.
+Do NOT give a high score simply because the product
+sounds premium.
 
-Description:
-quality, persuasion, useful information.
+Evaluate all of the following:
 
-SEO:
-search relevance and natural keyword usage.
+1. PRODUCT VALUE CLARITY
 
-Product clarity:
-whether shoppers understand the product.
+Does the shopper quickly understand:
 
-Conversion potential:
-whether the listing gives shoppers enough
-confidence and motivation to purchase.
+- what the product is
+- who it is for
+- why it is desirable
+- what makes it useful or distinctive
 
-Overall:
-overall assessment.
+2. BUYER RELEVANCE
+
+Does the listing clearly speak to the correct audience?
+
+For a men's watch:
+
+- keep the positioning male
+- do not describe the target customer as women
+- do not use generic unisex positioning when the product
+  information clearly identifies it as men's
+
+3. BENEFIT COMMUNICATION
+
+Does the listing explain meaningful buyer benefits
+rather than simply listing features?
+
+4. TRUST
+
+Does the available product information give shoppers
+confidence?
+
+Only use information actually provided.
+
+Never invent:
+
+- warranty
+- certifications
+- reviews
+- ratings
+- guarantees
+- shipping promises
+- durability claims
+- water resistance
+- materials
+- movement
+- performance numbers
+
+5. PURCHASE MOTIVATION
+
+Does the listing provide a legitimate reason for the
+target shopper to want the product?
+
+For watches, possible motivations include:
+
+- refined everyday style
+- professional appearance
+- occasion wear
+- gift suitability
+- classic styling
+- versatile wardrobe pairing
+
+Only use motivations supported by the actual product.
+
+6. PRODUCT CLARITY
+
+Can a shopper understand the product without guessing?
+
+7. INFORMATION COMPLETENESS
+
+Identify important missing information that could prevent
+a confident purchase.
+
+8. EMOTIONAL APPEAL
+
+Does the copy communicate the style, identity, or lifestyle
+benefit relevant to the actual target customer?
+
+9. PURCHASE READINESS
+
+Does the listing naturally move the shopper toward purchase
+without aggressive or misleading claims?
+
+10. DIFFERENTIATION
+
+Does the listing communicate what makes the product
+distinctive based on the real product information?
+
+========================================================
+CONVERSION SCORE INTERPRETATION
+========================================================
+
+90–100:
+Exceptional listing with strong clarity, relevance,
+verified benefits, trust, differentiation, and purchase
+motivation.
+
+80–89:
+Strong listing with only minor conversion gaps.
+
+70–79:
+Good listing but several improvements are possible.
+
+60–69:
+Average listing with noticeable conversion weaknesses.
+
+50–59:
+Weak listing with important missing information or
+weak purchase motivation.
+
+40–49:
+Poor conversion readiness. The shopper may understand
+the product but lacks enough compelling information,
+clarity, trust, differentiation, or purchase motivation.
+
+0–39:
+Very poor listing with major problems preventing
+purchase confidence.
+
+Do not automatically give 80–100.
+
+Be honest about the current listing.
+
+========================================================
+PRODUCT CLARITY SCORING
+========================================================
+
+Product clarity should evaluate whether a shopper can
+quickly understand:
+
+- what the product is
+- who it is for
+- its main verified features
+- its intended style or use
+- why the shopper should care
+
+If important product information is missing,
+reduce the clarity score.
+
+========================================================
+OVERALL SCORE
+========================================================
+
+The overall score must represent the CURRENT product
+listing.
+
+Consider:
+
+- title quality
+- description quality
+- SEO quality
+- product clarity
+- conversion potential
+
+Do not inflate the overall score.
 
 ========================================================
 ANALYSIS
@@ -893,7 +1073,28 @@ Identify:
 - SEO opportunities
 - conversion opportunities
 
-Be specific to the actual product.
+Be specific to this actual product.
+
+Do not give generic advice when product-specific
+information is available.
+
+========================================================
+CONVERSION OPPORTUNITIES
+========================================================
+
+Provide specific improvements that could increase
+purchase confidence and conversion potential.
+
+Prioritize the biggest weaknesses first.
+
+Do not give generic advice such as:
+
+"make it better"
+"add more details"
+"improve SEO"
+
+Instead explain exactly what information or copy
+should be improved based on the actual product.
 
 ========================================================
 NO HALLUCINATION
@@ -913,8 +1114,31 @@ Never invent:
 - included accessories
 - compatibility
 - performance numbers
+- reviews
+- ratings
+- shipping times
+- guarantees
 
 Only use information present in the product context.
+
+========================================================
+OPTIMIZATION
+========================================================
+
+The optimized product content must improve:
+
+- clarity
+- buyer relevance
+- benefits
+- purchase motivation
+- SEO
+- premium presentation
+
+The optimized version must still use only verified
+product information.
+
+Never add unsupported specifications simply to make
+the listing sound more impressive.
 
 ========================================================
 OUTPUT
@@ -938,12 +1162,18 @@ ${JSON.stringify(
   2,
 )}
 
-IMPORTANT:
+Remember:
 
 Detected audience = ${detectedAudience}
 
-The detected audience must not be overridden
-by generic words in the description.
+The detected audience must not be overridden by
+generic words in the description.
+
+The conversion score must evaluate the CURRENT
+product listing, not the optimized version.
+
+Identify the biggest actual barriers to purchase
+confidence.
 `;
 
     /* -----------------------------------------------------
@@ -973,16 +1203,19 @@ by generic words in the description.
 
             instructions,
 
-            input: userInput,
+            input:
+              userInput,
 
             text: {
               format: {
-                type: "json_schema",
+                type:
+                  "json_schema",
 
                 name:
                   "virello_product_optimization",
 
-                strict: true,
+                strict:
+                  true,
 
                 schema:
                   AI_SCHEMA,
@@ -1008,6 +1241,7 @@ by generic words in the description.
       return NextResponse.json(
         {
           success: false,
+
           error:
             "Virello AI could not complete the analysis.",
 
@@ -1044,6 +1278,7 @@ by generic words in the description.
       return NextResponse.json(
         {
           success: false,
+
           error:
             "Virello AI returned an empty response.",
         },
@@ -1061,7 +1296,9 @@ by generic words in the description.
 
     try {
       rawResult =
-        JSON.parse(outputText);
+        JSON.parse(
+          outputText,
+        );
     } catch (parseError) {
       console.error(
         "Failed to parse OpenAI JSON:",
@@ -1072,6 +1309,7 @@ by generic words in the description.
       return NextResponse.json(
         {
           success: false,
+
           error:
             "Virello AI returned invalid structured data.",
         },
@@ -1091,31 +1329,37 @@ by generic words in the description.
       );
 
     /* -----------------------------------------------------
-       13. AUDIENCE SAFETY CHECK
+       13. SAFETY CHECKS
     ----------------------------------------------------- */
 
     if (
-      detectedAudience === "Men" &&
+      detectedAudience ===
+        "Men" &&
       /women|female|ladies|woman/i.test(
-        result.analysis.targetCustomer,
+        result.analysis
+          .targetCustomer,
       )
     ) {
-      result.analysis.targetCustomer =
+      result.analysis
+        .targetCustomer =
         "Men looking for a premium watch suited to their style and everyday or occasion-based wear.";
     }
 
     if (
-      detectedAudience === "Women" &&
+      detectedAudience ===
+        "Women" &&
       /men|male|gentlemen|man/i.test(
-        result.analysis.targetCustomer,
+        result.analysis
+          .targetCustomer,
       )
     ) {
-      result.analysis.targetCustomer =
+      result.analysis
+        .targetCustomer =
         "Women looking for a stylish watch suited to their personal style and everyday or occasion-based wear.";
     }
 
     /* -----------------------------------------------------
-       14. RETURN RESULT
+       14. RETURN
     ----------------------------------------------------- */
 
     return NextResponse.json(
