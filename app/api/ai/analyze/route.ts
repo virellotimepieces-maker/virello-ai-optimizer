@@ -121,31 +121,45 @@ function limitCharacters(
     .replace(/[.,;:!?-]+$/, "");
 }
 
-/* =========================================================
-   AUDIENCE SIGNALS
-========================================================= */
+function clampScore(value: unknown): number {
+  const number = Number(value);
 
-/*
- * This is deliberately NOT used to generate the content.
- * It gives the AI stronger context about the actual product.
- *
- * Men's signals are checked before women's signals so that
- * a men's watch is not accidentally classified as women's
- * because of generic words such as "fashion", "elegant",
- * "gift", etc.
- */
+  if (!Number.isFinite(number)) {
+    return 0;
+  }
+
+  return Math.max(
+    0,
+    Math.min(100, Math.round(number)),
+  );
+}
+
+/* =========================================================
+   AUDIENCE DETECTION
+========================================================= */
 
 function detectAudience(
   product: ProductInput,
 ): "Men" | "Women" | "Unisex" {
   const title = clean(product.title).toLowerCase();
-  const productType = clean(product.productType).toLowerCase();
+
+  const productType = clean(
+    product.productType,
+  ).toLowerCase();
+
   const tags = Array.isArray(product.tags)
     ? product.tags.join(" ").toLowerCase()
     : "";
+
   const description = stripHtml(
     clean(product.description),
   ).toLowerCase();
+
+  /*
+   * Strong product fields have priority.
+   * This prevents generic words such as "fashion",
+   * "elegant", "gift", etc. from changing the audience.
+   */
 
   const primaryText = [
     title,
@@ -172,9 +186,9 @@ function detectAudience(
   }
 
   /*
-   * If title/product type/tags are ambiguous, inspect the
-   * description as secondary evidence.
+   * Description is secondary evidence only.
    */
+
   const menDescription =
     /\bmen\b|\bmen's\b|\bmens\b|\bgentlemen\b|\bgents\b|\bmale\b|\bman\b/.test(
       description,
@@ -197,10 +211,12 @@ function detectAudience(
 }
 
 /* =========================================================
-   OPENAI RESPONSE EXTRACTION
+   OPENAI OUTPUT EXTRACTION
 ========================================================= */
 
-function extractOutputText(data: any): string {
+function extractOutputText(
+  data: any,
+): string {
   if (
     typeof data?.output_text === "string" &&
     data.output_text.trim()
@@ -233,68 +249,43 @@ function extractOutputText(data: any): string {
 }
 
 /* =========================================================
-   VALIDATE AI RESULT
+   NORMALIZE RESULT
 ========================================================= */
 
 function normalizeResult(
   raw: any,
 ): AIResult {
-  const analysis = raw?.analysis || {};
-  const score = raw?.score || {};
+  const analysis =
+    raw?.analysis || {};
+
+  const score =
+    raw?.score || {};
+
   const optimization =
     raw?.optimization || {};
 
   const normalizedScore: AIScore = {
-    title: Math.max(
-      0,
-      Math.min(
-        100,
-        Number(score.title) || 0,
-      ),
-    ),
+    title: clampScore(score.title),
 
-    description: Math.max(
-      0,
-      Math.min(
-        100,
-        Number(score.description) || 0,
-      ),
-    ),
+    description:
+      clampScore(score.description),
 
-    seo: Math.max(
-      0,
-      Math.min(
-        100,
-        Number(score.seo) || 0,
-      ),
-    ),
+    seo: clampScore(score.seo),
 
-    productClarity: Math.max(
-      0,
-      Math.min(
-        100,
-        Number(score.productClarity) || 0,
-      ),
-    ),
+    productClarity:
+      clampScore(score.productClarity),
 
-    conversionPotential: Math.max(
-      0,
-      Math.min(
-        100,
-        Number(score.conversionPotential) || 0,
+    conversionPotential:
+      clampScore(
+        score.conversionPotential,
       ),
-    ),
 
-    overall: Math.max(
-      0,
-      Math.min(
-        100,
-        Number(score.overall) || 0,
-      ),
-    ),
+    overall:
+      clampScore(score.overall),
   };
 
-  const normalizedOptimization: AIOptimization = {
+  const normalizedOptimization:
+    AIOptimization = {
     title: clean(
       optimization.title,
     ),
@@ -407,18 +398,196 @@ function normalizeResult(
 }
 
 /* =========================================================
-   POST /api/ai/analyze
+   AI JSON SCHEMA
+========================================================= */
+
+const AI_SCHEMA = {
+  type: "object",
+
+  additionalProperties: false,
+
+  properties: {
+    analysis: {
+      type: "object",
+
+      additionalProperties: false,
+
+      properties: {
+        targetCustomer: {
+          type: "string",
+        },
+
+        purchaseMotivation: {
+          type: "string",
+        },
+
+        strongestFeatures: {
+          type: "array",
+          items: {
+            type: "string",
+          },
+        },
+
+        weaknesses: {
+          type: "array",
+          items: {
+            type: "string",
+          },
+        },
+
+        missingInformation: {
+          type: "array",
+          items: {
+            type: "string",
+          },
+        },
+
+        seoOpportunities: {
+          type: "array",
+          items: {
+            type: "string",
+          },
+        },
+
+        conversionOpportunities: {
+          type: "array",
+          items: {
+            type: "string",
+          },
+        },
+      },
+
+      required: [
+        "targetCustomer",
+        "purchaseMotivation",
+        "strongestFeatures",
+        "weaknesses",
+        "missingInformation",
+        "seoOpportunities",
+        "conversionOpportunities",
+      ],
+    },
+
+    score: {
+      type: "object",
+
+      additionalProperties: false,
+
+      properties: {
+        title: {
+          type: "number",
+        },
+
+        description: {
+          type: "number",
+        },
+
+        seo: {
+          type: "number",
+        },
+
+        productClarity: {
+          type: "number",
+        },
+
+        conversionPotential: {
+          type: "number",
+        },
+
+        overall: {
+          type: "number",
+        },
+      },
+
+      required: [
+        "title",
+        "description",
+        "seo",
+        "productClarity",
+        "conversionPotential",
+        "overall",
+      ],
+    },
+
+    optimization: {
+      type: "object",
+
+      additionalProperties: false,
+
+      properties: {
+        title: {
+          type: "string",
+        },
+
+        description: {
+          type: "string",
+        },
+
+        features: {
+          type: "array",
+          items: {
+            type: "string",
+          },
+        },
+
+        specifications: {
+          type: "array",
+          items: {
+            type: "string",
+          },
+        },
+
+        seoTitle: {
+          type: "string",
+        },
+
+        metaDescription: {
+          type: "string",
+        },
+
+        tags: {
+          type: "array",
+          items: {
+            type: "string",
+          },
+        },
+      },
+
+      required: [
+        "title",
+        "description",
+        "features",
+        "specifications",
+        "seoTitle",
+        "metaDescription",
+        "tags",
+      ],
+    },
+
+    reasoning: {
+      type: "string",
+    },
+  },
+
+  required: [
+    "analysis",
+    "score",
+    "optimization",
+    "reasoning",
+  ],
+};
+
+/* =========================================================
+   POST
 ========================================================= */
 
 export async function POST(
   request: NextRequest,
 ) {
   try {
-    /*
-     * -------------------------------------------------------
-     * 1. CHECK OPENAI KEY
-     * -------------------------------------------------------
-     */
+    /* -----------------------------------------------------
+       1. API KEY
+    ----------------------------------------------------- */
 
     const apiKey =
       process.env.OPENAI_API_KEY;
@@ -428,19 +597,20 @@ export async function POST(
         {
           success: false,
           error:
-            "OPENAI_API_KEY is missing in Vercel environment variables.",
+            "OPENAI_API_KEY is missing in Vercel Environment Variables.",
         },
-        { status: 500 },
+        {
+          status: 500,
+        },
       );
     }
 
-    /*
-     * -------------------------------------------------------
-     * 2. READ REQUEST
-     * -------------------------------------------------------
-     */
+    /* -----------------------------------------------------
+       2. REQUEST BODY
+    ----------------------------------------------------- */
 
-    const body = await request.json();
+    const body =
+      await request.json();
 
     const product =
       body?.product as
@@ -454,25 +624,32 @@ export async function POST(
           error:
             "Product data is required.",
         },
-        { status: 400 },
+        {
+          status: 400,
+        },
       );
     }
+
+    /* -----------------------------------------------------
+       3. CLEAN PRODUCT DATA
+    ----------------------------------------------------- */
 
     const title = clean(
       product.title,
     );
 
-    const description = stripHtml(
-      clean(product.description),
-    );
+    const description =
+      stripHtml(
+        clean(product.description),
+      );
 
-    const productType = clean(
-      product.productType,
-    );
+    const productType =
+      clean(
+        product.productType,
+      );
 
-    const vendor = clean(
-      product.vendor,
-    );
+    const vendor =
+      clean(product.vendor);
 
     const tags = unique(
       Array.isArray(product.tags)
@@ -480,33 +657,48 @@ export async function POST(
         : [],
     );
 
-    const price = clean(
-      product.price,
-    );
+    const price =
+      clean(product.price);
 
-    /*
-     * -------------------------------------------------------
-     * 3. DETERMINE PRODUCT AUDIENCE
-     * -------------------------------------------------------
-     */
+    if (!title) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Product title is required for AI analysis.",
+        },
+        {
+          status: 400,
+        },
+      );
+    }
+
+    /* -----------------------------------------------------
+       4. AUDIENCE
+    ----------------------------------------------------- */
 
     const detectedAudience =
       detectAudience(product);
 
     /*
-     * The frontend value is only a hint.
-     * The backend detection is prioritized.
+     * IMPORTANT:
+     * detectedAudience is the authoritative signal.
+     *
+     * Example:
+     * Men's watch -> Men
+     *
+     * Generic words such as:
+     * fashion / elegant / gift
+     * cannot override this.
      */
 
     const suppliedAudience =
       product.audience ||
       detectedAudience;
 
-    /*
-     * -------------------------------------------------------
-     * 4. PREPARE PRODUCT CONTEXT
-     * -------------------------------------------------------
-     */
+    /* -----------------------------------------------------
+       5. PRODUCT CONTEXT
+    ----------------------------------------------------- */
 
     const productContext = {
       id: clean(product.id),
@@ -531,45 +723,484 @@ export async function POST(
         clean(product.style),
     };
 
-    /*
-     * -------------------------------------------------------
-     * 5. AI INSTRUCTIONS
-     * -------------------------------------------------------
-     */
+    /* -----------------------------------------------------
+       6. SYSTEM INSTRUCTIONS
+    ----------------------------------------------------- */
 
     const instructions = `
-You are Virello AI Optimizer, an expert ecommerce product
-optimization system for Shopify stores.
+You are Virello AI Optimizer.
 
-Your job is to analyze the REAL product information supplied
-by the merchant and create better ecommerce content.
+You are an expert ecommerce product analyst,
+Shopify SEO specialist, conversion copywriter,
+and luxury watch merchandising assistant.
 
-IMPORTANT:
+Your job is to analyze the REAL product information
+provided by the merchant and generate optimized
+Shopify product content.
 
-1. ACTUAL PRODUCT FIRST
-Never invent product specifications.
+The product information is authoritative.
 
-2. AUDIENCE ACCURACY
-The target customer must match the actual product.
+========================================================
+CRITICAL AUDIENCE RULE
+========================================================
 
-If the product is explicitly a men's watch, classify it as
-MEN even if the product description contains generic words
+Audience classification must be accurate.
+
+The detected audience supplied by the backend is:
+
+${detectedAudience}
+
+If detectedAudience is "Men":
+
+You MUST treat the product as a MEN'S product.
+
+Never classify it as Women's because of generic terms
 such as:
-- fashion
-- elegant
-- gift
-- jewelry
-- style
-- luxury
 
-Do NOT change a men's product into a women's product.
+fashion
+elegant
+gift
+style
+jewelry
+luxury
+beautiful
+classic
 
-If the product is explicitly women's, classify it as WOMEN.
+If the product is explicitly men's, keep the customer
+positioning male.
 
-If there is genuinely no gender signal, use UNISEX.
+If detectedAudience is "Women", keep the positioning
+female.
 
-3. WATCH PRODUCTS
-For watches, pay special attention to:
-- men's vs women's
-- automatic vs quartz
+If detectedAudience is "Unisex", do not force a gender
+unless the actual product information supports it.
+
+========================================================
+WATCH-SPECIFIC RULES
+========================================================
+
+For watches, inspect the real product information for:
+
+- men's or women's positioning
+- automatic movement
 - mechanical movement
+- quartz movement
+- chronograph
+- sapphire crystal
+- mineral crystal
+- stainless steel
+- case diameter
+- bracelet
+- leather strap
+- water resistance
+- dial
+- bezel
+- complications
+- dress style
+- sport style
+- everyday style
+- luxury positioning
+- premium positioning
+
+NEVER invent any of these specifications.
+
+If the information is not provided,
+do not claim that the product has it.
+
+========================================================
+TITLE RULES
+========================================================
+
+Create a clean, premium ecommerce title.
+
+Prefer approximately 4–8 meaningful words.
+
+Do not keyword stuff.
+
+Do not repeat the same word unnecessarily.
+
+Do not use supplier names unless they are part of
+the legitimate product information.
+
+Do not make the title sound like a dropshipping listing.
+
+For men's watches, the title should make the men's
+positioning clear when supported by the product.
+
+========================================================
+DESCRIPTION RULES
+========================================================
+
+Write a premium Shopify product description.
+
+Focus on:
+
+- what the product is
+- who it is for
+- strongest verified benefits
+- important verified features
+- style
+- practical use
+- purchase motivation
+
+Do not invent specifications.
+
+Do not make unsupported medical,
+performance, durability, or certification claims.
+
+Avoid supplier language.
+
+Avoid phrases such as:
+
+"Dear customer"
+"best seller guaranteed"
+"cheap"
+"factory direct"
+"AliExpress"
+"wholesale"
+"dropshipping"
+
+========================================================
+SEO RULES
+========================================================
+
+SEO title:
+
+- concise
+- natural
+- keyword relevant
+- maximum 50 characters
+
+Meta description:
+
+- maximum 160 characters
+- natural
+- compelling
+- accurately describes the product
+
+Tags:
+
+Create relevant Shopify tags.
+
+Avoid duplicate tags.
+
+Avoid irrelevant keywords.
+
+========================================================
+SCORING
+========================================================
+
+Score the current product quality from 0 to 100.
+
+Consider:
+
+Title:
+clarity, relevance, readability.
+
+Description:
+quality, persuasion, useful information.
+
+SEO:
+search relevance and natural keyword usage.
+
+Product clarity:
+whether shoppers understand the product.
+
+Conversion potential:
+whether the listing gives shoppers enough
+confidence and motivation to purchase.
+
+Overall:
+your overall assessment.
+
+========================================================
+ANALYSIS
+========================================================
+
+Identify:
+
+- target customer
+- purchase motivation
+- strongest features
+- weaknesses
+- missing information
+- SEO opportunities
+- conversion opportunities
+
+Be specific to this actual product.
+
+Do not give generic advice when product-specific
+information is available.
+
+========================================================
+NO HALLUCINATION
+========================================================
+
+Never invent:
+
+- materials
+- dimensions
+- movement type
+- water resistance
+- certifications
+- warranty
+- country of origin
+- battery life
+- power source
+- included accessories
+- compatibility
+- performance numbers
+
+Only use information present in the product context.
+
+========================================================
+OUTPUT
+========================================================
+
+Return only the requested structured data.
+`;
+
+    /* -----------------------------------------------------
+       7. USER INPUT
+    ----------------------------------------------------- */
+
+    const userInput = `
+Analyze this Shopify product.
+
+PRODUCT CONTEXT:
+
+${JSON.stringify(
+  productContext,
+  null,
+  2,
+)}
+
+Remember:
+
+Detected audience = ${detectedAudience}
+
+The detected audience must not be overridden by
+generic words in the description.
+`;
+
+    /* -----------------------------------------------------
+       8. OPENAI REQUEST
+    ----------------------------------------------------- */
+
+    const model =
+      process.env.OPENAI_MODEL ||
+      "gpt-5.6";
+
+    const openAIResponse =
+      await fetch(
+        "https://api.openai.com/v1/responses",
+        {
+          method: "POST",
+
+          headers: {
+            "Content-Type":
+              "application/json",
+
+            Authorization:
+              `Bearer ${apiKey}`,
+          },
+
+          body: JSON.stringify({
+            model,
+
+            instructions,
+
+            input: userInput,
+
+            text: {
+              format: {
+                type: "json_schema",
+
+                name:
+                  "virello_product_optimization",
+
+                strict: true,
+
+                schema:
+                  AI_SCHEMA,
+              },
+            },
+          }),
+        },
+      );
+
+    /* -----------------------------------------------------
+       9. OPENAI ERROR
+    ----------------------------------------------------- */
+
+    if (!openAIResponse.ok) {
+      const errorText =
+        await openAIResponse.text();
+
+      console.error(
+        "OpenAI API error:",
+        errorText,
+      );
+
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Virello AI could not complete the analysis.",
+          details:
+            process.env.NODE_ENV ===
+            "development"
+              ? errorText
+              : undefined,
+        },
+        {
+          status: 502,
+        },
+      );
+    }
+
+    /* -----------------------------------------------------
+       10. READ OPENAI RESPONSE
+    ----------------------------------------------------- */
+
+    const openAIData =
+      await openAIResponse.json();
+
+    const outputText =
+      extractOutputText(
+        openAIData,
+      );
+
+    if (!outputText) {
+      console.error(
+        "OpenAI returned no output:",
+        openAIData,
+      );
+
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Virello AI returned an empty response.",
+        },
+        {
+          status: 502,
+        },
+      );
+    }
+
+    /* -----------------------------------------------------
+       11. PARSE JSON
+    ----------------------------------------------------- */
+
+    let rawResult: any;
+
+    try {
+      rawResult =
+        JSON.parse(outputText);
+    } catch (parseError) {
+      console.error(
+        "Failed to parse OpenAI JSON:",
+        parseError,
+        outputText,
+      );
+
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Virello AI returned invalid structured data.",
+        },
+        {
+          status: 502,
+        },
+      );
+    }
+
+    /* -----------------------------------------------------
+       12. NORMALIZE RESULT
+    ----------------------------------------------------- */
+
+    const result =
+      normalizeResult(
+        rawResult,
+      );
+
+    /* -----------------------------------------------------
+       13. SAFETY CHECKS
+    ----------------------------------------------------- */
+
+    /*
+     * If the AI somehow changes an explicit audience,
+     * correct the target customer text.
+     */
+
+    if (
+      detectedAudience === "Men" &&
+      /women|female|ladies|woman/i.test(
+        result.analysis
+          .targetCustomer,
+      )
+    ) {
+      result.analysis.targetCustomer =
+        "Men looking for a premium watch suited to their style and everyday or occasion-based wear.";
+    }
+
+    if (
+      detectedAudience === "Women" &&
+      /men|male|gentlemen|man/i.test(
+        result.analysis
+          .targetCustomer,
+      )
+    ) {
+      result.analysis.targetCustomer =
+        "Women looking for a stylish watch suited to their personal style and everyday or occasion-based wear.";
+    }
+
+    /* -----------------------------------------------------
+       14. RETURN
+    ----------------------------------------------------- */
+
+    return NextResponse.json(
+      {
+        success: true,
+
+        result,
+
+        /*
+         * These values make it easy for the frontend
+         * to understand exactly what Virello detected.
+         */
+
+        detectedAudience,
+
+        productId:
+          clean(product.id),
+
+        model,
+      },
+      {
+        status: 200,
+      },
+    );
+  } catch (error) {
+    console.error(
+      "Virello AI analyze error:",
+      error,
+    );
+
+    return NextResponse.json(
+      {
+        success: false,
+
+        error:
+          error instanceof Error
+            ? error.message
+            : "Unexpected Virello AI error.",
+      },
+      {
+        status: 500,
+      },
+    );
+  }
+}
