@@ -409,9 +409,7 @@ export async function POST(request: Request) {
       );
     }
 
-    if (
-      result?.optimization
-    ) {
+    if (result?.optimization) {
       result.optimization.seoTitle =
         enforceLimit(
           result.optimization.seoTitle,
