@@ -215,7 +215,7 @@ const responseSchema = {
 } as const;
 
 /* =========================================================
-   HELPERS
+   BASIC HELPERS
 ========================================================= */
 
 function clean(value: unknown): string {
@@ -246,10 +246,7 @@ function unique(values: unknown[]): string[] {
   return result;
 }
 
-function limit(
-  value: unknown,
-  max: number,
-): string {
+function limit(value: unknown, max: number): string {
   const text = clean(value);
 
   if (text.length <= max) {
@@ -258,15 +255,10 @@ function limit(
 
   let result = text.slice(0, max);
 
-  const lastSpace =
-    result.lastIndexOf(" ");
+  const lastSpace = result.lastIndexOf(" ");
 
-  if (
-    lastSpace >
-    Math.floor(max * 0.65)
-  ) {
-    result =
-      result.slice(0, lastSpace);
+  if (lastSpace > Math.floor(max * 0.65)) {
+    result = result.slice(0, lastSpace);
   }
 
   return result
@@ -274,22 +266,148 @@ function limit(
     .trim();
 }
 
-function normalizeAudience(
-  value: unknown,
-): Audience {
-  const audience =
-    clean(value).toLowerCase();
+function wordCount(value: unknown): number {
+  const text = clean(value);
 
-  if (audience === "men") {
+  if (!text) {
+    return 0;
+  }
+
+  return text.split(/\s+/).length;
+}
+
+function clampScore(value: number): number {
+  return Math.max(
+    0,
+    Math.min(100, Math.round(value)),
+  );
+}
+
+/* =========================================================
+   AUDIENCE DETECTION
+========================================================= */
+
+/*
+  Important rule:
+
+  Men/Women explicitly selected by the application
+  are respected.
+
+  "Unisex" is treated as a fallback when the product
+  itself contains a clear gender signal.
+
+  This prevents a men's watch from becoming unisex
+  simply because the UI default was Unisex.
+*/
+
+function detectAudienceFromText(
+  product: ProductInput,
+): Audience {
+  const title = clean(product.title).toLowerCase();
+  const description = clean(product.description).toLowerCase();
+  const productType = clean(product.productType).toLowerCase();
+  const vendor = clean(product.vendor).toLowerCase();
+
+  const tags = Array.isArray(product.tags)
+    ? product.tags
+        .map((tag) => clean(tag).toLowerCase())
+        .join(" ")
+    : "";
+
+  const source = [
+    title,
+    description,
+    productType,
+    vendor,
+    tags,
+  ].join(" ");
+
+  const maleStrongPatterns = [
+    /\bmen's\b/,
+    /\bmens\b/,
+    /\bmen\b/,
+    /\bfor men\b/,
+    /\bmale\b/,
+    /\bgentleman\b/,
+    /\bgentlemen\b/,
+    /\bgents\b/,
+    /\bfor him\b/,
+    /\bboy's\b/,
+    /\bboys\b/,
+  ];
+
+  const femaleStrongPatterns = [
+    /\bwomen's\b/,
+    /\bwomens\b/,
+    /\bwomen\b/,
+    /\bfor women\b/,
+    /\bfemale\b/,
+    /\bladies\b/,
+    /\blady\b/,
+    /\bfor her\b/,
+    /\bgirl's\b/,
+    /\bgirls\b/,
+  ];
+
+  const maleScore = maleStrongPatterns.reduce(
+    (score, pattern) =>
+      score + (pattern.test(source) ? 1 : 0),
+    0,
+  );
+
+  const femaleScore = femaleStrongPatterns.reduce(
+    (score, pattern) =>
+      score + (pattern.test(source) ? 1 : 0),
+    0,
+  );
+
+  if (maleScore > femaleScore && maleScore > 0) {
     return "Men";
   }
 
-  if (audience === "women") {
+  if (femaleScore > maleScore && femaleScore > 0) {
     return "Women";
   }
 
   return "Unisex";
 }
+
+/* =========================================================
+   AUTHORITATIVE AUDIENCE
+========================================================= */
+
+function resolveAudience(
+  product: ProductInput,
+): Audience {
+  const supplied = clean(product.audience)
+    .toLowerCase();
+
+  /*
+    Explicit Men/Women selections always win.
+  */
+
+  if (supplied === "men") {
+    return "Men";
+  }
+
+  if (supplied === "women") {
+    return "Women";
+  }
+
+  /*
+    If UI supplied Unisex/default, inspect actual
+    Shopify product information.
+  */
+
+  const detected =
+    detectAudienceFromText(product);
+
+  return detected;
+}
+
+/* =========================================================
+   PRODUCT NORMALIZATION
+========================================================= */
 
 function safeProduct(
   product: ProductInput,
@@ -299,13 +417,9 @@ function safeProduct(
 
     title: clean(product.title),
 
-    description: clean(
-      product.description,
-    ),
+    description: clean(product.description),
 
-    productType: clean(
-      product.productType,
-    ),
+    productType: clean(product.productType),
 
     vendor: clean(product.vendor),
 
@@ -317,16 +431,14 @@ function safeProduct(
 
     price: clean(product.price),
 
-    audience: normalizeAudience(
-      product.audience,
-    ),
+    audience: resolveAudience(product),
 
     style: clean(product.style),
   };
 }
 
 /* =========================================================
-   AUDIENCE RULES
+   AUDIENCE INSTRUCTIONS
 ========================================================= */
 
 function audienceInstructions(
@@ -335,98 +447,109 @@ function audienceInstructions(
   if (audience === "Men") {
     return `
 ==================================================
-STRICT AUDIENCE: MEN
+STRICT TARGET AUDIENCE: MEN
 ==================================================
 
 The authoritative target audience is MEN.
 
-This instruction has the highest priority.
+This is a men's product.
 
-The product MUST be positioned as a men's product.
+Every major marketing decision must reflect male
+shopping intent.
 
-targetCustomer MUST describe men.
+targetCustomer MUST describe male shoppers.
 
-purchaseMotivation MUST be relevant to male shoppers.
+purchaseMotivation MUST be relevant to men.
 
-conversionOpportunities MUST be relevant to male shoppers.
+conversionOpportunities MUST be relevant to men.
 
-The title must remain appropriate for a men's product.
+The product title must remain appropriate for men.
 
-The description must remain appropriate for a men's product.
+The product description must remain appropriate for men.
 
-SEO content must remain appropriate for men's search intent.
+SEO content must reflect men's search intent.
 
 Do NOT target women.
 
 Do NOT describe women as the target customer.
 
-Do NOT say "women and men".
-
-Do NOT say "men and women".
-
-Do NOT use:
+Do NOT say:
+- men and women
+- women and men
+- unisex
 - women's
-- women
 - ladies
 - female
 - for her
 
-unless the term appears only inside missingInformation
-to explicitly explain conflicting source data.
+unless the term is necessary inside
+missingInformation to identify conflicting
+source data.
 
-If the source product data contains conflicting
-female-oriented wording, prioritize the authoritative
-audience value supplied by the application and identify
-the conflict in missingInformation.
-
-Never silently change MEN into women or unisex.
+Never silently convert a men's product to women
+or unisex.
 `;
   }
 
   if (audience === "Women") {
     return `
 ==================================================
-STRICT AUDIENCE: WOMEN
+STRICT TARGET AUDIENCE: WOMEN
 ==================================================
 
 The authoritative target audience is WOMEN.
 
-The product MUST be positioned as a women's product.
+This is a women's product.
 
-targetCustomer MUST describe women.
+Every major marketing decision must reflect female
+shopping intent.
 
-purchaseMotivation MUST be relevant to female shoppers.
+targetCustomer MUST describe female shoppers.
 
-conversionOpportunities MUST be relevant to female shoppers.
+purchaseMotivation MUST be relevant to women.
+
+conversionOpportunities MUST be relevant to women.
+
+The product title must remain appropriate for women.
+
+The product description must remain appropriate for women.
+
+SEO content must reflect women's search intent.
 
 Do NOT target men.
 
 Do NOT describe men as the target customer.
 
-Do NOT say "men and women".
+Do NOT say:
+- men and women
+- women and men
+- men's
+- gentlemen
+- male
+- for him
 
-Do NOT use male-oriented positioning.
+unless the term is necessary inside
+missingInformation to identify conflicting
+source data.
 `;
   }
 
   return `
 ==================================================
-STRICT AUDIENCE: UNISEX
+TARGET AUDIENCE: UNISEX
 ==================================================
 
-The authoritative target audience is UNISEX.
-
-The product may be positioned for both men and women.
-
-Do not force a gender-specific positioning unless
-the source data clearly supports it.
+The product may be marketed to both men and women.
 
 Use inclusive language.
+
+Only use unisex positioning when the actual product
+data does not contain a stronger gender signal.
 `;
 }
 
 /* =========================================================
-   AUDIENCE VALIDATION
+   FORBIDDEN AUDIENCE LANGUAGE
 ========================================================= */
 
 function containsForbiddenAudienceLanguage(
@@ -440,14 +563,24 @@ function containsForbiddenAudienceLanguage(
   }
 
   if (audience === "Men") {
-    return /\bwomen\b|\bwomen's\b|\bladies\b|\bfemale\b|\bfor her\b/.test(
-      text,
+    return (
+      /\bwomen\b/.test(text) ||
+      /\bwomen's\b/.test(text) ||
+      /\bladies\b/.test(text) ||
+      /\bfemale\b/.test(text) ||
+      /\bfor her\b/.test(text) ||
+      /\bunisex\b/.test(text)
     );
   }
 
   if (audience === "Women") {
-    return /\bmen\b|\bmen's\b|\bgentlemen\b|\bmale\b|\bfor him\b/.test(
-      text,
+    return (
+      /\bmen\b/.test(text) ||
+      /\bmen's\b/.test(text) ||
+      /\bgentlemen\b/.test(text) ||
+      /\bmale\b/.test(text) ||
+      /\bfor him\b/.test(text) ||
+      /\bunisex\b/.test(text)
     );
   }
 
@@ -455,18 +588,15 @@ function containsForbiddenAudienceLanguage(
 }
 
 /* =========================================================
-   VALIDATE AUDIENCE RESULT
+   VALIDATE AUDIENCE
 ========================================================= */
 
 function validateAudienceResult(
   result: any,
   audience: Audience,
 ): string | null {
-  const analysis =
-    result?.analysis || {};
-
-  const optimization =
-    result?.optimization || {};
+  const analysis = result?.analysis || {};
+  const optimization = result?.optimization || {};
 
   const fields = [
     analysis.targetCustomer,
@@ -489,9 +619,7 @@ function validateAudienceResult(
     optimization.seoTitle,
     optimization.metaDescription,
 
-    ...(Array.isArray(
-      optimization.tags,
-    )
+    ...(Array.isArray(optimization.tags)
       ? optimization.tags
       : []),
   ];
@@ -505,13 +633,13 @@ function validateAudienceResult(
     ) {
       if (audience === "Men") {
         return (
-          "AI returned female-oriented positioning for a Men's product."
+          "AI generated female or unisex positioning for a men's product."
         );
       }
 
       if (audience === "Women") {
         return (
-          "AI returned male-oriented positioning for a Women's product."
+          "AI generated male or unisex positioning for a women's product."
         );
       }
     }
@@ -521,21 +649,114 @@ function validateAudienceResult(
 }
 
 /* =========================================================
-   NORMALIZE RESULT
+   DUPLICATE TITLE HELPERS
 ========================================================= */
 
-function normalizeResult(
-  result: any,
-): any {
+function normalizeTitle(value: unknown): string {
+  return clean(value)
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function titleSimilarity(
+  first: string,
+  second: string,
+): number {
+  const a = new Set(
+    normalizeTitle(first)
+      .split(" ")
+      .filter(Boolean),
+  );
+
+  const b = new Set(
+    normalizeTitle(second)
+      .split(" ")
+      .filter(Boolean),
+  );
+
+  if (!a.size || !b.size) {
+    return 0;
+  }
+
+  let intersection = 0;
+
+  for (const word of a) {
+    if (b.has(word)) {
+      intersection++;
+    }
+  }
+
+  const union = new Set([
+    ...a,
+    ...b,
+  ]).size;
+
+  return union
+    ? intersection / union
+    : 0;
+}
+
+function isDuplicateTitle(
+  generated: string,
+  existingTitles: string[],
+): boolean {
+  const normalizedGenerated =
+    normalizeTitle(generated);
+
+  for (const existing of existingTitles) {
+    const normalizedExisting =
+      normalizeTitle(existing);
+
+    if (
+      normalizedExisting ===
+      normalizedGenerated
+    ) {
+      return true;
+    }
+
+    /*
+      Prevent near-duplicate titles.
+    */
+
+    if (
+      normalizedGenerated.length > 12 &&
+      normalizedExisting.length > 12 &&
+      titleSimilarity(
+        normalizedGenerated,
+        normalizedExisting,
+      ) >= 0.82
+    ) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+/* =========================================================
+   RESULT NORMALIZATION
+========================================================= */
+
+function normalizeResult(result: any): any {
+  if (!result.analysis) {
+    result.analysis = {};
+  }
+
+  if (!result.score) {
+    result.score = {};
+  }
+
+  if (!result.optimization) {
+    result.optimization = {};
+  }
+
   result.optimization.title =
-    clean(
-      result.optimization.title,
-    );
+    clean(result.optimization.title);
 
   result.optimization.description =
-    clean(
-      result.optimization.description,
-    );
+    clean(result.optimization.description);
 
   result.optimization.seoTitle =
     limit(
@@ -545,30 +766,25 @@ function normalizeResult(
 
   result.optimization.metaDescription =
     limit(
-      result.optimization
-        .metaDescription,
+      result.optimization.metaDescription,
       150,
     );
 
   result.optimization.features =
     unique(
       Array.isArray(
-        result.optimization
-          .features,
+        result.optimization.features,
       )
-        ? result.optimization
-            .features
+        ? result.optimization.features
         : [],
     );
 
   result.optimization.specifications =
     unique(
       Array.isArray(
-        result.optimization
-          .specifications,
+        result.optimization.specifications,
       )
-        ? result.optimization
-            .specifications
+        ? result.optimization.specifications
         : [],
     );
 
@@ -583,100 +799,374 @@ function normalizeResult(
 
   result.analysis.targetCustomer =
     clean(
-      result.analysis
-        .targetCustomer,
+      result.analysis.targetCustomer,
     );
 
   result.analysis.purchaseMotivation =
     clean(
-      result.analysis
-        .purchaseMotivation,
+      result.analysis.purchaseMotivation,
     );
 
   result.analysis.strongestFeatures =
     unique(
       Array.isArray(
-        result.analysis
-          .strongestFeatures,
+        result.analysis.strongestFeatures,
       )
-        ? result.analysis
-            .strongestFeatures
+        ? result.analysis.strongestFeatures
         : [],
     );
 
   result.analysis.weaknesses =
     unique(
       Array.isArray(
-        result.analysis
-          .weaknesses,
+        result.analysis.weaknesses,
       )
-        ? result.analysis
-            .weaknesses
+        ? result.analysis.weaknesses
         : [],
     );
 
   result.analysis.missingInformation =
     unique(
       Array.isArray(
-        result.analysis
-          .missingInformation,
+        result.analysis.missingInformation,
       )
-        ? result.analysis
-            .missingInformation
+        ? result.analysis.missingInformation
         : [],
     );
 
   result.analysis.seoOpportunities =
     unique(
       Array.isArray(
-        result.analysis
-          .seoOpportunities,
+        result.analysis.seoOpportunities,
       )
-        ? result.analysis
-            .seoOpportunities
+        ? result.analysis.seoOpportunities
         : [],
     );
 
   result.analysis.conversionOpportunities =
     unique(
       Array.isArray(
-        result.analysis
-          .conversionOpportunities,
+        result.analysis.conversionOpportunities,
       )
-        ? result.analysis
-            .conversionOpportunities
+        ? result.analysis.conversionOpportunities
         : [],
     );
-
-  const scoreKeys = [
-    "title",
-    "description",
-    "seo",
-    "productClarity",
-    "conversionPotential",
-    "overall",
-  ];
-
-  for (const key of scoreKeys) {
-    const value =
-      Number(result.score[key]);
-
-    result.score[key] =
-      Number.isFinite(value)
-        ? Math.max(
-            0,
-            Math.min(
-              100,
-              Math.round(value),
-            ),
-          )
-        : 0;
-  }
 
   result.reasoning =
     clean(result.reasoning);
 
   return result;
+}
+
+/* =========================================================
+   QUALITY SCORING
+========================================================= */
+
+/*
+  The AI provides its analysis, but Virello calculates
+  a second quality score from the actual optimized result.
+
+  This prevents random low scores and makes the score
+  consistent with the quality of the generated listing.
+*/
+
+function calculateQualityScores(
+  result: any,
+  audience: Audience,
+  product: ProductInput,
+) {
+  const title =
+    clean(result.optimization?.title);
+
+  const description =
+    clean(result.optimization?.description);
+
+  const seoTitle =
+    clean(result.optimization?.seoTitle);
+
+  const metaDescription =
+    clean(result.optimization?.metaDescription);
+
+  const targetCustomer =
+    clean(result.analysis?.targetCustomer);
+
+  const purchaseMotivation =
+    clean(result.analysis?.purchaseMotivation);
+
+  const features = Array.isArray(
+    result.optimization?.features,
+  )
+    ? result.optimization.features
+    : [];
+
+  const tags = Array.isArray(
+    result.optimization?.tags,
+  )
+    ? result.optimization.tags
+    : [];
+
+  const sourceText = [
+    clean(product.title),
+    clean(product.description),
+    clean(product.productType),
+    clean(product.vendor),
+    ...(Array.isArray(product.tags)
+      ? product.tags
+      : []),
+  ]
+    .join(" ")
+    .toLowerCase();
+
+  const titleLower = title.toLowerCase();
+  const descriptionLower =
+    description.toLowerCase();
+
+  const audienceWord =
+    audience === "Men"
+      ? /\bmen\b|\bmen's\b|\bmens\b/
+      : audience === "Women"
+        ? /\bwomen\b|\bwomen's\b|\bwomens\b/
+        : /\bmen\b|\bwomen\b|\bunisex\b/;
+
+  /* =======================================================
+     TITLE SCORE
+  ======================================================= */
+
+  let titleScore = 70;
+
+  const titleWords = wordCount(title);
+
+  if (
+    titleWords >= 4 &&
+    titleWords <= 8
+  ) {
+    titleScore += 8;
+  }
+
+  if (
+    title.length >= 25 &&
+    title.length <= 65
+  ) {
+    titleScore += 7;
+  }
+
+  if (audienceWord.test(titleLower)) {
+    titleScore += 5;
+  }
+
+  if (
+    /\bwatch\b|\bchronograph\b|\bquartz\b|\bautomatic\b|\bbracelet\b/
+      .test(titleLower)
+  ) {
+    titleScore += 5;
+  }
+
+  if (
+    !/[!?]{2,}/.test(title) &&
+    !/[A-Z]{5,}/.test(title)
+  ) {
+    titleScore += 3;
+  }
+
+  titleScore = clampScore(titleScore);
+
+  /* =======================================================
+     DESCRIPTION SCORE
+  ======================================================= */
+
+  let descriptionScore = 68;
+
+  if (description.length >= 250) {
+    descriptionScore += 8;
+  }
+
+  if (description.length >= 400) {
+    descriptionScore += 5;
+  }
+
+  if (description.length <= 1400) {
+    descriptionScore += 3;
+  }
+
+  if (
+    /\bdesigned\b|\bfeatures\b|\bideal\b|\bstyle\b|\bcrafted\b|\bwear\b/
+      .test(descriptionLower)
+  ) {
+    descriptionScore += 5;
+  }
+
+  if (
+    audienceWord.test(descriptionLower)
+  ) {
+    descriptionScore += 4;
+  }
+
+  if (
+    features.length >= 3
+  ) {
+    descriptionScore += 4;
+  }
+
+  descriptionScore = clampScore(
+    descriptionScore,
+  );
+
+  /* =======================================================
+     SEO SCORE
+  ======================================================= */
+
+  let seoScore = 68;
+
+  if (
+    seoTitle.length >= 25 &&
+    seoTitle.length <= 50
+  ) {
+    seoScore += 8;
+  }
+
+  if (
+    metaDescription.length >= 110 &&
+    metaDescription.length <= 150
+  ) {
+    seoScore += 8;
+  }
+
+  const seoWords =
+    normalizeTitle(seoTitle)
+      .split(" ")
+      .filter(Boolean);
+
+  const matchingSeoWords =
+    seoWords.filter((word) =>
+      sourceText.includes(word),
+    ).length;
+
+  if (matchingSeoWords >= 2) {
+    seoScore += 5;
+  }
+
+  if (tags.length >= 4) {
+    seoScore += 4;
+  }
+
+  if (tags.length >= 6) {
+    seoScore += 3;
+  }
+
+  seoScore = clampScore(seoScore);
+
+  /* =======================================================
+     PRODUCT CLARITY
+  ======================================================= */
+
+  let clarityScore = 70;
+
+  if (title) {
+    clarityScore += 5;
+  }
+
+  if (targetCustomer) {
+    clarityScore += 5;
+  }
+
+  if (purchaseMotivation) {
+    clarityScore += 5;
+  }
+
+  if (features.length >= 3) {
+    clarityScore += 5;
+  }
+
+  if (
+    Array.isArray(
+      result.optimization?.specifications,
+    ) &&
+    result.optimization.specifications
+      .length >= 1
+  ) {
+    clarityScore += 3;
+  }
+
+  if (
+    result.analysis?.missingInformation &&
+    result.analysis.missingInformation.length <= 4
+  ) {
+    clarityScore += 2;
+  }
+
+  clarityScore = clampScore(
+    clarityScore,
+  );
+
+  /* =======================================================
+     CONVERSION SCORE
+  ======================================================= */
+
+  let conversionScore = 70;
+
+  if (purchaseMotivation) {
+    conversionScore += 6;
+  }
+
+  if (description.length >= 250) {
+    conversionScore += 5;
+  }
+
+  if (features.length >= 3) {
+    conversionScore += 5;
+  }
+
+  if (targetCustomer) {
+    conversionScore += 4;
+  }
+
+  if (
+    Array.isArray(
+      result.analysis?.conversionOpportunities,
+    ) &&
+    result.analysis.conversionOpportunities
+      .length >= 2
+  ) {
+    conversionScore += 3;
+  }
+
+  if (
+    audienceWord.test(
+      (
+        targetCustomer +
+        " " +
+        purchaseMotivation
+      ).toLowerCase(),
+    )
+  ) {
+    conversionScore += 4;
+  }
+
+  conversionScore = clampScore(
+    conversionScore,
+  );
+
+  /* =======================================================
+     OVERALL
+  ======================================================= */
+
+  const overall =
+    clampScore(
+      titleScore * 0.18 +
+        descriptionScore * 0.20 +
+        seoScore * 0.20 +
+        clarityScore * 0.20 +
+        conversionScore * 0.22,
+    );
+
+  return {
+    title: titleScore,
+    description: descriptionScore,
+    seo: seoScore,
+    productClarity: clarityScore,
+    conversionPotential: conversionScore,
+    overall,
+  };
 }
 
 /* =========================================================
@@ -776,16 +1266,22 @@ export async function POST(
       );
 
     /* =====================================================
-       PRODUCT DATA
+       RESOLVE AUDIENCE
     ===================================================== */
+
+    const authoritativeAudience =
+      resolveAudience(product);
 
     const productData =
       safeProduct(product);
 
-    const authoritativeAudience =
-      normalizeAudience(
-        product.audience,
-      );
+    /*
+      Make sure the actual resolved audience is included
+      in the data sent to the AI.
+    */
+
+    productData.audience =
+      authoritativeAudience;
 
     /* =====================================================
        MODEL
@@ -812,7 +1308,7 @@ data and create a stronger product listing.
 
 This is REAL AI ANALYSIS.
 
-Do not use fake hard-coded product information.
+Do not use hard-coded product information.
 
 Do not invent facts.
 
@@ -848,114 +1344,119 @@ ${audienceInstructions(
 )}
 
 ==================================================
-PRODUCT POSITIONING
+CORE PRODUCT ANALYSIS
 ==================================================
 
-The supplied audience is authoritative.
+Analyze the actual product using:
 
-The supplied style is authoritative as a
-marketing direction.
+- title
+- description
+- product type
+- vendor
+- tags
+- price
+- audience
+- style
 
-Analyze the product according to:
+The authoritative audience is:
 
-- actual product title
-- actual description
-- actual product type
-- actual vendor
-- actual tags
-- actual price
-- selected audience
-- selected style
+${authoritativeAudience}
 
-Do not allow unrelated words in the source
-description to override the authoritative audience.
+Do not allow generic ecommerce assumptions
+to override the authoritative audience.
+
+Use the actual product information to determine:
+
+- what the product is
+- who it is for
+- why the customer would want it
+- strongest verified features
+- missing information
+- SEO opportunities
+- conversion opportunities
 
 ==================================================
 TITLE
 ==================================================
 
-Create a concise premium ecommerce title.
+Create a premium ecommerce title.
 
-Target approximately 4–8 meaningful words.
+Use approximately 4–8 meaningful words.
 
-The title should:
+The title must:
 
-- clearly identify the product
+- identify the actual product
+- use relevant search language
 - sound premium
 - sound natural
-- use relevant search language
+- fit the audience
 - avoid keyword stuffing
-- avoid excessive punctuation
-- avoid ALL CAPS
+- avoid unnecessary punctuation
 - avoid generic marketplace wording
-- avoid repetitive wording
 - avoid fake luxury claims
 - avoid unsupported claims
-- fit the selected audience
+- avoid repetitive wording
 
-The title must NOT exactly match an existing
-Shopify title.
+Do not exactly copy an existing Shopify title.
 
 Avoid near duplicates.
-
-A near duplicate includes changing only:
-
-- punctuation
-- capitalization
-- one adjective
-- pluralization
-- minor word order
-
-Create a genuinely differentiated title.
 
 ==================================================
 DESCRIPTION
 ==================================================
 
-Write customer-facing premium product copy.
+Create persuasive customer-facing copy.
 
 The description should:
 
-1. Lead with the main customer value.
-2. Explain the product's appeal.
-3. Highlight verified features.
-4. Use natural SEO language.
-5. Support purchase intent.
-6. Match the selected audience.
-7. Match the selected style.
-8. Sound like a premium boutique brand.
-9. Avoid dropshipping-style language.
-10. Avoid keyword stuffing.
-11. Avoid repetitive sentences.
-12. Avoid unsupported claims.
+- lead with customer value
+- explain the product appeal
+- highlight verified features
+- match the target audience
+- use natural SEO language
+- create purchase motivation
+- sound like a premium boutique brand
+- avoid dropshipping language
+- avoid keyword stuffing
+- avoid repetitive sentences
+- avoid unsupported claims
 
 Do not use fake urgency.
 
 Do not claim scarcity unless supplied.
 
-Do not claim "best", "number one",
-"guaranteed", or similar unsupported claims.
+Do not claim:
+- best
+- number one
+- guaranteed
+- premium quality
+- luxury
+- waterproof
+- scratch-proof
+- medical
+- certified
+
+unless supported by the actual source data.
 
 ==================================================
 FEATURES
 ==================================================
 
-Only include features supported by actual
-product information.
+Only include verified features.
 
-Never invent a feature.
+Never invent features.
 
 ==================================================
 SPECIFICATIONS
 ==================================================
 
-Only include specifications explicitly
-supported by the supplied product data.
+Only include specifications explicitly supported
+by the supplied product information.
 
-If no reliable specifications are available,
+If reliable specifications are unavailable,
 return an empty array.
 
-Do not guess.
+Never guess.
 
 ==================================================
 SEO TITLE
@@ -965,7 +1466,7 @@ Maximum 50 characters.
 
 Use the strongest relevant search phrase.
 
-Keep it natural.
+Make it natural.
 
 Do not keyword stuff.
 
@@ -987,108 +1488,98 @@ Make it:
 TAGS
 ==================================================
 
-Generate useful Shopify tags.
+Generate useful Shopify tags based on:
 
-Tags must be based on actual product data.
+- actual product category
+- audience
+- style
+- design
+- verified features
+- search intent
 
-Use relevant product category,
-style, audience, design, and verified features.
+Avoid unsupported technical claims.
 
-Do not create unsupported technical tags.
-
-Do not repeat the same concept unnecessarily.
+Avoid repeated concepts.
 
 ==================================================
 ANALYSIS
 ==================================================
 
-Analyze:
+The analysis must be product-specific.
 
-- target customer
-- purchase motivation
-- strongest features
-- weaknesses
-- missing information
-- SEO opportunities
-- conversion opportunities
+Target customer must clearly identify the correct
+audience.
 
-The analysis should explain what makes this
-specific product commercially attractive.
+Purchase motivation must explain why that customer
+would want this exact product.
 
-Do not give generic ecommerce advice.
+Strongest features must be based on actual data.
+
+Weaknesses must identify real listing limitations.
+
+Missing information must identify information that
+would improve customer confidence.
+
+SEO opportunities must identify useful search terms.
+
+Conversion opportunities must explain practical
+ways to improve purchase intent.
 
 ==================================================
 SCORING
 ==================================================
 
-Score the QUALITY of the optimized result
-from 0 to 100.
+Provide an honest quality assessment.
 
-Do not artificially inflate scores.
-
-Use these approximate standards:
-
-90–100 = exceptional
-80–89 = strong
-70–79 = good
-60–69 = moderate
-50–59 = weak
-below 50 = poor
-
-A genuinely strong optimized listing should
-normally land in the 80–95 range.
-
-Do not give 95+ unless the result is genuinely
-excellent.
-
-Consider:
+The optimized result should be evaluated on:
 
 Title:
 - relevance
 - clarity
 - search intent
 - differentiation
+- audience fit
 
 Description:
 - persuasion
 - clarity
-- verified benefits
+- benefits
+- verified features
 - audience fit
-- premium tone
 
 SEO:
 - keyword relevance
-- natural language
+- SEO title
+- meta description
+- tags
 - search intent
-- title/meta quality
 
 Product clarity:
 - what it is
 - who it is for
 - why it matters
-- important verified details
+- available details
 
 Conversion:
 - value communication
-- trust
-- clarity
 - purchase motivation
+- clarity
+- trust
 - audience fit
 
-Overall should be a balanced assessment of
-all categories.
+Do not randomly lower scores.
 
-Missing information should NOT automatically
-destroy the score if the listing remains strong.
+Do not randomly inflate scores.
+
+A strong optimized listing can score in the
+80–95 range.
 
 ==================================================
 FINAL OUTPUT
 ==================================================
 
-Return ONLY the requested structured JSON object.
-
+Return ONLY the structured JSON object.
 No markdown.
-
 No explanation outside the JSON.
 `;
 
@@ -1102,6 +1593,9 @@ No explanation outside the JSON.
           authoritativeAudience:
             authoritativeAudience,
 
+          audienceDetection:
+            "The application resolved the target audience from explicit selection and actual Shopify product signals.",
+
           product:
             productData,
 
@@ -1109,7 +1603,7 @@ No explanation outside the JSON.
             existingTitles,
 
           task:
-            "Analyze this actual Shopify product and create a stronger factual premium optimization while strictly following the authoritative audience.",
+            "Analyze this actual Shopify product and create a stronger factual premium optimization. Keep the target audience accurate and avoid unsupported claims.",
         },
         null,
         2,
@@ -1208,7 +1702,7 @@ No explanation outside the JSON.
     }
 
     /* =====================================================
-       EXTRACT TEXT
+       EXTRACT OUTPUT
     ===================================================== */
 
     const outputText =
@@ -1330,7 +1824,7 @@ No explanation outside the JSON.
     }
 
     /* =====================================================
-       FINAL TITLE VALIDATION
+       TITLE VALIDATION
     ===================================================== */
 
     if (
@@ -1353,54 +1847,18 @@ No explanation outside the JSON.
        DUPLICATE TITLE CHECK
     ===================================================== */
 
-    const generatedTitle =
-      clean(
+    if (
+      isDuplicateTitle(
         result.optimization.title,
-      ).toLowerCase();
-
-    const normalizedGeneratedTitle =
-      generatedTitle
-        .replace(
-          /[^a-z0-9\s]/gi,
-          "",
-        )
-        .replace(/\s+/g, " ")
-        .trim();
-
-    const duplicateTitle =
-      existingTitles.find(
-        (existingTitle) => {
-          const normalizedExisting =
-            clean(
-              existingTitle,
-            )
-              .toLowerCase()
-              .replace(
-                /[^a-z0-9\s]/gi,
-                "",
-              )
-              .replace(
-                /\s+/g,
-                " ",
-              )
-              .trim();
-
-          return (
-            normalizedExisting ===
-              normalizedGeneratedTitle ||
-            normalizedExisting ===
-              generatedTitle
-          );
-        },
-      );
-
-    if (duplicateTitle) {
+        existingTitles,
+      )
+    ) {
       return NextResponse.json(
         {
           success: false,
 
           error:
-            "AI generated a product title that already exists in Shopify. Please run the analysis again to generate a different title.",
+            "AI generated a product title that is already used or too similar to an existing Shopify title. Please run the analysis again.",
         },
         {
           status: 422,
@@ -1409,11 +1867,25 @@ No explanation outside the JSON.
     }
 
     /* =====================================================
+       FINAL QUALITY SCORE
+    ===================================================== */
+
+    result.score =
+      calculateQualityScores(
+        result,
+        authoritativeAudience,
+        product,
+      );
+
+    /* =====================================================
        FINAL RESPONSE
     ===================================================== */
 
     return NextResponse.json({
       success: true,
+
+      audience:
+        authoritativeAudience,
 
       result,
     });
