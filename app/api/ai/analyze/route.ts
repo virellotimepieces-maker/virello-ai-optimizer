@@ -3,6 +3,12 @@ import { NextRequest, NextResponse } from "next/server";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+/* =========================================================
+   TYPES
+========================================================= */
+
+type Audience = "Men" | "Women" | "Unisex";
+
 type ProductInput = {
   id?: string;
   title?: string;
@@ -20,44 +26,56 @@ type AnalyzeBody = {
   existingProductTitles?: string[];
 };
 
+/* =========================================================
+   RESPONSE SCHEMA
+========================================================= */
+
 const responseSchema = {
   type: "object",
   additionalProperties: false,
+
   properties: {
     analysis: {
       type: "object",
       additionalProperties: false,
+
       properties: {
         targetCustomer: {
           type: "string",
         },
+
         purchaseMotivation: {
           type: "string",
         },
+
         strongestFeatures: {
           type: "array",
           items: {
             type: "string",
           },
         },
+
         weaknesses: {
           type: "array",
           items: {
             type: "string",
           },
         },
+
         missingInformation: {
           type: "array",
           items: {
             type: "string",
           },
         },
+
         seoOpportunities: {
           type: "array",
           items: {
             type: "string",
           },
         },
+
         conversionOpportunities: {
           type: "array",
           items: {
@@ -65,6 +83,7 @@ const responseSchema = {
           },
         },
       },
+
       required: [
         "targetCustomer",
         "purchaseMotivation",
@@ -79,38 +98,45 @@ const responseSchema = {
     score: {
       type: "object",
       additionalProperties: false,
+
       properties: {
         title: {
           type: "integer",
           minimum: 0,
           maximum: 100,
         },
+
         description: {
           type: "integer",
           minimum: 0,
           maximum: 100,
         },
+
         seo: {
           type: "integer",
           minimum: 0,
           maximum: 100,
         },
+
         productClarity: {
           type: "integer",
           minimum: 0,
           maximum: 100,
         },
+
         conversionPotential: {
           type: "integer",
           minimum: 0,
           maximum: 100,
         },
+
         overall: {
           type: "integer",
           minimum: 0,
           maximum: 100,
         },
       },
+
       required: [
         "title",
         "description",
@@ -124,31 +150,38 @@ const responseSchema = {
     optimization: {
       type: "object",
       additionalProperties: false,
+
       properties: {
         title: {
           type: "string",
         },
+
         description: {
           type: "string",
         },
+
         features: {
           type: "array",
           items: {
             type: "string",
           },
         },
+
         specifications: {
           type: "array",
           items: {
             type: "string",
           },
         },
+
         seoTitle: {
           type: "string",
         },
+
         metaDescription: {
           type: "string",
         },
+
         tags: {
           type: "array",
           items: {
@@ -156,6 +189,7 @@ const responseSchema = {
           },
         },
       },
+
       required: [
         "title",
         "description",
@@ -180,6 +214,10 @@ const responseSchema = {
   ],
 } as const;
 
+/* =========================================================
+   HELPERS
+========================================================= */
+
 function clean(value: unknown): string {
   return String(value ?? "")
     .replace(/\s+/g, " ")
@@ -192,9 +230,14 @@ function unique(values: unknown[]): string[] {
 
   for (const value of values) {
     const text = clean(value);
+
+    if (!text) {
+      continue;
+    }
+
     const key = text.toLowerCase();
 
-    if (text && !seen.has(key)) {
+    if (!seen.has(key)) {
       seen.add(key);
       result.push(text);
     }
@@ -231,6 +274,23 @@ function limit(
     .trim();
 }
 
+function normalizeAudience(
+  value: unknown,
+): Audience {
+  const audience =
+    clean(value).toLowerCase();
+
+  if (audience === "men") {
+    return "Men";
+  }
+
+  if (audience === "women") {
+    return "Women";
+  }
+
+  return "Unisex";
+}
+
 function safeProduct(
   product: ProductInput,
 ): Record<string, unknown> {
@@ -257,7 +317,7 @@ function safeProduct(
 
     price: clean(product.price),
 
-    audience: clean(
+    audience: normalizeAudience(
       product.audience,
     ),
 
@@ -265,15 +325,371 @@ function safeProduct(
   };
 }
 
+/* =========================================================
+   AUDIENCE RULES
+========================================================= */
+
+function audienceInstructions(
+  audience: Audience,
+): string {
+  if (audience === "Men") {
+    return `
+==================================================
+STRICT AUDIENCE: MEN
+==================================================
+
+The authoritative target audience is MEN.
+
+This instruction has the highest priority.
+
+The product MUST be positioned as a men's product.
+
+targetCustomer MUST describe men.
+
+purchaseMotivation MUST be relevant to male shoppers.
+
+conversionOpportunities MUST be relevant to male shoppers.
+
+The title must remain appropriate for a men's product.
+
+The description must remain appropriate for a men's product.
+
+SEO content must remain appropriate for men's search intent.
+
+Do NOT target women.
+
+Do NOT describe women as the target customer.
+
+Do NOT say "women and men".
+
+Do NOT say "men and women".
+
+Do NOT use:
+- women's
+- women
+- ladies
+- female
+- for her
+
+unless the term appears only inside missingInformation
+to explicitly explain conflicting source data.
+
+If the source product data contains conflicting
+female-oriented wording, prioritize the authoritative
+audience value supplied by the application and identify
+the conflict in missingInformation.
+
+Never silently change MEN into women or unisex.
+`;
+  }
+
+  if (audience === "Women") {
+    return `
+==================================================
+STRICT AUDIENCE: WOMEN
+==================================================
+
+The authoritative target audience is WOMEN.
+
+The product MUST be positioned as a women's product.
+
+targetCustomer MUST describe women.
+
+purchaseMotivation MUST be relevant to female shoppers.
+
+conversionOpportunities MUST be relevant to female shoppers.
+
+Do NOT target men.
+
+Do NOT describe men as the target customer.
+
+Do NOT say "men and women".
+
+Do NOT use male-oriented positioning.
+`;
+  }
+
+  return `
+==================================================
+STRICT AUDIENCE: UNISEX
+==================================================
+
+The authoritative target audience is UNISEX.
+
+The product may be positioned for both men and women.
+
+Do not force a gender-specific positioning unless
+the source data clearly supports it.
+
+Use inclusive language.
+`;
+}
+
+/* =========================================================
+   AUDIENCE VALIDATION
+========================================================= */
+
+function containsForbiddenAudienceLanguage(
+  value: unknown,
+  audience: Audience,
+): boolean {
+  const text = clean(value).toLowerCase();
+
+  if (!text) {
+    return false;
+  }
+
+  if (audience === "Men") {
+    return /\bwomen\b|\bwomen's\b|\bladies\b|\bfemale\b|\bfor her\b/.test(
+      text,
+    );
+  }
+
+  if (audience === "Women") {
+    return /\bmen\b|\bmen's\b|\bgentlemen\b|\bmale\b|\bfor him\b/.test(
+      text,
+    );
+  }
+
+  return false;
+}
+
+/* =========================================================
+   VALIDATE AUDIENCE RESULT
+========================================================= */
+
+function validateAudienceResult(
+  result: any,
+  audience: Audience,
+): string | null {
+  const analysis =
+    result?.analysis || {};
+
+  const optimization =
+    result?.optimization || {};
+
+  const fields = [
+    analysis.targetCustomer,
+    analysis.purchaseMotivation,
+
+    ...(Array.isArray(
+      analysis.conversionOpportunities,
+    )
+      ? analysis.conversionOpportunities
+      : []),
+
+    ...(Array.isArray(
+      analysis.seoOpportunities,
+    )
+      ? analysis.seoOpportunities
+      : []),
+
+    optimization.title,
+    optimization.description,
+    optimization.seoTitle,
+    optimization.metaDescription,
+
+    ...(Array.isArray(
+      optimization.tags,
+    )
+      ? optimization.tags
+      : []),
+  ];
+
+  for (const field of fields) {
+    if (
+      containsForbiddenAudienceLanguage(
+        field,
+        audience,
+      )
+    ) {
+      if (audience === "Men") {
+        return (
+          "AI returned female-oriented positioning for a Men's product."
+        );
+      }
+
+      if (audience === "Women") {
+        return (
+          "AI returned male-oriented positioning for a Women's product."
+        );
+      }
+    }
+  }
+
+  return null;
+}
+
+/* =========================================================
+   NORMALIZE RESULT
+========================================================= */
+
+function normalizeResult(
+  result: any,
+): any {
+  result.optimization.title =
+    clean(
+      result.optimization.title,
+    );
+
+  result.optimization.description =
+    clean(
+      result.optimization.description,
+    );
+
+  result.optimization.seoTitle =
+    limit(
+      result.optimization.seoTitle,
+      50,
+    );
+
+  result.optimization.metaDescription =
+    limit(
+      result.optimization
+        .metaDescription,
+      150,
+    );
+
+  result.optimization.features =
+    unique(
+      Array.isArray(
+        result.optimization
+          .features,
+      )
+        ? result.optimization
+            .features
+        : [],
+    );
+
+  result.optimization.specifications =
+    unique(
+      Array.isArray(
+        result.optimization
+          .specifications,
+      )
+        ? result.optimization
+            .specifications
+        : [],
+    );
+
+  result.optimization.tags =
+    unique(
+      Array.isArray(
+        result.optimization.tags,
+      )
+        ? result.optimization.tags
+        : [],
+    );
+
+  result.analysis.targetCustomer =
+    clean(
+      result.analysis
+        .targetCustomer,
+    );
+
+  result.analysis.purchaseMotivation =
+    clean(
+      result.analysis
+        .purchaseMotivation,
+    );
+
+  result.analysis.strongestFeatures =
+    unique(
+      Array.isArray(
+        result.analysis
+          .strongestFeatures,
+      )
+        ? result.analysis
+            .strongestFeatures
+        : [],
+    );
+
+  result.analysis.weaknesses =
+    unique(
+      Array.isArray(
+        result.analysis
+          .weaknesses,
+      )
+        ? result.analysis
+            .weaknesses
+        : [],
+    );
+
+  result.analysis.missingInformation =
+    unique(
+      Array.isArray(
+        result.analysis
+          .missingInformation,
+      )
+        ? result.analysis
+            .missingInformation
+        : [],
+    );
+
+  result.analysis.seoOpportunities =
+    unique(
+      Array.isArray(
+        result.analysis
+          .seoOpportunities,
+      )
+        ? result.analysis
+            .seoOpportunities
+        : [],
+    );
+
+  result.analysis.conversionOpportunities =
+    unique(
+      Array.isArray(
+        result.analysis
+          .conversionOpportunities,
+      )
+        ? result.analysis
+            .conversionOpportunities
+        : [],
+    );
+
+  const scoreKeys = [
+    "title",
+    "description",
+    "seo",
+    "productClarity",
+    "conversionPotential",
+    "overall",
+  ];
+
+  for (const key of scoreKeys) {
+    const value =
+      Number(result.score[key]);
+
+    result.score[key] =
+      Number.isFinite(value)
+        ? Math.max(
+            0,
+            Math.min(
+              100,
+              Math.round(value),
+            ),
+          )
+        : 0;
+  }
+
+  result.reasoning =
+    clean(result.reasoning);
+
+  return result;
+}
+
+/* =========================================================
+   POST
+========================================================= */
+
 export async function POST(
   request: NextRequest,
 ) {
   try {
-    /*
-     * ==========================================
-     * OPENAI API KEY
-     * ==========================================
-     */
+    /* =====================================================
+       OPENAI KEY
+    ===================================================== */
 
     const apiKey =
       process.env.OPENAI_API_KEY;
@@ -291,11 +707,9 @@ export async function POST(
       );
     }
 
-    /*
-     * ==========================================
-     * SHOPIFY SESSION
-     * ==========================================
-     */
+    /* =====================================================
+       SHOPIFY SESSION
+    ===================================================== */
 
     const authorization =
       request.headers.get(
@@ -325,11 +739,9 @@ export async function POST(
       );
     }
 
-    /*
-     * ==========================================
-     * REQUEST DATA
-     * ==========================================
-     */
+    /* =====================================================
+       REQUEST BODY
+    ===================================================== */
 
     const body =
       (await request.json()) as AnalyzeBody;
@@ -350,11 +762,9 @@ export async function POST(
       );
     }
 
-    /*
-     * ==========================================
-     * EXISTING SHOPIFY TITLES
-     * ==========================================
-     */
+    /* =====================================================
+       EXISTING TITLES
+    ===================================================== */
 
     const existingTitles =
       unique(
@@ -365,218 +775,231 @@ export async function POST(
           : [],
       );
 
-    /*
-     * ==========================================
-     * CLEAN PRODUCT DATA
-     * ==========================================
-     */
+    /* =====================================================
+       PRODUCT DATA
+    ===================================================== */
 
     const productData =
       safeProduct(product);
 
-    /*
-     * ==========================================
-     * AI MODEL
-     * ==========================================
-     */
+    const authoritativeAudience =
+      normalizeAudience(
+        product.audience,
+      );
+
+    /* =====================================================
+       MODEL
+    ===================================================== */
 
     const model =
       process.env.OPENAI_MODEL ||
       "gpt-5.6";
 
-    /*
-     * ==========================================
-     * VIRELLO AI SYSTEM PROMPT
-     * ==========================================
-     */
+    /* =====================================================
+       SYSTEM PROMPT
+    ===================================================== */
 
     const systemPrompt = `
 You are Virello AI Optimizer.
 
-You are an expert ecommerce product strategist,
+You are an advanced ecommerce product strategist,
 SEO specialist, merchandising specialist,
-and conversion-copywriter for a premium online
-watch store targeting United States shoppers.
+and conversion copywriter for a premium online
+watch store.
 
-Your job is to analyze the ACTUAL Shopify
-product information provided and then create
-a significantly stronger product listing.
+Your job is to analyze the ACTUAL Shopify product
+data and create a stronger product listing.
 
-IMPORTANT:
+This is REAL AI ANALYSIS.
 
-This must be REAL AI ANALYSIS.
+Do not use fake hard-coded product information.
 
-Do NOT use hard-coded product assumptions.
+Do not invent facts.
 
-Do NOT invent product facts.
+Do not invent specifications.
 
-Do NOT invent specifications.
+Do not invent materials.
 
-Do NOT invent materials.
+Do not invent movement type.
 
-Do NOT invent movement type.
+Do not invent water resistance.
 
-Do NOT invent water resistance.
+Do not invent dimensions.
 
-Do NOT invent dimensions.
+Do not invent warranty.
 
-Do NOT invent warranty.
+Do not invent certifications.
 
-Do NOT invent certifications.
+Do not invent gemstone information.
 
-Do NOT invent gemstone information.
+Do not invent country of origin.
 
-Do NOT invent country of origin.
+Do not invent shipping times.
 
-Do NOT invent shipping times.
+Do not invent performance claims.
 
-Do NOT invent performance claims.
+Do not invent brand claims.
 
-If information is missing, identify it in
-missingInformation.
+If information is unavailable,
+identify it in missingInformation.
+
+${audienceInstructions(
+  authoritativeAudience,
+)}
 
 ==================================================
-TITLE RULES
+PRODUCT POSITIONING
 ==================================================
 
-Create a concise premium product title.
+The supplied audience is authoritative.
 
-Normally use approximately 4–8 meaningful words.
+The supplied style is authoritative as a
+marketing direction.
 
-The title must:
+Analyze the product according to:
 
+- actual product title
+- actual description
+- actual product type
+- actual vendor
+- actual tags
+- actual price
+- selected audience
+- selected style
+
+Do not allow unrelated words in the source
+description to override the authoritative audience.
+
+==================================================
+TITLE
+==================================================
+
+Create a concise premium ecommerce title.
+
+Target approximately 4–8 meaningful words.
+
+The title should:
+
+- clearly identify the product
 - sound premium
 - sound natural
-- be easy to understand
-- contain useful search language
+- use relevant search language
 - avoid keyword stuffing
 - avoid excessive punctuation
 - avoid ALL CAPS
 - avoid generic marketplace wording
 - avoid repetitive wording
 - avoid fake luxury claims
-- avoid unsupported brand claims
+- avoid unsupported claims
+- fit the selected audience
 
 The title must NOT exactly match an existing
-Shopify product title.
+Shopify title.
 
-It must also avoid near-duplicates.
+Avoid near duplicates.
 
-A near-duplicate includes changing only:
+A near duplicate includes changing only:
 
 - punctuation
-- one adjective
-- color
 - capitalization
+- one adjective
 - pluralization
+- minor word order
 
 Create a genuinely differentiated title.
 
 ==================================================
-DESCRIPTION RULES
+DESCRIPTION
 ==================================================
 
-Create a premium ecommerce description.
+Write customer-facing premium product copy.
 
 The description should:
 
-1. Start with the main customer value.
-2. Explain why the product is appealing.
+1. Lead with the main customer value.
+2. Explain the product's appeal.
 3. Highlight verified features.
 4. Use natural SEO language.
-5. Encourage purchase without making false claims.
-6. Sound like a premium boutique brand.
-7. Avoid dropshipping-style wording.
-8. Avoid keyword stuffing.
-9. Avoid repetitive sentences.
-10. Avoid unsupported claims.
+5. Support purchase intent.
+6. Match the selected audience.
+7. Match the selected style.
+8. Sound like a premium boutique brand.
+9. Avoid dropshipping-style language.
+10. Avoid keyword stuffing.
+11. Avoid repetitive sentences.
+12. Avoid unsupported claims.
+
+Do not use fake urgency.
+
+Do not claim scarcity unless supplied.
+
+Do not claim "best", "number one",
+"guaranteed", or similar unsupported claims.
 
 ==================================================
-FEATURE RULES
+FEATURES
 ==================================================
 
-Only list features supported by the supplied
+Only include features supported by actual
 product information.
 
-Never invent features.
+Never invent a feature.
 
 ==================================================
-SPECIFICATION RULES
+SPECIFICATIONS
 ==================================================
 
-Only list specifications explicitly supplied
-by the Shopify product information.
+Only include specifications explicitly
+supported by the supplied product data.
 
-If there are no verified specifications,
+If no reliable specifications are available,
 return an empty array.
 
-==================================================
-SEO RULES
-==================================================
+Do not guess.
 
-SEO title:
+==================================================
+SEO TITLE
+==================================================
 
 Maximum 50 characters.
 
-It should contain the strongest relevant
-search phrase naturally.
+Use the strongest relevant search phrase.
 
-Meta description:
+Keep it natural.
+
+Do not keyword stuff.
+
+==================================================
+META DESCRIPTION
+==================================================
 
 Maximum 150 characters.
 
-It should be persuasive, natural, and
-relevant to the actual product.
+Make it:
+
+- relevant
+- persuasive
+- natural
+- audience-specific
+- search-friendly
 
 ==================================================
-TAG RULES
+TAGS
 ==================================================
 
 Generate useful Shopify tags.
 
-Tags should be:
+Tags must be based on actual product data.
 
-- relevant
-- specific
-- natural
-- based on actual product information
-- non-repetitive
+Use relevant product category,
+style, audience, design, and verified features.
 
-Never create unsupported specifications
-just to create a tag.
+Do not create unsupported technical tags.
+
+Do not repeat the same concept unnecessarily.
 
 ==================================================
-SCORING RULES
-==================================================
-
-Scores must be from 0 to 100.
-
-The score represents the QUALITY of the
-OPTIMIZED RESULT.
-
-Do not artificially give high scores.
-
-However, if the optimized content is genuinely
-strong, premium, differentiated, clear,
-SEO-friendly, and conversion-focused,
-scores should normally be in the 80–95 range.
-
-Do not give 95+ unless the result is genuinely
-excellent.
-
-Overall score should consider:
-
-- title quality
-- description quality
-- SEO
-- product clarity
-- conversion potential
-
-Conversion and clarity should receive strong
-weight.
-
-==================================================
-ANALYSIS RULES
+ANALYSIS
 ==================================================
 
 Analyze:
@@ -589,45 +1012,112 @@ Analyze:
 - SEO opportunities
 - conversion opportunities
 
-The optimization should directly address the
-weaknesses and opportunities.
+The analysis should explain what makes this
+specific product commercially attractive.
+
+Do not give generic ecommerce advice.
 
 ==================================================
-FINAL RULE
+SCORING
 ==================================================
 
-Return ONLY the requested structured JSON
-object.
+Score the QUALITY of the optimized result
+from 0 to 100.
 
-Do not explain these instructions.
+Do not artificially inflate scores.
+
+Use these approximate standards:
+
+90–100 = exceptional
+80–89 = strong
+70–79 = good
+60–69 = moderate
+50–59 = weak
+below 50 = poor
+
+A genuinely strong optimized listing should
+normally land in the 80–95 range.
+
+Do not give 95+ unless the result is genuinely
+excellent.
+
+Consider:
+
+Title:
+- relevance
+- clarity
+- search intent
+- differentiation
+
+Description:
+- persuasion
+- clarity
+- verified benefits
+- audience fit
+- premium tone
+
+SEO:
+- keyword relevance
+- natural language
+- search intent
+- title/meta quality
+
+Product clarity:
+- what it is
+- who it is for
+- why it matters
+- important verified details
+
+Conversion:
+- value communication
+- trust
+- clarity
+- purchase motivation
+- audience fit
+
+Overall should be a balanced assessment of
+all categories.
+
+Missing information should NOT automatically
+destroy the score if the listing remains strong.
+
+==================================================
+FINAL OUTPUT
+==================================================
+
+Return ONLY the requested structured JSON object.
+
+No markdown.
+
+No explanation outside the JSON.
 `;
 
-    /*
-     * ==========================================
-     * USER PROMPT
-     * ==========================================
-     */
+    /* =====================================================
+       USER PROMPT
+    ===================================================== */
 
     const userPrompt =
       JSON.stringify(
         {
-          product: productData,
+          authoritativeAudience:
+            authoritativeAudience,
+
+          product:
+            productData,
 
           existingProductTitles:
             existingTitles,
 
           task:
-            "Analyze the current Shopify product and create the strongest factual premium optimization. Score the quality of the optimized result.",
+            "Analyze this actual Shopify product and create a stronger factual premium optimization while strictly following the authoritative audience.",
         },
         null,
         2,
       );
 
-    /*
-     * ==========================================
-     * OPENAI REQUEST
-     * ==========================================
-     */
+    /* =====================================================
+       OPENAI REQUEST
+    ===================================================== */
 
     const aiResponse =
       await fetch(
@@ -650,14 +1140,12 @@ Do not explain these instructions.
               input: [
                 {
                   role: "system",
-
                   content:
                     systemPrompt,
                 },
 
                 {
                   role: "user",
-
                   content:
                     userPrompt,
                 },
@@ -684,11 +1172,9 @@ Do not explain these instructions.
         },
       );
 
-    /*
-     * ==========================================
-     * OPENAI RESPONSE
-     * ==========================================
-     */
+    /* =====================================================
+       READ OPENAI RESPONSE
+    ===================================================== */
 
     const raw =
       (await aiResponse.json()) as {
@@ -721,11 +1207,9 @@ Do not explain these instructions.
       );
     }
 
-    /*
-     * ==========================================
-     * EXTRACT AI TEXT
-     * ==========================================
-     */
+    /* =====================================================
+       EXTRACT TEXT
+    ===================================================== */
 
     const outputText =
       raw.output_text ||
@@ -755,11 +1239,9 @@ Do not explain these instructions.
       );
     }
 
-    /*
-     * ==========================================
-     * PARSE JSON
-     * ==========================================
-     */
+    /* =====================================================
+       PARSE JSON
+    ===================================================== */
 
     let result: any;
 
@@ -780,11 +1262,9 @@ Do not explain these instructions.
       );
     }
 
-    /*
-     * ==========================================
-     * VALIDATE RESULT
-     * ==========================================
-     */
+    /* =====================================================
+       BASIC VALIDATION
+    ===================================================== */
 
     if (
       !result?.analysis ||
@@ -804,194 +1284,133 @@ Do not explain these instructions.
       );
     }
 
-    /*
-     * ==========================================
-     * NORMALIZE OPTIMIZATION
-     * ==========================================
-     */
+    /* =====================================================
+       NORMALIZE
+    ===================================================== */
 
-    result.optimization.title =
-      clean(
-        result.optimization.title,
+    result =
+      normalizeResult(result);
+
+    /* =====================================================
+       STRICT AUDIENCE VALIDATION
+    ===================================================== */
+
+    const audienceError =
+      validateAudienceResult(
+        result,
+        authoritativeAudience,
       );
 
-    result.optimization.description =
-      clean(
-        result.optimization
-          .description,
+    if (audienceError) {
+      console.error(
+        "Virello audience validation failed:",
+        {
+          audience:
+            authoritativeAudience,
+
+          product:
+            productData,
+
+          error:
+            audienceError,
+        },
       );
 
-    result.optimization.seoTitle =
-      limit(
-        result.optimization
-          .seoTitle,
-        50,
+      return NextResponse.json(
+        {
+          success: false,
+
+          error:
+            `${audienceError} Please run the AI analysis again.`,
+        },
+        {
+          status: 422,
+        },
       );
-
-    result.optimization.metaDescription =
-      limit(
-        result.optimization
-          .metaDescription,
-        150,
-      );
-
-    result.optimization.features =
-      unique(
-        Array.isArray(
-          result.optimization
-            .features,
-        )
-          ? result.optimization
-              .features
-          : [],
-      );
-
-    result.optimization.specifications =
-      unique(
-        Array.isArray(
-          result.optimization
-            .specifications,
-        )
-          ? result.optimization
-              .specifications
-          : [],
-      );
-
-    result.optimization.tags =
-      unique(
-        Array.isArray(
-          result.optimization
-            .tags,
-        )
-          ? result.optimization
-              .tags
-          : [],
-      );
-
-    /*
-     * ==========================================
-     * NORMALIZE ANALYSIS
-     * ==========================================
-     */
-
-    result.analysis.targetCustomer =
-      clean(
-        result.analysis
-          .targetCustomer,
-      );
-
-    result.analysis.purchaseMotivation =
-      clean(
-        result.analysis
-          .purchaseMotivation,
-      );
-
-    result.analysis.strongestFeatures =
-      unique(
-        Array.isArray(
-          result.analysis
-            .strongestFeatures,
-        )
-          ? result.analysis
-              .strongestFeatures
-          : [],
-      );
-
-    result.analysis.weaknesses =
-      unique(
-        Array.isArray(
-          result.analysis
-            .weaknesses,
-        )
-          ? result.analysis
-              .weaknesses
-          : [],
-      );
-
-    result.analysis.missingInformation =
-      unique(
-        Array.isArray(
-          result.analysis
-            .missingInformation,
-        )
-          ? result.analysis
-              .missingInformation
-          : [],
-      );
-
-    result.analysis.seoOpportunities =
-      unique(
-        Array.isArray(
-          result.analysis
-            .seoOpportunities,
-        )
-          ? result.analysis
-              .seoOpportunities
-          : [],
-      );
-
-    result.analysis.conversionOpportunities =
-      unique(
-        Array.isArray(
-          result.analysis
-            .conversionOpportunities,
-        )
-          ? result.analysis
-              .conversionOpportunities
-          : [],
-      );
-
-    /*
-     * ==========================================
-     * NORMALIZE SCORES
-     * ==========================================
-     */
-
-    const scoreKeys = [
-      "title",
-      "description",
-      "seo",
-      "productClarity",
-      "conversionPotential",
-      "overall",
-    ];
-
-    for (
-      const key of scoreKeys
-    ) {
-      const value =
-        Number(
-          result.score[key],
-        );
-
-      result.score[key] =
-        Number.isFinite(value)
-          ? Math.max(
-              0,
-              Math.min(
-                100,
-                Math.round(value),
-              ),
-            )
-          : 0;
     }
 
-    /*
-     * ==========================================
-     * NORMALIZE REASONING
-     * ==========================================
-     */
+    /* =====================================================
+       FINAL TITLE VALIDATION
+    ===================================================== */
 
-    result.reasoning =
+    if (
+      !result.optimization.title
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+
+          error:
+            "AI generated an empty product title.",
+        },
+        {
+          status: 422,
+        },
+      );
+    }
+
+    /* =====================================================
+       DUPLICATE TITLE CHECK
+    ===================================================== */
+
+    const generatedTitle =
       clean(
-        result.reasoning,
+        result.optimization.title,
+      ).toLowerCase();
+
+    const normalizedGeneratedTitle =
+      generatedTitle
+        .replace(
+          /[^a-z0-9\s]/gi,
+          "",
+        )
+        .replace(/\s+/g, " ")
+        .trim();
+
+    const duplicateTitle =
+      existingTitles.find(
+        (existingTitle) => {
+          const normalizedExisting =
+            clean(
+              existingTitle,
+            )
+              .toLowerCase()
+              .replace(
+                /[^a-z0-9\s]/gi,
+                "",
+              )
+              .replace(
+                /\s+/g,
+                " ",
+              )
+              .trim();
+
+          return (
+            normalizedExisting ===
+              normalizedGeneratedTitle ||
+            normalizedExisting ===
+              generatedTitle
+          );
+        },
       );
 
-    /*
-     * ==========================================
-     * FINAL RESPONSE
-     * ==========================================
-     */
+    if (duplicateTitle) {
+      return NextResponse.json(
+        {
+          success: false,
+
+          error:
+            "AI generated a product title that already exists in Shopify. Please run the analysis again to generate a different title.",
+        },
+        {
+          status: 422,
+        },
+      );
+    }
+
+    /* =====================================================
+       FINAL RESPONSE
+    ===================================================== */
 
     return NextResponse.json({
       success: true,
