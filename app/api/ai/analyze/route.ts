@@ -1,48 +1,23 @@
-"use client";
+import { NextRequest, NextResponse } from "next/server";
 
-import { useEffect, useMemo, useState } from "react";
+export const runtime = "nodejs";
 
-/* =========================================================
-   TYPES
-========================================================= */
-
-declare global {
-  interface Window {
-    shopify?: {
-      idToken?: () => Promise<string>;
-    };
-  }
-}
-
-type ShopifyProduct = {
-  id: string;
-  title: string;
-  description: string;
-  productType: string;
-  tags: string[];
-  status: string;
-  vendor: string;
-  price: string;
-  images?: {
-    url: string;
-    altText: string | null;
-  }[];
-  featuredImage: string | null;
-};
-
-type Audience = "Women" | "Men" | "Unisex";
-
-type Style =
-  | "Premium / Luxury"
-  | "Professional"
-  | "Everyday"
-  | "Casual"
-  | "Sport"
-  | "Gift";
-
-type Product = ShopifyProduct & {
-  audience: Audience;
-  style: Style;
+type ProductInput = {
+  id?: string;
+  title?: string;
+  description?: string;
+  productType?: string;
+  vendor?: string;
+  tags?: string[];
+  price?: string;
+  audience?: "Women" | "Men" | "Unisex";
+  style?:
+    | "Premium / Luxury"
+    | "Professional"
+    | "Everyday"
+    | "Casual"
+    | "Sport"
+    | "Gift";
 };
 
 type AIAnalysis = {
@@ -109,16 +84,18 @@ function stripHtml(value: string): string {
 function unique(values: string[]): string[] {
   const seen = new Set<string>();
 
-  return values.filter((value) => {
-    const normalized = clean(value).toLowerCase();
+  return values
+    .map(clean)
+    .filter((value) => {
+      const normalized = value.toLowerCase();
 
-    if (!normalized || seen.has(normalized)) {
-      return false;
-    }
+      if (!normalized || seen.has(normalized)) {
+        return false;
+      }
 
-    seen.add(normalized);
-    return true;
-  });
+      seen.add(normalized);
+      return true;
+    });
 }
 
 function limitCharacters(
@@ -132,6 +109,7 @@ function limitCharacters(
   }
 
   let result = text.slice(0, max);
+
   const lastSpace = result.lastIndexOf(" ");
 
   if (lastSpace > Math.floor(max * 0.65)) {
@@ -143,70 +121,75 @@ function limitCharacters(
     .replace(/[.,;:!?-]+$/, "");
 }
 
-function escapeHtml(value: string): string {
-  return String(value).replace(
-    /[&<>'"]/g,
-    (char) =>
-      ({
-        "&": "&amp;",
-        "<": "&lt;",
-        ">": "&gt;",
-        "'": "&#39;",
-        '"': "&quot;",
-      })[char] || char,
-  );
-}
-
-function descriptionToHtml(
-  description: string,
-): string {
-  return description
-    .split(/\n\s*\n/)
-    .map(clean)
-    .filter(Boolean)
-    .map(
-      (paragraph) =>
-        `<p>${escapeHtml(paragraph)}</p>`,
-    )
-    .join("");
-}
-
 /* =========================================================
-   AUDIENCE DETECTION
+   AUDIENCE SIGNALS
 ========================================================= */
 
+/*
+ * This is deliberately NOT used to generate the content.
+ * It gives the AI stronger context about the actual product.
+ *
+ * Men's signals are checked before women's signals so that
+ * a men's watch is not accidentally classified as women's
+ * because of generic words such as "fashion", "elegant",
+ * "gift", etc.
+ */
+
 function detectAudience(
-  product: ShopifyProduct,
-): Audience {
-  const text = [
-    product.title,
-    product.productType,
-    product.vendor,
-    product.tags.join(" "),
-    stripHtml(product.description),
-  ]
-    .join(" ")
-    .toLowerCase();
+  product: ProductInput,
+): "Men" | "Women" | "Unisex" {
+  const title = clean(product.title).toLowerCase();
+  const productType = clean(product.productType).toLowerCase();
+  const tags = Array.isArray(product.tags)
+    ? product.tags.join(" ").toLowerCase()
+    : "";
+  const description = stripHtml(
+    clean(product.description),
+  ).toLowerCase();
 
-  /*
-   * Strong men's signals first.
-   * This prevents a men's watch from being
-   * incorrectly classified as women/unisex.
-   */
+  const primaryText = [
+    title,
+    productType,
+    tags,
+  ].join(" ");
 
-  if (
+  const menStrong =
     /\bmen\b|\bmen's\b|\bmens\b|\bgentlemen\b|\bgents\b|\bmale\b|\bman\b/.test(
-      text,
-    )
-  ) {
+      primaryText,
+    );
+
+  const womenStrong =
+    /\bwomen\b|\bwomen's\b|\bwomens\b|\bladies\b|\blady\b|\bfemale\b|\bwoman\b/.test(
+      primaryText,
+    );
+
+  if (menStrong && !womenStrong) {
     return "Men";
   }
 
-  if (
+  if (womenStrong && !menStrong) {
+    return "Women";
+  }
+
+  /*
+   * If title/product type/tags are ambiguous, inspect the
+   * description as secondary evidence.
+   */
+  const menDescription =
+    /\bmen\b|\bmen's\b|\bmens\b|\bgentlemen\b|\bgents\b|\bmale\b|\bman\b/.test(
+      description,
+    );
+
+  const womenDescription =
     /\bwomen\b|\bwomen's\b|\bwomens\b|\bladies\b|\blady\b|\bfemale\b|\bwoman\b/.test(
-      text,
-    )
-  ) {
+      description,
+    );
+
+  if (menDescription && !womenDescription) {
+    return "Men";
+  }
+
+  if (womenDescription && !menDescription) {
     return "Women";
   }
 
@@ -214,140 +197,379 @@ function detectAudience(
 }
 
 /* =========================================================
-   STYLE DETECTION
+   OPENAI RESPONSE EXTRACTION
 ========================================================= */
 
-function detectStyle(
-  product: ShopifyProduct,
-): Style {
-  const text = [
-    product.title,
-    product.productType,
-    product.vendor,
-    product.tags.join(" "),
-    stripHtml(product.description),
-  ]
-    .join(" ")
-    .toLowerCase();
-
+function extractOutputText(data: any): string {
   if (
-    /luxury|premium|elegant|sapphire|automatic|mechanical|formal|dress watch/.test(
-      text,
-    )
+    typeof data?.output_text === "string" &&
+    data.output_text.trim()
   ) {
-    return "Premium / Luxury";
+    return data.output_text.trim();
   }
 
-  if (
-    /sport|sports|diving|diver|racing|athletic|chronograph/.test(
-      text,
-    )
-  ) {
-    return "Sport";
+  const output = Array.isArray(data?.output)
+    ? data.output
+    : [];
+
+  const parts: string[] = [];
+
+  for (const item of output) {
+    if (!Array.isArray(item?.content)) {
+      continue;
+    }
+
+    for (const content of item.content) {
+      if (
+        content?.type === "output_text" &&
+        typeof content?.text === "string"
+      ) {
+        parts.push(content.text);
+      }
+    }
   }
 
-  if (/casual|fashion|street/.test(text)) {
-    return "Casual";
-  }
-
-  if (/gift|present/.test(text)) {
-    return "Gift";
-  }
-
-  if (
-    /business|office|professional/.test(text)
-  ) {
-    return "Professional";
-  }
-
-  return "Everyday";
+  return parts.join("\n").trim();
 }
 
-function toProduct(
-  product: ShopifyProduct,
-): Product {
+/* =========================================================
+   VALIDATE AI RESULT
+========================================================= */
+
+function normalizeResult(
+  raw: any,
+): AIResult {
+  const analysis = raw?.analysis || {};
+  const score = raw?.score || {};
+  const optimization =
+    raw?.optimization || {};
+
+  const normalizedScore: AIScore = {
+    title: Math.max(
+      0,
+      Math.min(
+        100,
+        Number(score.title) || 0,
+      ),
+    ),
+
+    description: Math.max(
+      0,
+      Math.min(
+        100,
+        Number(score.description) || 0,
+      ),
+    ),
+
+    seo: Math.max(
+      0,
+      Math.min(
+        100,
+        Number(score.seo) || 0,
+      ),
+    ),
+
+    productClarity: Math.max(
+      0,
+      Math.min(
+        100,
+        Number(score.productClarity) || 0,
+      ),
+    ),
+
+    conversionPotential: Math.max(
+      0,
+      Math.min(
+        100,
+        Number(score.conversionPotential) || 0,
+      ),
+    ),
+
+    overall: Math.max(
+      0,
+      Math.min(
+        100,
+        Number(score.overall) || 0,
+      ),
+    ),
+  };
+
+  const normalizedOptimization: AIOptimization = {
+    title: clean(
+      optimization.title,
+    ),
+
+    description: clean(
+      optimization.description,
+    ),
+
+    features: unique(
+      Array.isArray(
+        optimization.features,
+      )
+        ? optimization.features
+        : [],
+    ),
+
+    specifications: unique(
+      Array.isArray(
+        optimization.specifications,
+      )
+        ? optimization.specifications
+        : [],
+    ),
+
+    seoTitle: limitCharacters(
+      clean(
+        optimization.seoTitle,
+      ),
+      50,
+    ),
+
+    metaDescription:
+      limitCharacters(
+        clean(
+          optimization.metaDescription,
+        ),
+        160,
+      ),
+
+    tags: unique(
+      Array.isArray(
+        optimization.tags,
+      )
+        ? optimization.tags
+        : [],
+    ),
+  };
+
   return {
-    ...product,
-    audience: detectAudience(product),
-    style: detectStyle(product),
+    analysis: {
+      targetCustomer: clean(
+        analysis.targetCustomer,
+      ),
+
+      purchaseMotivation: clean(
+        analysis.purchaseMotivation,
+      ),
+
+      strongestFeatures: unique(
+        Array.isArray(
+          analysis.strongestFeatures,
+        )
+          ? analysis.strongestFeatures
+          : [],
+      ),
+
+      weaknesses: unique(
+        Array.isArray(
+          analysis.weaknesses,
+        )
+          ? analysis.weaknesses
+          : [],
+      ),
+
+      missingInformation: unique(
+        Array.isArray(
+          analysis.missingInformation,
+        )
+          ? analysis.missingInformation
+          : [],
+      ),
+
+      seoOpportunities: unique(
+        Array.isArray(
+          analysis.seoOpportunities,
+        )
+          ? analysis.seoOpportunities
+          : [],
+      ),
+
+      conversionOpportunities:
+        unique(
+          Array.isArray(
+            analysis.conversionOpportunities,
+          )
+            ? analysis.conversionOpportunities
+            : [],
+        ),
+    },
+
+    score: normalizedScore,
+
+    optimization:
+      normalizedOptimization,
+
+    reasoning: clean(
+      raw?.reasoning,
+    ),
   };
 }
 
 /* =========================================================
-   PAGE
+   POST /api/ai/analyze
 ========================================================= */
 
-export default function Page() {
-  const [products, setProducts] =
-    useState<Product[]>([]);
+export async function POST(
+  request: NextRequest,
+) {
+  try {
+    /*
+     * -------------------------------------------------------
+     * 1. CHECK OPENAI KEY
+     * -------------------------------------------------------
+     */
 
-  const [selectedId, setSelectedId] =
-    useState("");
+    const apiKey =
+      process.env.OPENAI_API_KEY;
 
-  const [search, setSearch] =
-    useState("");
-
-  const [loading, setLoading] =
-    useState(true);
-
-  const [optimizing, setOptimizing] =
-    useState(false);
-
-  const [saving, setSaving] =
-    useState(false);
-
-  const [error, setError] =
-    useState("");
-
-  const [message, setMessage] =
-    useState("");
-
-  const [aiResult, setAiResult] =
-    useState<AIResult | null>(null);
-
-  const [title, setTitle] =
-    useState("");
-
-  const [productType, setProductType] =
-    useState("");
-
-  const [tags, setTags] =
-    useState("");
-
-  const [description, setDescription] =
-    useState("");
-
-  const [features, setFeatures] =
-    useState<string[]>([]);
-
-  const [specifications, setSpecifications] =
-    useState<string[]>([]);
-
-  const [seoTitle, setSeoTitle] =
-    useState("");
-
-  const [metaDescription, setMetaDescription] =
-    useState("");
-
-  const [audience, setAudience] =
-    useState<Audience>("Unisex");
-
-  const [style, setStyle] =
-    useState<Style>("Everyday");
-
-  /* =======================================================
-     SHOPIFY SESSION TOKEN
-  ======================================================= */
-
-  async function getSessionToken(): Promise<string> {
-    if (
-      typeof window === "undefined" ||
-      !window.shopify?.idToken
-    ) {
-      throw new Error(
-        "Shopify session unavailable. Open Virello AI Optimizer from Shopify Admin.",
+    if (!apiKey) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "OPENAI_API_KEY is missing in Vercel environment variables.",
+        },
+        { status: 500 },
       );
     }
 
-    const token =
-      await window.shop
+    /*
+     * -------------------------------------------------------
+     * 2. READ REQUEST
+     * -------------------------------------------------------
+     */
+
+    const body = await request.json();
+
+    const product =
+      body?.product as
+        | ProductInput
+        | undefined;
+
+    if (!product) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Product data is required.",
+        },
+        { status: 400 },
+      );
+    }
+
+    const title = clean(
+      product.title,
+    );
+
+    const description = stripHtml(
+      clean(product.description),
+    );
+
+    const productType = clean(
+      product.productType,
+    );
+
+    const vendor = clean(
+      product.vendor,
+    );
+
+    const tags = unique(
+      Array.isArray(product.tags)
+        ? product.tags
+        : [],
+    );
+
+    const price = clean(
+      product.price,
+    );
+
+    /*
+     * -------------------------------------------------------
+     * 3. DETERMINE PRODUCT AUDIENCE
+     * -------------------------------------------------------
+     */
+
+    const detectedAudience =
+      detectAudience(product);
+
+    /*
+     * The frontend value is only a hint.
+     * The backend detection is prioritized.
+     */
+
+    const suppliedAudience =
+      product.audience ||
+      detectedAudience;
+
+    /*
+     * -------------------------------------------------------
+     * 4. PREPARE PRODUCT CONTEXT
+     * -------------------------------------------------------
+     */
+
+    const productContext = {
+      id: clean(product.id),
+
+      title,
+
+      description,
+
+      productType,
+
+      vendor,
+
+      tags,
+
+      price,
+
+      detectedAudience,
+
+      suppliedAudience,
+
+      suppliedStyle:
+        clean(product.style),
+    };
+
+    /*
+     * -------------------------------------------------------
+     * 5. AI INSTRUCTIONS
+     * -------------------------------------------------------
+     */
+
+    const instructions = `
+You are Virello AI Optimizer, an expert ecommerce product
+optimization system for Shopify stores.
+
+Your job is to analyze the REAL product information supplied
+by the merchant and create better ecommerce content.
+
+IMPORTANT:
+
+1. ACTUAL PRODUCT FIRST
+Never invent product specifications.
+
+2. AUDIENCE ACCURACY
+The target customer must match the actual product.
+
+If the product is explicitly a men's watch, classify it as
+MEN even if the product description contains generic words
+such as:
+- fashion
+- elegant
+- gift
+- jewelry
+- style
+- luxury
+
+Do NOT change a men's product into a women's product.
+
+If the product is explicitly women's, classify it as WOMEN.
+
+If there is genuinely no gender signal, use UNISEX.
+
+3. WATCH PRODUCTS
+For watches, pay special attention to:
+- men's vs women's
+- automatic vs quartz
+- mechanical movement
