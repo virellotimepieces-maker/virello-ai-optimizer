@@ -2,238 +2,62 @@ import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 
-/* =========================================================
-   VIRELLO AI SYSTEM PROMPT
-========================================================= */
-
 const SYSTEM_PROMPT = `
 You are Virello AI, an advanced ecommerce product optimization analyst.
 
-Analyze the ACTUAL Shopify product data supplied by the store and generate a better ecommerce presentation based only on verified information.
-
-Think like an ecommerce conversion specialist, SEO specialist, product merchandising specialist, Shopify copywriter, and customer psychology analyst.
-
-CORE OBJECTIVES
-
-1. Understand what the product actually is.
-2. Determine the most likely target customer.
-3. Identify legitimate purchase motivations.
-4. Identify verified benefits.
-5. Identify weaknesses that may reduce conversions.
-6. Identify missing information.
-7. Identify SEO opportunities.
-8. Identify conversion opportunities.
-9. Create a professional ecommerce product title.
-10. Create a persuasive product description.
-11. Organize verified product features.
-12. Organize verified specifications.
-13. Create an SEO title of 50 characters or fewer.
-14. Create a meta description of 150 characters or fewer.
-15. Create relevant Shopify product tags.
-
-=========================================================
-FACTUAL ACCURACY
-=========================================================
+Analyze the ACTUAL Shopify product data supplied by the store. Your job is to make commercially useful decisions from that data, not to fill a template.
 
-Only use information supported by the supplied product data.
+Think like an ecommerce conversion specialist, SEO specialist, product merchandiser, Shopify copywriter, and customer-psychology analyst.
 
-Never invent:
+FACTUAL ACCURACY IS REQUIRED.
 
-- materials
-- dimensions
-- weight
-- colors
-- certifications
-- warranty
-- compatibility
-- battery capacity
-- voltage
-- power
-- performance
-- durability
-- waterproof ratings
-- water resistance
-- safety claims
-- medical claims
-- health claims
-- technical specifications
-- shipping claims
-- guarantees
-- included accessories
-- movement/caliber
-- crystal type
-- case size
-- strap material
-- clasp
-- packaging
+Use only information supported by the supplied product data. You may infer reasonable customer intent or positioning from the supplied facts, but you must never invent product facts.
 
-If information is missing, do not guess.
+Never invent or assume materials, dimensions, weight, colors, certifications, warranty, compatibility, battery capacity, voltage, power, performance, durability, waterproofing, water resistance, safety claims, medical claims, health claims, technical specifications, shipping promises, guarantees, included accessories, movement/caliber, crystal type, case size, strap material, clasp, packaging, or other specifications that were not supplied.
 
-Put important missing information in missingInformation.
+If important information is absent, put it in missingInformation instead of guessing.
 
-=========================================================
-PRODUCT TITLE
-=========================================================
+BRAND / VENDOR ACCURACY:
+If the product title contains a brand or designer name but the vendor field conflicts with it or does not confirm the relationship, do not present the brand relationship as verified. Flag the ambiguity in weaknesses or missingInformation when relevant.
 
-Create a natural, professional ecommerce product title.
+PRODUCT TITLE:
+- Clearly identify the actual product.
+- Use useful search terms naturally.
+- Sound professional and premium for Shopify.
+- Be specific to the product.
+- Avoid keyword stuffing, marketplace-style wording, supplier wording, fake brand claims, and unsupported claims.
+- Do not blindly reuse the original title.
+- Do not force a fixed word count.
 
-The title must:
+DUPLICATE TITLE PREVENTION:
+Existing store titles are provided in the user message. The new title must be genuinely different from them. Do not copy, reorder, slightly modify, or reproduce distinctive phrases from an existing title. Do not make a title different merely by adding random adjectives. Choose another accurate way to describe the same product using the supplied facts.
 
-- clearly identify the actual product
-- use important search terms naturally
-- be easy for a shopper to understand
-- sound appropriate for a premium Shopify store
-- avoid keyword stuffing
-- avoid excessive adjectives
-- avoid generic marketplace wording
-- avoid supplier wording
-- avoid fake brand names
-- avoid unsupported claims
-- avoid unnecessary repetition
+DESCRIPTION:
+Write conversion-focused copy that explains what the product is, why the likely customer may want it, verified benefits, practical value, and supported use cases. Keep it natural, specific, easy to scan, and free of supplier filler.
 
-Do NOT force a fixed number of words.
+FEATURES:
+Only include features supported by the supplied product data.
 
-Do NOT blindly reuse the original title.
+SPECIFICATIONS:
+Only include specifications actually supplied. If none are supplied, return an empty array. Never manufacture specifications.
 
-The title should be specific to this product.
+SEO TITLE:
+Maximum 50 characters. Use the most useful product keyword naturally. Do not simply copy the product title.
 
-=========================================================
-DUPLICATE TITLE PREVENTION
-=========================================================
+META DESCRIPTION:
+Maximum 150 characters. Clearly explain the product and give the searcher a reason to click without making unsupported claims.
 
-The store may contain many products.
+TAGS:
+Create specific Shopify tags from actual product information. No random, duplicate, supplier-spam, or unsupported tags.
 
-The existing store titles supplied with the request are competitors that already exist inside the same store.
+SCORING:
+Scores must reflect the quality of the supplied listing. Do not give high scores merely because the product sounds attractive. Missing critical information should reduce product clarity and conversion potential.
 
-The new Product Title MUST NOT:
+AI DECISION MAKING:
+The result must change meaningfully when the product data changes. Do not use one fixed answer for every product.
 
-- exactly duplicate an existing title
-- closely copy an existing title
-- reorder the same words from an existing title
-- change only one insignificant word
-- use the same distinctive phrase as an existing title
-- create a title that looks like another store product
-
-Avoid near-duplicates.
-
-For example, if an existing title is:
-
-"Pagani Design Retro Chronograph Watch"
-
-do NOT create:
-
-"Pagani Retro Chronograph Watch"
-
-"Pagani Design Chronograph Retro Watch"
-
-"Pagani Design Classic Chronograph Watch"
-
-Instead, create a genuinely differentiated title based on the actual product information.
-
-IMPORTANT:
-
-Do not make the title different merely by adding random adjectives.
-
-The title must remain accurate and commercially useful.
-
-=========================================================
-DESCRIPTION
-=========================================================
-
-Create conversion-focused product copy.
-
-Explain:
-
-- what the product is
-- why the customer would want it
-- verified benefits
-- practical value
-- supported use cases
-
-Use natural persuasive language.
-
-Make it easy to scan.
-
-Avoid generic supplier language.
-
-Avoid unsupported claims.
-
-Sound like a professional ecommerce brand.
-
-=========================================================
-FEATURES
-=========================================================
-
-Only include features that can be verified from supplied product data.
-
-Do not assume features simply because they are common for the product category.
-
-=========================================================
-SPECIFICATIONS
-=========================================================
-
-Only include specifications supplied in the product data.
-
-If none are supplied, return an empty array.
-
-Never manufacture specifications.
-
-=========================================================
-SEO TITLE
-=========================================================
-
-Maximum 50 characters.
-
-Include the most useful product keyword naturally.
-
-Do not copy the Product Title blindly.
-
-Do not keyword stuff.
-
-=========================================================
-META DESCRIPTION
-=========================================================
-
-Maximum 150 characters.
-
-Explain the product clearly.
-
-Include a useful keyword naturally.
-
-Give the searcher a reason to click without unsupported claims.
-
-Do not simply copy the Product Description.
-
-=========================================================
-TAGS
-=========================================================
-
-Create relevant and specific Shopify tags based on actual product information.
-
-Do not create:
-
-- random tags
-- unsupported tags
-- duplicate tags
-- supplier spam
-- keyword stuffing
-
-=========================================================
-AI DECISION MAKING
-=========================================================
-
-Do not use a fixed template that produces the same answer for every product.
-
-Make decisions dynamically from the actual product data.
-
-The result should be meaningfully different when the product data is different.
-
-Return only valid JSON matching the supplied schema.
+Return only JSON matching the supplied schema.
 `;
-
-/* =========================================================
-   TYPES
-========================================================= */
 
 type ProductInput = {
   id?: string;
@@ -249,81 +73,37 @@ type ProductInput = {
 
 type AnalyzeRequest = {
   product?: ProductInput;
-
-  /*
-   * Existing titles from the Shopify store.
-   *
-   * This is optional so the API remains backward-compatible
-   * with the current frontend.
-   */
   existingProductTitles?: string[];
-
-  /*
-   * Alternative name accepted for compatibility.
-   */
   existingTitles?: string[];
 };
 
-/* =========================================================
-   BASIC HELPERS
-========================================================= */
-
 function clean(value: unknown): string {
-  if (typeof value !== "string") {
-    return "";
-  }
-
-  return value
-    .replace(/\s+/g, " ")
-    .trim();
+  return typeof value === "string"
+    ? value.replace(/\s+/g, " ").trim()
+    : "";
 }
 
-function cleanList(value: unknown): string[] {
-  if (!Array.isArray(value)) {
-    return [];
-  }
+function cleanList(value: unknown, max = 50): string[] {
+  if (!Array.isArray(value)) return [];
 
-  const result: string[] = [];
   const seen = new Set<string>();
+  const result: string[] = [];
 
   for (const item of value) {
-    const cleaned = clean(item);
+    const text = clean(item);
 
-    if (!cleaned) {
-      continue;
-    }
+    if (!text) continue;
 
-    const key = cleaned.toLowerCase();
+    const key = text.toLowerCase();
 
-    if (seen.has(key)) {
-      continue;
-    }
+    if (seen.has(key)) continue;
 
     seen.add(key);
-    result.push(cleaned);
+    result.push(text);
   }
 
-  return result.slice(0, 50);
+  return result.slice(0, max);
 }
-
-/* =========================================================
-   TITLE NORMALIZATION
-========================================================= */
-
-function normalizeTitle(
-  value: string,
-): string {
-  return clean(value)
-    .toLowerCase()
-    .replace(/&/g, " and ")
-    .replace(/[^\p{L}\p{N}\s]/gu, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-/* =========================================================
-   STOP WORDS
-========================================================= */
 
 const TITLE_STOP_WORDS = new Set([
   "the",
@@ -346,143 +126,102 @@ const TITLE_STOP_WORDS = new Set([
   "modern",
   "elegant",
   "fashion",
+  "watch",
+  "men",
+  "women",
+  "unisex",
 ]);
 
-/* =========================================================
-   TITLE TOKENS
-========================================================= */
+function normalizeTitle(value: string): string {
+  return clean(value)
+    .toLowerCase()
+    .replace(/&/g, " and ")
+    .replace(/[^\p{L}\p{N}\s]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
 
-function titleTokens(
-  value: string,
-): string[] {
+function titleTokens(value: string): string[] {
   return normalizeTitle(value)
     .split(" ")
     .filter(Boolean)
-    .filter(
-      (word) =>
-        !TITLE_STOP_WORDS.has(word),
-    );
+    .filter((word) => !TITLE_STOP_WORDS.has(word));
 }
 
-/* =========================================================
-   JACCARD SIMILARITY
-========================================================= */
+function titleSimilarity(a: string, b: string): number {
+  const aSet = new Set(titleTokens(a));
+  const bSet = new Set(titleTokens(b));
 
-function titleSimilarity(
-  a: string,
-  b: string,
-): number {
-  const aTokens = new Set(
-    titleTokens(a),
-  );
-
-  const bTokens = new Set(
-    titleTokens(b),
-  );
-
-  if (
-    aTokens.size === 0 ||
-    bTokens.size === 0
-  ) {
+  if (!aSet.size || !bSet.size) {
     return 0;
   }
 
   let intersection = 0;
 
-  for (const token of aTokens) {
-    if (bTokens.has(token)) {
+  for (const token of aSet) {
+    if (bSet.has(token)) {
       intersection++;
     }
   }
 
-  const union =
-    new Set([
-      ...aTokens,
-      ...bTokens,
-    ]).size;
+  const union = new Set([
+    ...aSet,
+    ...bSet,
+  ]).size;
 
-  return union === 0
-    ? 0
-    : intersection / union;
+  return union ? intersection / union : 0;
 }
 
-/* =========================================================
-   DISTINCTIVE PHRASE CHECK
-========================================================= */
-
-function hasDistinctivePhraseOverlap(
+function hasDistinctiveOverlap(
   candidate: string,
   existing: string,
 ): boolean {
-  const candidateTokens =
-    titleTokens(candidate);
+  const a = titleTokens(candidate);
+  const b = titleTokens(existing);
 
-  const existingTokens =
-    titleTokens(existing);
-
-  if (
-    candidateTokens.length < 3 ||
-    existingTokens.length < 3
-  ) {
+  if (a.length < 3 || b.length < 3) {
     return false;
   }
 
-  const candidateSet =
-    new Set(candidateTokens);
+  const aSet = new Set(a);
+  const bSet = new Set(b);
 
   let common = 0;
 
-  for (const token of existingTokens) {
-    if (candidateSet.has(token)) {
+  for (const token of bSet) {
+    if (aSet.has(token)) {
       common++;
     }
   }
 
-  /*
-   * If most meaningful words are shared,
-   * treat it as too similar.
-   */
-  const smaller =
-    Math.min(
-      candidateSet.size,
-      new Set(existingTokens).size,
-    );
+  const smaller = Math.min(
+    aSet.size,
+    bSet.size,
+  );
 
-  if (
+  return (
     smaller >= 3 &&
     common / smaller >= 0.75
-  ) {
-    return true;
-  }
-
-  return false;
+  );
 }
-
-/* =========================================================
-   DUPLICATE / NEAR DUPLICATE DETECTION
-========================================================= */
 
 function findSimilarTitle(
   candidate: string,
   existingTitles: string[],
-): {
-  duplicate: boolean;
-  matchedTitle: string;
-  similarity: number;
-} {
+) {
   const normalizedCandidate =
     normalizeTitle(candidate);
+
+  let highestSimilarity = 0;
+  let matchedTitle = "";
 
   if (!normalizedCandidate) {
     return {
       duplicate: false,
-      matchedTitle: "",
+      matchedTitle,
       similarity: 0,
     };
   }
-
-  let highestSimilarity = 0;
-  let matchedTitle = "";
 
   for (const existing of existingTitles) {
     const normalizedExisting =
@@ -515,18 +254,14 @@ function findSimilarTitle(
     ) {
       highestSimilarity =
         similarity;
-      matchedTitle = existing;
+
+      matchedTitle =
+        existing;
     }
 
-    /*
-     * 0.78+ is intentionally strict.
-     *
-     * We do not want products in the same
-     * store to look like duplicates.
-     */
     if (
       similarity >= 0.78 ||
-      hasDistinctivePhraseOverlap(
+      hasDistinctiveOverlap(
         candidate,
         existing,
       )
@@ -547,61 +282,18 @@ function findSimilarTitle(
   };
 }
 
-/* =========================================================
-   TITLE LENGTH
-========================================================= */
-
-function enforceTitleLength(
-  value: string,
-  max = 90,
-): string {
-  const text = clean(value);
-
-  if (!text) {
-    return "";
-  }
-
-  if (text.length <= max) {
-    return text;
-  }
-
-  let result = text.slice(0, max);
-
-  const lastSpace =
-    result.lastIndexOf(" ");
-
-  if (
-    lastSpace >
-    Math.floor(max * 0.65)
-  ) {
-    result =
-      result.slice(0, lastSpace);
-  }
-
-  return result
-    .trim()
-    .replace(/[.,;:!?-]+$/, "");
-}
-
-/* =========================================================
-   CHARACTER LIMIT
-========================================================= */
-
 function enforceLimit(
   value: unknown,
   max: number,
 ): string {
   const text = clean(value);
 
-  if (!text) {
-    return "";
-  }
-
-  if (text.length <= max) {
+  if (!text || text.length <= max) {
     return text;
   }
 
-  let result = text.slice(0, max);
+  let result =
+    text.slice(0, max);
 
   const lastSpace =
     result.lastIndexOf(" ");
@@ -611,55 +303,29 @@ function enforceLimit(
     Math.floor(max * 0.65)
   ) {
     result =
-      result.slice(0, lastSpace);
+      result.slice(
+        0,
+        lastSpace,
+      );
   }
 
   return result
     .trim()
-    .replace(/[.,;:!?-]+$/, "");
+    .replace(
+      /[.,;:!?-]+$/,
+      "",
+    );
 }
-
-/* =========================================================
-   DUPLICATE ARRAY CLEANUP
-========================================================= */
 
 function removeDuplicateStrings(
   value: unknown,
+  max = 30,
 ): string[] {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-
-  const seen = new Set<string>();
-  const result: string[] = [];
-
-  for (const item of value) {
-    const cleaned = clean(item);
-
-    if (!cleaned) {
-      continue;
-    }
-
-    const key =
-      cleaned
-        .toLowerCase()
-        .replace(/\s+/g, " ")
-        .trim();
-
-    if (seen.has(key)) {
-      continue;
-    }
-
-    seen.add(key);
-    result.push(cleaned);
-  }
-
-  return result.slice(0, 30);
+  return cleanList(
+    value,
+    max,
+  );
 }
-
-/* =========================================================
-   OPENAI OUTPUT EXTRACTION
-========================================================= */
 
 function extractOutputText(
   data: any,
@@ -672,11 +338,10 @@ function extractOutputText(
     return data.output_text.trim();
   }
 
-  const output = Array.isArray(
-    data?.output,
-  )
-    ? data.output
-    : [];
+  const output =
+    Array.isArray(data?.output)
+      ? data.output
+      : [];
 
   const chunks: string[] = [];
 
@@ -711,10 +376,6 @@ function extractOutputText(
     .trim();
 }
 
-/* =========================================================
-   OPENAI ERROR
-========================================================= */
-
 function getErrorMessage(
   data: any,
 ): string {
@@ -726,10 +387,6 @@ function getErrorMessage(
     "Virello AI analysis failed."
   );
 }
-
-/* =========================================================
-   NORMALIZE RESULT
-========================================================= */
 
 function normalizeResult(
   result: any,
@@ -753,10 +410,6 @@ function normalizeResult(
       "Virello AI returned an incomplete analysis.",
     );
   }
-
-  /* -------------------------
-     ANALYSIS
-  ------------------------- */
 
   result.analysis.targetCustomer =
     clean(
@@ -800,49 +453,37 @@ function normalizeResult(
         .conversionOpportunities,
     );
 
-  /* -------------------------
-     SCORES
-  ------------------------- */
-
-  const scoreKeys = [
-    "title",
-    "description",
-    "seo",
-    "productClarity",
-    "conversionPotential",
-    "overall",
-  ];
-
   for (
-    const key of scoreKeys
+    const key of [
+      "title",
+      "description",
+      "seo",
+      "productClarity",
+      "conversionPotential",
+      "overall",
+    ]
   ) {
-    const numberValue =
+    const value =
       Number(
         result.score[key],
       );
 
     result.score[key] =
-      Number.isFinite(
-        numberValue,
-      )
+      Number.isFinite(value)
         ? Math.max(
             0,
             Math.min(
               100,
               Math.round(
-                numberValue,
+                value,
               ),
             ),
           )
         : 0;
   }
 
-  /* -------------------------
-     OPTIMIZATION
-  ------------------------- */
-
   result.optimization.title =
-    enforceTitleLength(
+    enforceLimit(
       result.optimization
         .title,
       90,
@@ -866,12 +507,6 @@ function normalizeResult(
         .specifications,
     );
 
-  result.optimization.tags =
-    removeDuplicateStrings(
-      result.optimization
-        .tags,
-    );
-
   result.optimization.seoTitle =
     enforceLimit(
       result.optimization
@@ -886,6 +521,12 @@ function normalizeResult(
       150,
     );
 
+  result.optimization.tags =
+    removeDuplicateStrings(
+      result.optimization.tags,
+      20,
+    );
+
   result.reasoning =
     clean(
       result.reasoning,
@@ -894,181 +535,318 @@ function normalizeResult(
   return result;
 }
 
-/* =========================================================
-   TITLE FALLBACK
+const RESPONSE_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
 
-   Used only if the AI accidentally returns a title
-   that is too similar to an existing store title.
-========================================================= */
+  properties: {
+    analysis: {
+      type: "object",
+      additionalProperties: false,
 
-function buildFallbackTitle(
-  product: ProductInput,
-  existingTitles: string[],
-): string {
-  const original =
-    clean(product.title);
+      properties: {
+        targetCustomer: {
+          type: "string",
+        },
 
-  const productType =
-    clean(product.productType);
+        purchaseMotivation: {
+          type: "string",
+        },
 
-  const vendor =
-    clean(product.vendor);
+        strongestFeatures: {
+          type: "array",
+          items: {
+            type: "string",
+          },
+        },
 
-  const description =
-    clean(product.description);
+        weaknesses: {
+          type: "array",
+          items: {
+            type: "string",
+          },
+        },
 
-  /*
-   * Extract useful words from the original title.
-   */
-  const words =
-    original
-      .replace(
-        /[|:;,()[\]{}]+/g,
-        " ",
-      )
-      .split(/\s+/)
-      .filter(Boolean)
-      .filter(
-        (word) =>
-          word.length > 2 &&
-          !/^(new|sale|hot|best|fashion|style|product|item)$/i.test(
-            word,
-          ),
+        missingInformation: {
+          type: "array",
+          items: {
+            type: "string",
+          },
+        },
+
+        seoOpportunities: {
+          type: "array",
+          items: {
+            type: "string",
+          },
+        },
+
+        conversionOpportunities: {
+          type: "array",
+          items: {
+            type: "string",
+          },
+        },
+      },
+
+      required: [
+        "targetCustomer",
+        "purchaseMotivation",
+        "strongestFeatures",
+        "weaknesses",
+        "missingInformation",
+        "seoOpportunities",
+        "conversionOpportunities",
+      ],
+    },
+
+    score: {
+      type: "object",
+      additionalProperties: false,
+
+      properties: {
+        title: {
+          type: "integer",
+          minimum: 0,
+          maximum: 100,
+        },
+
+        description: {
+          type: "integer",
+          minimum: 0,
+          maximum: 100,
+        },
+
+        seo: {
+          type: "integer",
+          minimum: 0,
+          maximum: 100,
+        },
+
+        productClarity: {
+          type: "integer",
+          minimum: 0,
+          maximum: 100,
+        },
+
+        conversionPotential: {
+          type: "integer",
+          minimum: 0,
+          maximum: 100,
+        },
+
+        overall: {
+          type: "integer",
+          minimum: 0,
+          maximum: 100,
+        },
+      },
+
+      required: [
+        "title",
+        "description",
+        "seo",
+        "productClarity",
+        "conversionPotential",
+        "overall",
+      ],
+    },
+
+    optimization: {
+      type: "object",
+      additionalProperties: false,
+
+      properties: {
+        title: {
+          type: "string",
+        },
+
+        description: {
+          type: "string",
+        },
+
+        features: {
+          type: "array",
+          items: {
+            type: "string",
+          },
+        },
+
+        specifications: {
+          type: "array",
+          items: {
+            type: "string",
+          },
+        },
+
+        seoTitle: {
+          type: "string",
+        },
+
+        metaDescription: {
+          type: "string",
+        },
+
+        tags: {
+          type: "array",
+          items: {
+            type: "string",
+          },
+        },
+      },
+
+      required: [
+        "title",
+        "description",
+        "features",
+        "specifications",
+        "seoTitle",
+        "metaDescription",
+        "tags",
+      ],
+    },
+
+    reasoning: {
+      type: "string",
+    },
+  },
+
+  required: [
+    "analysis",
+    "score",
+    "optimization",
+    "reasoning",
+  ],
+};
+
+async function callOpenAI(
+  apiKey: string,
+  model: string,
+  userPrompt: string,
+): Promise<any> {
+  const response =
+    await fetch(
+      "https://api.openai.com/v1/responses",
+      {
+        method: "POST",
+
+        headers: {
+          "Content-Type":
+            "application/json",
+
+          Authorization:
+            `Bearer ${apiKey}`,
+        },
+
+        body: JSON.stringify({
+          model,
+
+          input: [
+            {
+              role: "system",
+
+              content: [
+                {
+                  type:
+                    "input_text",
+
+                  text:
+                    SYSTEM_PROMPT,
+                },
+              ],
+            },
+
+            {
+              role: "user",
+
+              content: [
+                {
+                  type:
+                    "input_text",
+
+                  text:
+                    userPrompt,
+                },
+              ],
+            },
+          ],
+
+          text: {
+            format: {
+              type:
+                "json_schema",
+
+              name:
+                "virello_product_analysis",
+
+              strict: true,
+
+              schema:
+                RESPONSE_SCHEMA,
+            },
+          },
+        }),
+      },
+    );
+
+  const data =
+    await response.json();
+
+  if (!response.ok) {
+    throw new Error(
+      getErrorMessage(
+        data,
+      ),
+    );
+  }
+
+  const outputText =
+    extractOutputText(
+      data,
+    );
+
+  if (!outputText) {
+    const refusal =
+      clean(
+        data?.output
+          ?.flatMap?.(
+            (
+              item: any,
+            ) =>
+              item?.content ??
+              [],
+          )
+          ?.find?.(
+            (
+              item: any,
+            ) =>
+              item?.type ===
+              "refusal",
+          )
+          ?.refusal,
       );
 
-  const candidates: string[] = [];
-
-  /*
-   * Candidate 1:
-   * Use product type + strongest title words.
-   */
-  if (words.length >= 2) {
-    candidates.push(
-      `${words
-        .slice(0, 3)
-        .join(" ")}${
-        productType
-          ? ` ${productType}`
-          : ""
-      }`,
+    throw new Error(
+      refusal ||
+        "Virello AI returned no readable analysis output.",
     );
   }
 
-  /*
-   * Candidate 2:
-   * Vendor + product type.
-   */
-  if (
-    vendor &&
-    productType
-  ) {
-    candidates.push(
-      `${vendor} ${productType}`,
+  try {
+    return JSON.parse(
+      outputText,
+    );
+  } catch {
+    throw new Error(
+      "Virello AI returned an invalid structured response.",
     );
   }
-
-  /*
-   * Candidate 3:
-   * Product type + useful title words.
-   */
-  if (productType) {
-    candidates.push(
-      `${productType}${
-        words.length
-          ? ` ${words
-              .slice(0, 2)
-              .join(" ")}`
-          : ""
-      }`,
-    );
-  }
-
-  /*
-   * Candidate 4:
-   * Original title, cleaned.
-   */
-  if (original) {
-    candidates.push(
-      original,
-    );
-  }
-
-  /*
-   * Candidate 5:
-   * Product type only.
-   */
-  if (productType) {
-    candidates.push(
-      productType,
-    );
-  }
-
-  /*
-   * Test candidates against existing titles.
-   */
-  for (const candidate of candidates) {
-    const cleanCandidate =
-      enforceTitleLength(
-        candidate,
-        90,
-      );
-
-    if (!cleanCandidate) {
-      continue;
-    }
-
-    const check =
-      findSimilarTitle(
-        cleanCandidate,
-        existingTitles,
-      );
-
-    if (!check.duplicate) {
-      return cleanCandidate;
-    }
-  }
-
-  /*
-   * Last-resort fallback.
-   *
-   * We do NOT invent product claims.
-   */
-  if (productType) {
-    return enforceTitleLength(
-      productType,
-      90,
-    );
-  }
-
-  if (original) {
-    return enforceTitleLength(
-      original,
-      90,
-    );
-  }
-
-  if (description) {
-    return enforceTitleLength(
-      description,
-      90,
-    );
-  }
-
-  return "Product";
 }
-
-/* =========================================================
-   POST
-========================================================= */
 
 export async function POST(
   request: Request,
 ) {
   try {
-    /* =====================================================
-       API KEY
-    ===================================================== */
-
     const apiKey =
       process.env.OPENAI_API_KEY;
 
@@ -1084,10 +862,6 @@ export async function POST(
         },
       );
     }
-
-    /* =====================================================
-       REQUEST BODY
-    ===================================================== */
 
     let body: AnalyzeRequest;
 
@@ -1127,34 +901,27 @@ export async function POST(
       );
     }
 
-    /* =====================================================
-       EXISTING STORE TITLES
-    ===================================================== */
-
     const existingTitles =
       cleanList(
         body?.existingProductTitles ??
           body?.existingTitles ??
           [],
-      )
-        .filter(
-          (existingTitle) =>
-            normalizeTitle(
-              existingTitle,
-            ) !==
-            normalizeTitle(
-              product.title ??
-                "",
-            ),
-        )
-        .slice(0, 500);
-
-    /* =====================================================
-       PRODUCT DATA
-    ===================================================== */
+        500,
+      ).filter(
+        (title) =>
+          normalizeTitle(
+            title,
+          ) !==
+          normalizeTitle(
+            product.title ??
+              "",
+          ),
+      );
 
     const productData = {
-      id: clean(product.id),
+      id: clean(
+        product.id,
+      ),
 
       title: clean(
         product.title,
@@ -1190,101 +957,35 @@ export async function POST(
         ),
     };
 
-    /* =====================================================
-       MODEL
-    ===================================================== */
-
     const model =
       process.env.VIRELLO_AI_MODEL ||
       "gpt-5.6";
 
-    /* =====================================================
-       EXISTING TITLES CONTEXT
-    ===================================================== */
-
-    const duplicateContext =
-      existingTitles.length > 0
+    const existingTitlesContext =
+      existingTitles.length
         ? `
-=========================================================
-EXISTING STORE TITLES
-=========================================================
-
-These are titles already used by products in this store.
-
-You MUST avoid exact duplicates and near-duplicates.
+EXISTING STORE PRODUCT TITLES:
 
 ${existingTitles
   .map(
-    (title, index) =>
+    (
+      title,
+      index,
+    ) =>
       `${index + 1}. ${title}`,
   )
   .join("\n")}
-
-=========================================================
-END EXISTING STORE TITLES
-=========================================================
 `
         : `
-No existing store title list was supplied.
+No existing title list was supplied.
 
-Still create a unique, product-specific title and do not
-blindly reuse the original title.
+Still create a product-specific title.
 `;
 
-    /* =====================================================
-       OPENAI REQUEST
-    ===================================================== */
+    const basePrompt = `
+Analyze this Shopify product using ONLY the supplied information.
 
-    const response =
-      await fetch(
-        "https://api.openai.com/v1/responses",
-        {
-          method: "POST",
-
-          headers: {
-            "Content-Type":
-              "application/json",
-
-            Authorization:
-              `Bearer ${apiKey}`,
-          },
-
-          body: JSON.stringify({
-            model,
-
-            input: [
-              {
-                role: "system",
-
-                content: [
-                  {
-                    type:
-                      "input_text",
-
-                    text:
-                      SYSTEM_PROMPT,
-                  },
-                ],
-              },
-
-              {
-                role: "user",
-
-                content: [
-                  {
-                    type:
-                      "input_text",
-
-                    text: `
-Analyze this Shopify product using only the supplied information.
-
-Do not invent specifications.
-
-${duplicateContext}
-
-=========================================================
-CURRENT PRODUCT
-=========================================================
+CURRENT PRODUCT DATA:
 
 ${JSON.stringify(
   productData,
@@ -1292,500 +993,31 @@ ${JSON.stringify(
   2,
 )}
 
-=========================================================
-TITLE REQUIREMENT
-=========================================================
+${existingTitlesContext}
 
-Create a product title that is:
+IMPORTANT:
 
-- accurate
-- natural
-- premium
-- conversion-focused
-- product-specific
-- not keyword stuffed
-- not copied from the original title
-- not identical to any existing store title
-- not a near-duplicate of any existing store title
+- Do not invent missing specifications.
+- Treat the vendor field and product title as separate pieces of evidence.
+- If a brand/product-name relationship is unclear, say so instead of pretending it is verified.
+- Create a genuinely useful, premium, product-specific title.
+- The Product Title must not be an exact or near duplicate of an existing store title.
+- The description should be persuasive but factual.
+- Return empty specifications when no specifications were supplied.
+- SEO title must be 50 characters or fewer.
+- Meta description must be 150 characters or fewer.
+`;
 
-If the original title contains supplier-style wording,
-rewrite it professionally.
-
-Do not create unsupported claims merely to make the
-title different.
-`,
-                  },
-                ],
-              },
-            ],
-
-            /* =================================================
-               STRUCTURED OUTPUT
-            ================================================= */
-
-            text: {
-              format: {
-                type:
-                  "json_schema",
-
-                name:
-                  "virello_product_analysis",
-
-                strict: true,
-
-                schema: {
-                  type:
-                    "object",
-
-                  additionalProperties:
-                    false,
-
-                  properties: {
-                    analysis: {
-                      type:
-                        "object",
-
-                      additionalProperties:
-                        false,
-
-                      properties: {
-                        targetCustomer:
-                          {
-                            type:
-                              "string",
-                          },
-
-                        purchaseMotivation:
-                          {
-                            type:
-                              "string",
-                          },
-
-                        strongestFeatures:
-                          {
-                            type:
-                              "array",
-
-                            items: {
-                              type:
-                                "string",
-                            },
-                          },
-
-                        weaknesses:
-                          {
-                            type:
-                              "array",
-
-                            items: {
-                              type:
-                                "string",
-                            },
-                          },
-
-                        missingInformation:
-                          {
-                            type:
-                              "array",
-
-                            items: {
-                              type:
-                                "string",
-                            },
-                          },
-
-                        seoOpportunities:
-                          {
-                            type:
-                              "array",
-
-                            items: {
-                              type:
-                                "string",
-                            },
-                          },
-
-                        conversionOpportunities:
-                          {
-                            type:
-                              "array",
-
-                            items: {
-                              type:
-                                "string",
-                            },
-                          },
-                      },
-
-                      required: [
-                        "targetCustomer",
-                        "purchaseMotivation",
-                        "strongestFeatures",
-                        "weaknesses",
-                        "missingInformation",
-                        "seoOpportunities",
-                        "conversionOpportunities",
-                      ],
-                    },
-
-                    score: {
-                      type:
-                        "object",
-
-                      additionalProperties:
-                        false,
-
-                      properties: {
-                        title: {
-                          type:
-                            "integer",
-                          minimum: 0,
-                          maximum: 100,
-                        },
-
-                        description: {
-                          type:
-                            "integer",
-                          minimum: 0,
-                          maximum: 100,
-                        },
-
-                        seo: {
-                          type:
-                            "integer",
-                          minimum: 0,
-                          maximum: 100,
-                        },
-
-                        productClarity:
-                          {
-                            type:
-                              "integer",
-                            minimum: 0,
-                            maximum: 100,
-                          },
-
-                        conversionPotential:
-                          {
-                            type:
-                              "integer",
-                            minimum: 0,
-                            maximum: 100,
-                          },
-
-                        overall: {
-                          type:
-                            "integer",
-                          minimum: 0,
-                          maximum: 100,
-                        },
-                      },
-
-                      required: [
-                        "title",
-                        "description",
-                        "seo",
-                        "productClarity",
-                        "conversionPotential",
-                        "overall",
-                      ],
-                    },
-
-                    optimization: {
-                      type:
-                        "object",
-
-                      additionalProperties:
-                        false,
-
-                      properties: {
-                        title: {
-                          type:
-                            "string",
-                        },
-
-                        description: {
-                          type:
-                            "string",
-                        },
-
-                        features: {
-                          type:
-                            "array",
-
-                          items: {
-                            type:
-                              "string",
-                          },
-                        },
-
-                        specifications: {
-                          type:
-                            "array",
-
-                          items: {
-                            type:
-                              "string",
-                          },
-                        },
-
-                        seoTitle: {
-                          type:
-                            "string",
-                        },
-
-                        metaDescription:
-                          {
-                            type:
-                              "string",
-                          },
-
-                        tags: {
-                          type:
-                            "array",
-
-                          items: {
-                            type:
-                              "string",
-                          },
-                        },
-                      },
-
-                      required: [
-                        "title",
-                        "description",
-                        "features",
-                        "specifications",
-                        "seoTitle",
-                        "metaDescription",
-                        "tags",
-                      ],
-                    },
-
-                    reasoning: {
-                      type:
-                        "string",
-                    },
-                  },
-
-                  required: [
-                    "analysis",
-                    "score",
-                    "optimization",
-                    "reasoning",
-                  ],
-                },
-              },
-            },
-          }),
-        },
+    let result =
+      normalizeResult(
+        await callOpenAI(
+          apiKey,
+          model,
+          basePrompt,
+        ),
       );
 
-    /* =====================================================
-       READ OPENAI RESPONSE
-    ===================================================== */
-
-    const data =
-      await response.json();
-
-    /* =====================================================
-       OPENAI ERROR
-    ===================================================== */
-
-    if (!response.ok) {
-      console.error(
-        "OpenAI API error:",
-        data,
-      );
-
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            getErrorMessage(
-              data,
-            ),
-        },
-        {
-          status:
-            response.status,
-        },
-      );
-    }
-
-    /* =====================================================
-       EXTRACT AI TEXT
-    ===================================================== */
-
-    const outputText =
-      extractOutputText(
-        data,
-      );
-
-    if (!outputText) {
-      console.error(
-        "OpenAI returned no readable output:",
-        data,
-      );
-
-      const refusal =
-        clean(
-          data?.output?.[0]?.content?.find(
-            (item: any) =>
-              item?.type ===
-              "refusal",
-          )?.refusal,
-        );
-
-      return NextResponse.json(
-        {
-          success: false,
-
-          error:
-            refusal ||
-            "Virello AI returned no readable analysis output.",
-        },
-
-        {
-          status: 502,
-        },
-      );
-    }
-
-    /* =====================================================
-       PARSE JSON
-    ===================================================== */
-
-    let result: any;
-
-    try {
-      result =
-        JSON.parse(
-          outputText,
-        );
-    } catch (error) {
-      console.error(
-        "Invalid Virello AI JSON:",
-        outputText,
-        error,
-      );
-
-      return NextResponse.json(
-        {
-          success: false,
-
-          error:
-            "Virello AI returned an invalid structured response.",
-        },
-
-        {
-          status: 502,
-        },
-      );
-    }
-
-    /* =====================================================
-       NORMALIZE
-    ===================================================== */
-
-    try {
-      result =
-        normalizeResult(
-          result,
-        );
-    } catch (error) {
-      console.error(
-        "Virello AI normalization error:",
-        error,
-      );
-
-      return NextResponse.json(
-        {
-          success: false,
-
-          error:
-            error instanceof
-            Error
-              ? error.message
-              : "Virello AI returned an incomplete analysis.",
-        },
-
-        {
-          status: 502,
-        },
-      );
-    }
-
-    /* =====================================================
-       SERVER-SIDE TITLE VALIDATION
-       
-       Even if the AI ignores the duplicate instruction,
-       Virello checks the title again before returning it.
-    ===================================================== */
-
-    let generatedTitle =
-      clean(
-        result.optimization
-          .title,
-      );
-
-    let titleDuplicateCheck =
-      findSimilarTitle(
-        generatedTitle,
-        existingTitles,
-      );
-
-    if (
-      titleDuplicateCheck.duplicate
-    ) {
-      console.warn(
-        "AI generated duplicate/near-duplicate title:",
-        {
-          generatedTitle,
-          matchedTitle:
-            titleDuplicateCheck.matchedTitle,
-          similarity:
-            titleDuplicateCheck.similarity,
-        },
-      );
-
-      /*
-       * Ask the same AI result to be corrected by using
-       * a deterministic fallback only if necessary.
-       *
-       * This prevents a duplicate from reaching the UI.
-       */
-      const fallbackTitle =
-        buildFallbackTitle(
-          productData,
-          existingTitles,
-        );
-
-      const fallbackCheck =
-        findSimilarTitle(
-          fallbackTitle,
-          existingTitles,
-        );
-
-      if (
-        !fallbackCheck.duplicate
-      ) {
-        generatedTitle =
-          fallbackTitle;
-      }
-    }
-
-    result.optimization.title =
-      enforceTitleLength(
-        generatedTitle,
-        90,
-      );
-
-    /* =====================================================
-       FINAL DUPLICATE CHECK
-    ===================================================== */
-
-    titleDuplicateCheck =
+    let duplicateCheck =
       findSimilarTitle(
         result.optimization
           .title,
@@ -1793,12 +1025,62 @@ title different.
       );
 
     /*
-     * If there is still a duplicate and we actually have
-     * an existing title list, do not silently return a
-     * known duplicate.
+     * If the AI generated a title too similar
+     * to an existing store title, ask the AI
+     * to generate a genuinely different one.
      */
+
     if (
-      titleDuplicateCheck.duplicate &&
+      duplicateCheck.duplicate &&
+      existingTitles.length > 0
+    ) {
+      const repairPrompt = `
+${basePrompt}
+
+TITLE REPAIR REQUIRED:
+
+The previous AI-generated title was:
+
+"${result.optimization.title}"
+
+It was rejected because it is too similar to this existing store title:
+
+"${duplicateCheck.matchedTitle}"
+
+Generate a DIFFERENT title for the same product.
+
+Do NOT merely:
+- add an adjective
+- remove one word
+- reorder words
+- replace one insignificant word
+
+Use another accurate product-specific phrasing based ONLY on the supplied product data.
+
+Keep the product factual and commercially useful.
+
+All other optimization decisions must remain factual.
+`;
+
+      result =
+        normalizeResult(
+          await callOpenAI(
+            apiKey,
+            model,
+            repairPrompt,
+          ),
+        );
+
+      duplicateCheck =
+        findSimilarTitle(
+          result.optimization
+            .title,
+          existingTitles,
+        );
+    }
+
+    if (
+      duplicateCheck.duplicate &&
       existingTitles.length > 0
     ) {
       return NextResponse.json(
@@ -1806,7 +1088,17 @@ title different.
           success: false,
 
           error:
-            "Virello could not safely create a sufficiently unique product title. Please try Analyze again.",
+            "Virello AI could not create a sufficiently unique product title. Please analyze again.",
+
+          meta: {
+            aiGenerated: true,
+
+            duplicateProtection:
+              true,
+
+            matchedTitle:
+              duplicateCheck.matchedTitle,
+          },
         },
 
         {
@@ -1815,9 +1107,26 @@ title different.
       );
     }
 
-    /* =====================================================
-       SUCCESS
-    ===================================================== */
+    result.optimization.title =
+      enforceLimit(
+        result.optimization
+          .title,
+        90,
+      );
+
+    result.optimization.seoTitle =
+      enforceLimit(
+        result.optimization
+          .seoTitle,
+        50,
+      );
+
+    result.optimization.metaDescription =
+      enforceLimit(
+        result.optimization
+          .metaDescription,
+        150,
+      );
 
     return NextResponse.json({
       success: true,
