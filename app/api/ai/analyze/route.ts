@@ -98,10 +98,7 @@ function unique(values: string[]): string[] {
     });
 }
 
-function limitCharacters(
-  value: string,
-  max: number,
-): string {
+function limitCharacters(value: string, max: number): string {
   const text = clean(value);
 
   if (text.length <= max) {
@@ -128,10 +125,7 @@ function clampScore(value: unknown): number {
     return 0;
   }
 
-  return Math.max(
-    0,
-    Math.min(100, Math.round(number)),
-  );
+  return Math.max(0, Math.min(100, Math.round(number)));
 }
 
 /* =========================================================
@@ -156,9 +150,7 @@ function detectAudience(
   ).toLowerCase();
 
   /*
-   * Strong product fields have priority.
-   * This prevents generic words such as "fashion",
-   * "elegant", "gift", etc. from changing the audience.
+   * Strong fields have priority.
    */
 
   const primaryText = [
@@ -186,7 +178,7 @@ function detectAudience(
   }
 
   /*
-   * Description is secondary evidence only.
+   * Description is secondary evidence.
    */
 
   const menDescription =
@@ -214,9 +206,7 @@ function detectAudience(
    OPENAI OUTPUT EXTRACTION
 ========================================================= */
 
-function extractOutputText(
-  data: any,
-): string {
+function extractOutputText(data: any): string {
   if (
     typeof data?.output_text === "string" &&
     data.output_text.trim()
@@ -252,40 +242,32 @@ function extractOutputText(
    NORMALIZE RESULT
 ========================================================= */
 
-function normalizeResult(
-  raw: any,
-): AIResult {
-  const analysis =
-    raw?.analysis || {};
-
-  const score =
-    raw?.score || {};
-
-  const optimization =
-    raw?.optimization || {};
+function normalizeResult(raw: any): AIResult {
+  const analysis = raw?.analysis || {};
+  const score = raw?.score || {};
+  const optimization = raw?.optimization || {};
 
   const normalizedScore: AIScore = {
     title: clampScore(score.title),
 
-    description:
-      clampScore(score.description),
+    description: clampScore(
+      score.description,
+    ),
 
     seo: clampScore(score.seo),
 
-    productClarity:
-      clampScore(score.productClarity),
+    productClarity: clampScore(
+      score.productClarity,
+    ),
 
-    conversionPotential:
-      clampScore(
-        score.conversionPotential,
-      ),
+    conversionPotential: clampScore(
+      score.conversionPotential,
+    ),
 
-    overall:
-      clampScore(score.overall),
+    overall: clampScore(score.overall),
   };
 
-  const normalizedOptimization:
-    AIOptimization = {
+  const normalizedOptimization: AIOptimization = {
     title: clean(
       optimization.title,
     ),
@@ -295,9 +277,7 @@ function normalizeResult(
     ),
 
     features: unique(
-      Array.isArray(
-        optimization.features,
-      )
+      Array.isArray(optimization.features)
         ? optimization.features
         : [],
     ),
@@ -311,24 +291,19 @@ function normalizeResult(
     ),
 
     seoTitle: limitCharacters(
-      clean(
-        optimization.seoTitle,
-      ),
+      clean(optimization.seoTitle),
       50,
     ),
 
-    metaDescription:
-      limitCharacters(
-        clean(
-          optimization.metaDescription,
-        ),
-        160,
+    metaDescription: limitCharacters(
+      clean(
+        optimization.metaDescription,
       ),
+      160,
+    ),
 
     tags: unique(
-      Array.isArray(
-        optimization.tags,
-      )
+      Array.isArray(optimization.tags)
         ? optimization.tags
         : [],
     ),
@@ -353,9 +328,7 @@ function normalizeResult(
       ),
 
       weaknesses: unique(
-        Array.isArray(
-          analysis.weaknesses,
-        )
+        Array.isArray(analysis.weaknesses)
           ? analysis.weaknesses
           : [],
       ),
@@ -376,14 +349,13 @@ function normalizeResult(
           : [],
       ),
 
-      conversionOpportunities:
-        unique(
-          Array.isArray(
-            analysis.conversionOpportunities,
-          )
-            ? analysis.conversionOpportunities
-            : [],
-        ),
+      conversionOpportunities: unique(
+        Array.isArray(
+          analysis.conversionOpportunities,
+        )
+          ? analysis.conversionOpportunities
+          : [],
+      ),
     },
 
     score: normalizedScore,
@@ -644,9 +616,7 @@ export async function POST(
       );
 
     const productType =
-      clean(
-        product.productType,
-      );
+      clean(product.productType);
 
     const vendor =
       clean(product.vendor);
@@ -681,15 +651,11 @@ export async function POST(
       detectAudience(product);
 
     /*
-     * IMPORTANT:
-     * detectedAudience is the authoritative signal.
+     * Backend audience detection is authoritative.
      *
-     * Example:
-     * Men's watch -> Men
-     *
-     * Generic words such as:
-     * fashion / elegant / gift
-     * cannot override this.
+     * Men's watch = Men
+     * Women's watch = Women
+     * Unknown = Unisex
      */
 
     const suppliedAudience =
@@ -724,7 +690,7 @@ export async function POST(
     };
 
     /* -----------------------------------------------------
-       6. SYSTEM INSTRUCTIONS
+       6. AI INSTRUCTIONS
     ----------------------------------------------------- */
 
     const instructions = `
@@ -734,28 +700,27 @@ You are an expert ecommerce product analyst,
 Shopify SEO specialist, conversion copywriter,
 and luxury watch merchandising assistant.
 
-Your job is to analyze the REAL product information
-provided by the merchant and generate optimized
-Shopify product content.
+Analyze the REAL product information provided
+by the merchant.
 
-The product information is authoritative.
+Do not invent product facts.
 
 ========================================================
 CRITICAL AUDIENCE RULE
 ========================================================
 
-Audience classification must be accurate.
-
-The detected audience supplied by the backend is:
+The backend detected audience is:
 
 ${detectedAudience}
 
+This value is authoritative.
+
 If detectedAudience is "Men":
 
-You MUST treat the product as a MEN'S product.
+The product MUST be treated as a MEN'S product.
 
-Never classify it as Women's because of generic terms
-such as:
+Never classify it as Women's because of generic
+words such as:
 
 fashion
 elegant
@@ -766,20 +731,21 @@ luxury
 beautiful
 classic
 
-If the product is explicitly men's, keep the customer
-positioning male.
+If detectedAudience is "Women":
 
-If detectedAudience is "Women", keep the positioning
-female.
+The product MUST be treated as a WOMEN'S product.
 
-If detectedAudience is "Unisex", do not force a gender
-unless the actual product information supports it.
+If detectedAudience is "Unisex":
+
+Do not force a gender unless the actual product
+information supports it.
 
 ========================================================
-WATCH-SPECIFIC RULES
+WATCH ANALYSIS
 ========================================================
 
-For watches, inspect the real product information for:
+For watches, inspect the actual product information
+for:
 
 - men's or women's positioning
 - automatic movement
@@ -802,43 +768,43 @@ For watches, inspect the real product information for:
 - luxury positioning
 - premium positioning
 
-NEVER invent any of these specifications.
+NEVER invent specifications.
 
-If the information is not provided,
+If a specification is not provided,
 do not claim that the product has it.
 
 ========================================================
-TITLE RULES
+TITLE
 ========================================================
 
-Create a clean, premium ecommerce title.
+Create a premium ecommerce title.
 
 Prefer approximately 4–8 meaningful words.
 
 Do not keyword stuff.
 
-Do not repeat the same word unnecessarily.
+Do not unnecessarily repeat words.
 
-Do not use supplier names unless they are part of
-the legitimate product information.
+Do not use supplier names unless legitimately
+present in the product information.
 
 Do not make the title sound like a dropshipping listing.
 
-For men's watches, the title should make the men's
-positioning clear when supported by the product.
+For men's watches, make the men's positioning
+clear when supported by the actual product data.
 
 ========================================================
-DESCRIPTION RULES
+DESCRIPTION
 ========================================================
 
-Write a premium Shopify product description.
+Write a premium Shopify description.
 
 Focus on:
 
 - what the product is
 - who it is for
-- strongest verified benefits
-- important verified features
+- verified benefits
+- verified features
 - style
 - practical use
 - purchase motivation
@@ -850,24 +816,24 @@ performance, durability, or certification claims.
 
 Avoid supplier language.
 
-Avoid phrases such as:
+Never use:
 
-"Dear customer"
-"best seller guaranteed"
-"cheap"
-"factory direct"
-"AliExpress"
-"wholesale"
-"dropshipping"
+Dear customer
+best seller guaranteed
+cheap
+factory direct
+AliExpress
+wholesale
+dropshipping
 
 ========================================================
-SEO RULES
+SEO
 ========================================================
 
 SEO title:
 
-- concise
 - natural
+- concise
 - keyword relevant
 - maximum 50 characters
 
@@ -876,13 +842,13 @@ Meta description:
 - maximum 160 characters
 - natural
 - compelling
-- accurately describes the product
+- accurate
 
 Tags:
 
 Create relevant Shopify tags.
 
-Avoid duplicate tags.
+Avoid duplicates.
 
 Avoid irrelevant keywords.
 
@@ -890,9 +856,9 @@ Avoid irrelevant keywords.
 SCORING
 ========================================================
 
-Score the current product quality from 0 to 100.
+Score the current product from 0 to 100.
 
-Consider:
+Evaluate:
 
 Title:
 clarity, relevance, readability.
@@ -911,7 +877,7 @@ whether the listing gives shoppers enough
 confidence and motivation to purchase.
 
 Overall:
-your overall assessment.
+overall assessment.
 
 ========================================================
 ANALYSIS
@@ -927,10 +893,7 @@ Identify:
 - SEO opportunities
 - conversion opportunities
 
-Be specific to this actual product.
-
-Do not give generic advice when product-specific
-information is available.
+Be specific to the actual product.
 
 ========================================================
 NO HALLUCINATION
@@ -975,12 +938,12 @@ ${JSON.stringify(
   2,
 )}
 
-Remember:
+IMPORTANT:
 
 Detected audience = ${detectedAudience}
 
-The detected audience must not be overridden by
-generic words in the description.
+The detected audience must not be overridden
+by generic words in the description.
 `;
 
     /* -----------------------------------------------------
@@ -1047,6 +1010,7 @@ generic words in the description.
           success: false,
           error:
             "Virello AI could not complete the analysis.",
+
           details:
             process.env.NODE_ENV ===
             "development"
@@ -1127,19 +1091,13 @@ generic words in the description.
       );
 
     /* -----------------------------------------------------
-       13. SAFETY CHECKS
+       13. AUDIENCE SAFETY CHECK
     ----------------------------------------------------- */
-
-    /*
-     * If the AI somehow changes an explicit audience,
-     * correct the target customer text.
-     */
 
     if (
       detectedAudience === "Men" &&
       /women|female|ladies|woman/i.test(
-        result.analysis
-          .targetCustomer,
+        result.analysis.targetCustomer,
       )
     ) {
       result.analysis.targetCustomer =
@@ -1149,8 +1107,7 @@ generic words in the description.
     if (
       detectedAudience === "Women" &&
       /men|male|gentlemen|man/i.test(
-        result.analysis
-          .targetCustomer,
+        result.analysis.targetCustomer,
       )
     ) {
       result.analysis.targetCustomer =
@@ -1158,7 +1115,7 @@ generic words in the description.
     }
 
     /* -----------------------------------------------------
-       14. RETURN
+       14. RETURN RESULT
     ----------------------------------------------------- */
 
     return NextResponse.json(
@@ -1166,11 +1123,6 @@ generic words in the description.
         success: true,
 
         result,
-
-        /*
-         * These values make it easy for the frontend
-         * to understand exactly what Virello detected.
-         */
 
         detectedAudience,
 
