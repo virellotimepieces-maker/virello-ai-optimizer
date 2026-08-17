@@ -69,10 +69,17 @@ type AIOptimization = {
   description: string;
   features: string[];
   specifications: string[];
+
+  /*
+   * AI MUST return a Product Type.
+   * No hard-coded classification is performed
+   * by the frontend.
+   */
+  productType: string;
+
   seoTitle: string;
   metaDescription: string;
   tags: string[];
-  productType?: string;
 };
 
 type AIResult = {
@@ -81,6 +88,13 @@ type AIResult = {
   optimization: AIOptimization;
   reasoning: string;
 };
+
+/* =========================================================
+   SEO LIMITS
+========================================================= */
+
+const SEO_TITLE_MAX = 60;
+const META_DESCRIPTION_MAX = 160;
 
 /* =========================================================
    HELPERS
@@ -135,6 +149,7 @@ function limitCharacters(
   }
 
   let result = text.slice(0, max);
+
   const lastSpace = result.lastIndexOf(" ");
 
   if (lastSpace > Math.floor(max * 0.65)) {
@@ -258,11 +273,6 @@ export default function Page() {
 
   /* =======================================================
      LOAD SHOPIFY PRODUCTS
-
-     IMPORTANT:
-     No audience detection.
-     No style detection.
-     No product guessing.
   ======================================================= */
 
   async function loadProducts() {
@@ -418,18 +428,6 @@ export default function Page() {
 
   /* =======================================================
      REAL AI ANALYSIS
-     
-     The frontend does NOT determine:
-     - gender
-     - audience
-     - style
-     - category
-     - features
-     - specifications
-     - SEO
-     - conversion strategy
-
-     The AI receives the actual product data.
   ======================================================= */
 
   async function handleOptimize() {
@@ -447,8 +445,11 @@ export default function Page() {
         await getSessionToken();
 
       /*
-       * Send the actual Shopify product data.
-       * No local product classification.
+       * ACTUAL SHOPIFY PRODUCT DATA
+       *
+       * No frontend classification.
+       * No gender guessing.
+       * No product-type guessing.
        */
 
       const productPayload = {
@@ -520,8 +521,44 @@ export default function Page() {
                 productPayload,
 
               instructions: {
+                /*
+                 * SOURCE OF TRUTH
+                 */
+
                 sourceOfTruth:
-                  "Use only information present in the supplied Shopify product data.",
+                  "Use the supplied Shopify product data as the source of truth.",
+
+                /*
+                 * PRODUCT TYPE
+                 *
+                 * AI determines it from the
+                 * actual product information.
+                 *
+                 * No hard-coded frontend rule.
+                 */
+
+                determineProductTypeWithAI:
+                  true,
+
+                productTypeRequired:
+                  true,
+
+                productTypeMustNotBeBlank:
+                  true,
+
+                /*
+                 * AUDIENCE
+                 */
+
+                determineAudienceWithAI:
+                  true,
+
+                doNotAssumeGender:
+                  true,
+
+                /*
+                 * CONTENT
+                 */
 
                 rewriteExistingInformation:
                   true,
@@ -531,6 +568,10 @@ export default function Page() {
 
                 improveSEO:
                   true,
+
+                /*
+                 * FACTUAL ACCURACY
+                 */
 
                 doNotInventFacts:
                   true,
@@ -542,6 +583,38 @@ export default function Page() {
                   true,
 
                 preserveAccurateProductFacts:
+                  true,
+
+                /*
+                 * SEO LIMITS
+                 */
+
+                seoTitleMaximumCharacters:
+                  SEO_TITLE_MAX,
+
+                metaDescriptionMaximumCharacters:
+                  META_DESCRIPTION_MAX,
+
+                seoTitleMustFitLimit:
+                  true,
+
+                metaDescriptionMustFitLimit:
+                  true,
+
+                /*
+                 * OUTPUT QUALITY
+                 */
+
+                avoidKeywordStuffing:
+                  true,
+
+                avoidDuplicateTags:
+                  true,
+
+                writeNaturalSearchFriendlyCopy:
+                  true,
+
+                prioritizeProductRelevance:
                   true,
               },
             }),
@@ -582,6 +655,28 @@ export default function Page() {
       const optimization =
         result.optimization;
 
+      /* ===================================================
+         PRODUCT TYPE
+         
+         AI must return this.
+         We do NOT classify it here.
+      =================================================== */
+
+      const normalizedProductType =
+        clean(
+          optimization.productType,
+        );
+
+      if (!normalizedProductType) {
+        throw new Error(
+          "Virello AI did not return a Product Type. The AI backend must return a valid Product Type based on the actual Shopify product data.",
+        );
+      }
+
+      /* ===================================================
+         NORMALIZE AI OUTPUT
+      =================================================== */
+
       const normalizedTitle =
         clean(
           optimization.title,
@@ -619,16 +714,26 @@ export default function Page() {
             : [],
         );
 
+      /*
+       * SEO TITLE
+       * Maximum 60 characters.
+       */
+
       const normalizedSeoTitle =
         limitCharacters(
           optimization.seoTitle,
-          50,
+          SEO_TITLE_MAX,
         );
+
+      /*
+       * META DESCRIPTION
+       * Maximum 160 characters.
+       */
 
       const normalizedMetaDescription =
         limitCharacters(
           optimization.metaDescription,
-          150,
+          META_DESCRIPTION_MAX,
         );
 
       const normalizedResult: AIResult =
@@ -643,6 +748,9 @@ export default function Page() {
 
             description:
               normalizedDescription,
+
+            productType:
+              normalizedProductType,
 
             features:
               normalizedFeatures,
@@ -670,29 +778,13 @@ export default function Page() {
       );
 
       /*
-       * Product Type is also AI-generated
-       * if the backend provides one.
-       *
-       * If AI does not provide one, retain
-       * the original Shopify Product Type.
+       * Product Type comes directly
+       * from AI.
        */
-      if (
-        clean(
-          optimization.productType,
-        )
-      ) {
-        setProductType(
-          clean(
-            optimization.productType,
-          ),
-        );
-      } else {
-        setProductType(
-          clean(
-            selected.productType,
-          ),
-        );
-      }
+
+      setProductType(
+        normalizedProductType,
+      );
 
       setTags(
         normalizedTags.join(", "),
@@ -772,7 +864,7 @@ export default function Page() {
 
     if (!finalProductType) {
       setError(
-        "Product Type is required.",
+        "Product Type is required. Run AI Analysis first so Virello can determine it from the actual product data.",
       );
       return;
     }
@@ -792,10 +884,11 @@ export default function Page() {
     }
 
     if (
-      finalSeoTitle.length > 50
+      finalSeoTitle.length >
+      SEO_TITLE_MAX
     ) {
       setError(
-        "SEO Title must be 50 characters or fewer.",
+        `SEO Title must be ${SEO_TITLE_MAX} characters or fewer.`,
       );
       return;
     }
@@ -809,10 +902,10 @@ export default function Page() {
 
     if (
       finalMetaDescription.length >
-      150
+      META_DESCRIPTION_MAX
     ) {
       setError(
-        "Meta Description must be 150 characters or fewer.",
+        `Meta Description must be ${META_DESCRIPTION_MAX} characters or fewer.`,
       );
       return;
     }
@@ -1586,7 +1679,7 @@ export default function Page() {
                   />
                 )}
 
-                {/* AI FACT SOURCE */}
+                {/* AI SOURCE */}
 
                 <div className="ai-fact">
                   <strong>
@@ -1594,13 +1687,15 @@ export default function Page() {
                   </strong>
 
                   <span>
-                    Virello AI receives
-                    the actual Shopify
-                    product data. The
-                    frontend does not
-                    classify the product
-                    with hard-coded
-                    rules.
+                    Virello AI analyzes the
+                    actual Shopify product
+                    data. Product Type,
+                    audience, features,
+                    specifications and SEO
+                    are determined from the
+                    supplied product data,
+                    not from hard-coded
+                    frontend product rules.
                   </span>
                 </div>
 
@@ -1639,7 +1734,14 @@ export default function Page() {
                           .value,
                       )
                     }
+                    placeholder="AI-determined product type"
                   />
+
+                  <div className="small-note">
+                    Determined by Virello AI
+                    from the actual Shopify
+                    product data.
+                  </div>
                 </div>
 
                 {/* TAGS */}
@@ -1715,10 +1817,9 @@ export default function Page() {
                         </ul>
                       ) : (
                         <div className="empty-detail">
-                          AI analysis
-                          has not
-                          generated
-                          features yet.
+                          AI analysis has not
+                          generated features
+                          yet.
                         </div>
                       )}
                     </div>
@@ -1748,13 +1849,10 @@ export default function Page() {
                         </ul>
                       ) : (
                         <div className="empty-detail">
-                          Only
-                          specifications
-                          supported by
-                          the source
-                          product data
-                          should be
-                          returned.
+                          Only specifications
+                          supported by the
+                          source product data
+                          should be returned.
                         </div>
                       )}
                     </div>
@@ -1771,11 +1869,14 @@ export default function Page() {
 
                   <div className="field">
                     <label>
-                      SEO Title · Max 50
+                      SEO Title · Max{" "}
+                      {SEO_TITLE_MAX}
                     </label>
 
                     <input
-                      maxLength={50}
+                      maxLength={
+                        SEO_TITLE_MAX
+                      }
                       value={
                         seoTitle
                       }
@@ -1789,18 +1890,23 @@ export default function Page() {
 
                     <div className="counter">
                       {seoTitle.length}
-                      /50
+                      /{SEO_TITLE_MAX}
                     </div>
                   </div>
 
                   <div className="field">
                     <label>
                       Meta Description ·
-                      Max 150
+                      Max{" "}
+                      {
+                        META_DESCRIPTION_MAX
+                      }
                     </label>
 
                     <textarea
-                      maxLength={150}
+                      maxLength={
+                        META_DESCRIPTION_MAX
+                      }
                       value={
                         metaDescription
                       }
@@ -1816,7 +1922,10 @@ export default function Page() {
                       {
                         metaDescription.length
                       }
-                      /150
+                      /
+                      {
+                        META_DESCRIPTION_MAX
+                      }
                     </div>
                   </div>
                 </div>
@@ -1967,8 +2076,7 @@ export default function Page() {
                           </ul>
                         ) : (
                           <p>
-                            None
-                            identified.
+                            None identified.
                           </p>
                         )}
                       </div>
@@ -1999,8 +2107,7 @@ export default function Page() {
                           </ul>
                         ) : (
                           <p>
-                            No major
-                            weaknesses
+                            No major weaknesses
                             identified.
                           </p>
                         )}
@@ -2032,10 +2139,8 @@ export default function Page() {
                           </ul>
                         ) : (
                           <p>
-                            No important
-                            missing
-                            information
-                            detected.
+                            No important missing
+                            information detected.
                           </p>
                         )}
                       </div>
@@ -2066,8 +2171,7 @@ export default function Page() {
                           </ul>
                         ) : (
                           <p>
-                            None
-                            identified.
+                            None identified.
                           </p>
                         )}
                       </div>
