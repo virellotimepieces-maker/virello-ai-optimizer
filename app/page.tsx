@@ -14,6 +14,19 @@ declare global {
   }
 }
 
+type ShopifyImage = {
+  url: string;
+  altText: string | null;
+};
+
+type ShopifyVariant = {
+  id?: string;
+  title?: string;
+  price?: string;
+  sku?: string | null;
+  available?: boolean;
+};
+
 type ShopifyProduct = {
   id: string;
   title: string;
@@ -23,26 +36,10 @@ type ShopifyProduct = {
   status: string;
   vendor: string;
   price: string;
-  images?: {
-    url: string;
-    altText: string | null;
-  }[];
+  images?: ShopifyImage[];
   featuredImage: string | null;
-};
-
-type Audience = "Women" | "Men" | "Unisex";
-
-type Style =
-  | "Premium / Luxury"
-  | "Professional"
-  | "Everyday"
-  | "Casual"
-  | "Sport"
-  | "Gift";
-
-type Product = ShopifyProduct & {
-  audience: Audience;
-  style: Style;
+  variants?: ShopifyVariant[];
+  [key: string]: unknown;
 };
 
 type AIAnalysis = {
@@ -53,6 +50,9 @@ type AIAnalysis = {
   missingInformation: string[];
   seoOpportunities: string[];
   conversionOpportunities: string[];
+  detectedProductType?: string;
+  detectedAudience?: string;
+  detectedStyle?: string;
 };
 
 type AIScore = {
@@ -72,6 +72,7 @@ type AIOptimization = {
   seoTitle: string;
   metaDescription: string;
   tags: string[];
+  productType?: string;
 };
 
 type AIResult = {
@@ -85,14 +86,14 @@ type AIResult = {
    HELPERS
 ========================================================= */
 
-function clean(value: unknown) {
+function clean(value: unknown): string {
   return String(value ?? "")
     .replace(/\s+/g, " ")
     .trim();
 }
 
-function stripHtml(value: string) {
-  return String(value || "")
+function stripHtml(value: unknown): string {
+  return String(value ?? "")
     .replace(/<br\s*\/?>/gi, "\n")
     .replace(/<\/(p|div|li|h[1-6])>/gi, "\n")
     .replace(/<[^>]*>/g, " ")
@@ -106,25 +107,27 @@ function stripHtml(value: string) {
     .trim();
 }
 
-function unique(values: string[]) {
+function unique(values: unknown[]): string[] {
   const seen = new Set<string>();
 
-  return values.filter((value) => {
-    const normalized = clean(value).toLowerCase();
+  return values
+    .map(clean)
+    .filter((value) => {
+      const normalized = value.toLowerCase();
 
-    if (!normalized || seen.has(normalized)) {
-      return false;
-    }
+      if (!normalized || seen.has(normalized)) {
+        return false;
+      }
 
-    seen.add(normalized);
-    return true;
-  });
+      seen.add(normalized);
+      return true;
+    });
 }
 
 function limitCharacters(
-  value: string,
+  value: unknown,
   max: number,
-) {
+): string {
   const text = clean(value);
 
   if (text.length <= max) {
@@ -132,7 +135,6 @@ function limitCharacters(
   }
 
   let result = text.slice(0, max);
-
   const lastSpace = result.lastIndexOf(" ");
 
   if (lastSpace > Math.floor(max * 0.65)) {
@@ -144,8 +146,8 @@ function limitCharacters(
     .replace(/[.,;:!?-]+$/, "");
 }
 
-function escapeHtml(value: string) {
-  return String(value).replace(
+function escapeHtml(value: string): string {
+  return value.replace(
     /[&<>'"]/g,
     (char) =>
       ({
@@ -160,121 +162,16 @@ function escapeHtml(value: string) {
 
 function descriptionToHtml(
   description: string,
-) {
+): string {
   return description
     .split(/\n\s*\n/)
     .map(clean)
     .filter(Boolean)
     .map(
       (paragraph) =>
-        `<p>${escapeHtml(
-          paragraph,
-        )}</p>`,
+        `<p>${escapeHtml(paragraph)}</p>`,
     )
     .join("");
-}
-
-/* =========================================================
-   AUDIENCE
-========================================================= */
-
-function detectAudience(
-  product: ShopifyProduct,
-): Audience {
-  const text = [
-    product.title,
-    product.productType,
-    product.vendor,
-    product.tags.join(" "),
-    stripHtml(product.description),
-  ]
-    .join(" ")
-    .toLowerCase();
-
-  if (
-    /\bwomen\b|\bwomen's\b|\bladies\b|\blady\b|\bfemale\b/.test(
-      text,
-    )
-  ) {
-    return "Women";
-  }
-
-  if (
-    /\bmen\b|\bmen's\b|\bgentlemen\b|\bgents\b|\bmale\b/.test(
-      text,
-    )
-  ) {
-    return "Men";
-  }
-
-  return "Unisex";
-}
-
-/* =========================================================
-   STYLE
-   NOTE:
-   This is only initial context for the AI.
-   It does NOT generate the content.
-========================================================= */
-
-function detectStyle(
-  product: ShopifyProduct,
-): Style {
-  const text = [
-    product.title,
-    product.productType,
-    product.vendor,
-    product.tags.join(" "),
-    stripHtml(product.description),
-  ]
-    .join(" ")
-    .toLowerCase();
-
-  if (
-    /luxury|premium|elegant|sapphire|automatic|mechanical|formal|dress watch/.test(
-      text,
-    )
-  ) {
-    return "Premium / Luxury";
-  }
-
-  if (
-    /sport|sports|diving|diver|racing|athletic|chronograph/.test(
-      text,
-    )
-  ) {
-    return "Sport";
-  }
-
-  if (
-    /casual|fashion|street/.test(text)
-  ) {
-    return "Casual";
-  }
-
-  if (/gift|present/.test(text)) {
-    return "Gift";
-  }
-
-  if (
-    /business|office|professional/.test(
-      text,
-    )
-  ) {
-    return "Professional";
-  }
-
-  return "Everyday";
-}
-
-function toProduct(
-  product: ShopifyProduct,
-): Product {
-  return {
-    ...product,
-    audience: detectAudience(product),
-    style: detectStyle(product),
-  };
 }
 
 /* =========================================================
@@ -283,7 +180,7 @@ function toProduct(
 
 export default function Page() {
   const [products, setProducts] =
-    useState<Product[]>([]);
+    useState<ShopifyProduct[]>([]);
 
   const [selectedId, setSelectedId] =
     useState("");
@@ -324,30 +221,20 @@ export default function Page() {
   const [features, setFeatures] =
     useState<string[]>([]);
 
-  const [
-    specifications,
-    setSpecifications,
-  ] = useState<string[]>([]);
+  const [specifications, setSpecifications] =
+    useState<string[]>([]);
 
   const [seoTitle, setSeoTitle] =
     useState("");
 
-  const [
-    metaDescription,
-    setMetaDescription,
-  ] = useState("");
-
-  const [audience, setAudience] =
-    useState<Audience>("Unisex");
-
-  const [style, setStyle] =
-    useState<Style>("Everyday");
+  const [metaDescription, setMetaDescription] =
+    useState("");
 
   /* =======================================================
      SHOPIFY SESSION TOKEN
   ======================================================= */
 
-  async function getSessionToken() {
+  async function getSessionToken(): Promise<string> {
     if (
       typeof window === "undefined" ||
       !window.shopify?.idToken
@@ -371,6 +258,11 @@ export default function Page() {
 
   /* =======================================================
      LOAD SHOPIFY PRODUCTS
+
+     IMPORTANT:
+     No audience detection.
+     No style detection.
+     No product guessing.
   ======================================================= */
 
   async function loadProducts() {
@@ -381,20 +273,19 @@ export default function Page() {
       const token =
         await getSessionToken();
 
-      const response =
-        await fetch(
-          "/api/shopify/products",
-          {
-            method: "GET",
-            headers: {
-              Authorization:
-                `Bearer ${token}`,
-              "x-shopify-session-token":
-                token,
-            },
-            cache: "no-store",
+      const response = await fetch(
+        "/api/shopify/products",
+        {
+          method: "GET",
+          headers: {
+            Authorization:
+              `Bearer ${token}`,
+            "x-shopify-session-token":
+              token,
           },
-        );
+          cache: "no-store",
+        },
+      );
 
       const data =
         (await response.json()) as {
@@ -415,9 +306,7 @@ export default function Page() {
 
       const normalized =
         Array.isArray(data.products)
-          ? data.products.map(
-              toProduct,
-            )
+          ? data.products
           : [];
 
       setProducts(normalized);
@@ -458,15 +347,13 @@ export default function Page() {
     );
 
   /* =======================================================
-     FILTER PRODUCTS
+     FILTER
   ======================================================= */
 
   const filteredProducts =
     useMemo(() => {
       const query =
-        search
-          .toLowerCase()
-          .trim();
+        search.toLowerCase().trim();
 
       if (!query) {
         return products;
@@ -483,31 +370,22 @@ export default function Page() {
           product.vendor
             .toLowerCase()
             .includes(query) ||
-          product.tags.some(
-            (tag) =>
-              tag
-                .toLowerCase()
-                .includes(query),
+          product.tags.some((tag) =>
+            tag
+              .toLowerCase()
+              .includes(query),
           ),
       );
     }, [products, search]);
 
   /* =======================================================
-     LOAD PRODUCT INTO EDITOR
+     LOAD SELECTED PRODUCT
   ======================================================= */
 
   useEffect(() => {
     if (!selected) {
       return;
     }
-
-    setAudience(
-      selected.audience,
-    );
-
-    setStyle(
-      selected.style,
-    );
 
     setTitle(
       stripHtml(selected.title),
@@ -539,14 +417,19 @@ export default function Page() {
   }, [selected]);
 
   /* =======================================================
-     REAL AI OPTIMIZATION
+     REAL AI ANALYSIS
      
-     IMPORTANT:
-     There is NO local buildProductTitle().
-     There is NO local buildDescription().
-     There is NO local buildSeoTitle().
-     
-     The AI backend does the actual analysis.
+     The frontend does NOT determine:
+     - gender
+     - audience
+     - style
+     - category
+     - features
+     - specifications
+     - SEO
+     - conversion strategy
+
+     The AI receives the actual product data.
   ======================================================= */
 
   async function handleOptimize() {
@@ -562,6 +445,58 @@ export default function Page() {
     try {
       const token =
         await getSessionToken();
+
+      /*
+       * Send the actual Shopify product data.
+       * No local product classification.
+       */
+
+      const productPayload = {
+        ...selected,
+
+        title:
+          stripHtml(selected.title),
+
+        description:
+          stripHtml(
+            selected.description,
+          ),
+
+        productType:
+          clean(
+            selected.productType,
+          ),
+
+        vendor:
+          clean(selected.vendor),
+
+        tags:
+          Array.isArray(
+            selected.tags,
+          )
+            ? selected.tags
+            : [],
+
+        price:
+          clean(selected.price),
+
+        images:
+          Array.isArray(
+            selected.images,
+          )
+            ? selected.images
+            : [],
+
+        featuredImage:
+          selected.featuredImage,
+
+        variants:
+          Array.isArray(
+            selected.variants,
+          )
+            ? selected.variants
+            : [],
+      };
 
       const response =
         await fetch(
@@ -581,34 +516,33 @@ export default function Page() {
             },
 
             body: JSON.stringify({
-              product: {
-                id: selected.id,
+              product:
+                productPayload,
 
-                title:
-                  stripHtml(
-                    selected.title,
-                  ),
+              instructions: {
+                sourceOfTruth:
+                  "Use only information present in the supplied Shopify product data.",
 
-                description:
-                  stripHtml(
-                    selected.description,
-                  ),
+                rewriteExistingInformation:
+                  true,
 
-                productType:
-                  selected.productType,
+                improveConversion:
+                  true,
 
-                vendor:
-                  selected.vendor,
+                improveSEO:
+                  true,
 
-                tags:
-                  selected.tags,
+                doNotInventFacts:
+                  true,
 
-                price:
-                  selected.price,
+                doNotInventSpecifications:
+                  true,
 
-                audience,
+                detectAndReportConflicts:
+                  true,
 
-                style,
+                preserveAccurateProductFacts:
+                  true,
               },
             }),
           },
@@ -627,13 +561,6 @@ export default function Page() {
         );
       }
 
-      /*
-       * The existing AI route returns the
-       * structured result. This also supports
-       * slightly different response wrappers
-       * so the frontend is more resilient.
-       */
-
       const result =
         (data.result ||
           data.data ||
@@ -643,10 +570,12 @@ export default function Page() {
 
       if (
         !result ||
-        !result.optimization
+        !result.optimization ||
+        !result.analysis ||
+        !result.score
       ) {
         throw new Error(
-          "Virello AI returned an incomplete optimization.",
+          "Virello AI returned an incomplete result.",
         );
       }
 
@@ -656,23 +585,6 @@ export default function Page() {
       const normalizedTitle =
         clean(
           optimization.title,
-        );
-
-      const normalizedProductType =
-        clean(
-          selected.productType ||
-            "Products",
-        );
-
-      const normalizedTags =
-        unique(
-          Array.isArray(
-            optimization.tags,
-          )
-            ? optimization.tags.map(
-                clean,
-              )
-            : [],
         );
 
       const normalizedDescription =
@@ -685,9 +597,7 @@ export default function Page() {
           Array.isArray(
             optimization.features,
           )
-            ? optimization.features.map(
-                clean,
-              )
+            ? optimization.features
             : [],
         );
 
@@ -696,9 +606,16 @@ export default function Page() {
           Array.isArray(
             optimization.specifications,
           )
-            ? optimization.specifications.map(
-                clean,
-              )
+            ? optimization.specifications
+            : [],
+        );
+
+      const normalizedTags =
+        unique(
+          Array.isArray(
+            optimization.tags,
+          )
+            ? optimization.tags
             : [],
         );
 
@@ -724,12 +641,6 @@ export default function Page() {
             title:
               normalizedTitle,
 
-            /*
-             * AI currently does not have to
-             * change Shopify Product Type
-             * unless it is explicitly supplied
-             * by the backend.
-             */
             description:
               normalizedDescription,
 
@@ -759,13 +670,29 @@ export default function Page() {
       );
 
       /*
-       * Product Type remains separately
-       * editable in the Virello UI.
+       * Product Type is also AI-generated
+       * if the backend provides one.
+       *
+       * If AI does not provide one, retain
+       * the original Shopify Product Type.
        */
-      setProductType(
-        selected.productType ||
-          "Products",
-      );
+      if (
+        clean(
+          optimization.productType,
+        )
+      ) {
+        setProductType(
+          clean(
+            optimization.productType,
+          ),
+        );
+      } else {
+        setProductType(
+          clean(
+            selected.productType,
+          ),
+        );
+      }
 
       setTags(
         normalizedTags.join(", "),
@@ -792,7 +719,7 @@ export default function Page() {
       );
 
       setMessage(
-        "Virello AI analyzed the product and generated new conversion, SEO, feature, specification and tag recommendations.",
+        "Virello AI analyzed the actual Shopify product data and generated the optimization.",
       );
     } catch (err) {
       setError(
@@ -807,11 +734,6 @@ export default function Page() {
 
   /* =======================================================
      SAVE TO SHOPIFY
-     
-     IMPORTANT:
-     We save the AI-generated SEO fields directly.
-     We DO NOT regenerate them with hard-coded
-     functions anymore.
   ======================================================= */
 
   async function handleSave() {
@@ -829,8 +751,7 @@ export default function Page() {
       unique(
         tags
           .split(",")
-          .map(clean)
-          .filter(Boolean),
+          .map(clean),
       );
 
     const finalDescription =
@@ -984,30 +905,6 @@ export default function Page() {
                   }
                 : product,
           ),
-      );
-
-      setTitle(
-        finalTitle,
-      );
-
-      setProductType(
-        finalProductType,
-      );
-
-      setTags(
-        finalTags.join(", "),
-      );
-
-      setDescription(
-        finalDescription,
-      );
-
-      setSeoTitle(
-        finalSeoTitle,
-      );
-
-      setMetaDescription(
-        finalMetaDescription,
       );
 
       setMessage(
@@ -1245,12 +1142,6 @@ export default function Page() {
           margin-bottom: 22px;
         }
 
-        .two {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 16px;
-        }
-
         .field {
           margin-bottom: 18px;
         }
@@ -1266,8 +1157,7 @@ export default function Page() {
         }
 
         input,
-        textarea,
-        select {
+        textarea {
           width: 100%;
           border: 1px solid #d5d5d5;
           border-radius: 11px;
@@ -1288,8 +1178,7 @@ export default function Page() {
         }
 
         input:focus,
-        textarea:focus,
-        select:focus {
+        textarea:focus {
           border-color: #777;
           box-shadow:
             0 0 0 2px
@@ -1319,13 +1208,16 @@ export default function Page() {
           margin-bottom: 16px;
         }
 
-        .details-grid {
+        .details-grid,
+        .analysis-grid {
           display: grid;
           grid-template-columns: 1fr 1fr;
           gap: 16px;
         }
 
-        .detail-card {
+        .detail-card,
+        .analysis-card,
+        .generated {
           border: 1px solid #dedede;
           border-radius: 14px;
           padding: 18px;
@@ -1338,13 +1230,15 @@ export default function Page() {
           margin-bottom: 13px;
         }
 
-        .detail-list {
+        .detail-list,
+        .specs {
           margin: 0;
           padding-left: 20px;
           line-height: 1.7;
         }
 
-        .detail-list li {
+        .detail-list li,
+        .specs li {
           margin-bottom: 6px;
         }
 
@@ -1352,19 +1246,6 @@ export default function Page() {
           color: #777;
           font-size: 14px;
           line-height: 1.5;
-        }
-
-        .analysis-grid {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 16px;
-        }
-
-        .analysis-card {
-          border: 1px solid #dedede;
-          border-radius: 14px;
-          padding: 18px;
-          background: #fafafa;
         }
 
         .analysis-card h3 {
@@ -1406,11 +1287,7 @@ export default function Page() {
         }
 
         .generated {
-          border: 1px solid #dedede;
-          border-radius: 14px;
-          padding: 17px;
-          margin-bottom: 12px;
-          background: #fafafa;
+          margin-top: 16px;
         }
 
         .generated-head {
@@ -1422,16 +1299,6 @@ export default function Page() {
           white-space: pre-wrap;
           line-height: 1.55;
           color: #444;
-        }
-
-        .specs {
-          margin: 0;
-          padding-left: 20px;
-          line-height: 1.7;
-        }
-
-        .specs li {
-          margin-bottom: 5px;
         }
 
         .empty {
@@ -1457,6 +1324,24 @@ export default function Page() {
           font-size: 11px;
           font-weight: 800;
           margin-bottom: 12px;
+        }
+
+        .ai-fact {
+          border: 1px solid #dedede;
+          border-radius: 14px;
+          padding: 16px;
+          background: #fafafa;
+          margin-bottom: 16px;
+        }
+
+        .ai-fact strong {
+          display: block;
+          margin-bottom: 6px;
+        }
+
+        .ai-fact span {
+          color: #555;
+          line-height: 1.5;
         }
 
         @media (max-width: 950px) {
@@ -1502,10 +1387,6 @@ export default function Page() {
             padding: 18px;
           }
 
-          .two {
-            grid-template-columns: 1fr;
-          }
-
           .editor-head {
             display: block;
           }
@@ -1548,7 +1429,7 @@ export default function Page() {
       <div className="container">
 
         {/* =================================================
-            PRODUCT LIST
+            PRODUCTS
         ================================================= */}
 
         <aside className="card">
@@ -1643,7 +1524,7 @@ export default function Page() {
                 <div className="editor-head">
                   <div>
                     <div className="ai-badge">
-                      REAL AI ANALYSIS
+                      REAL AI OPTIMIZER
                     </div>
 
                     <h1>
@@ -1651,11 +1532,12 @@ export default function Page() {
                     </h1>
 
                     <div className="subtitle">
-                      Virello AI analyzes
-                      the actual Shopify
-                      product data before
-                      generating the
-                      optimized content.
+                      AI reads the actual
+                      Shopify product
+                      information, then
+                      rewrites and
+                      optimizes it for
+                      conversion and SEO.
                     </div>
                   </div>
 
@@ -1700,89 +1582,29 @@ export default function Page() {
                     src={
                       selected.featuredImage
                     }
-                    alt={
-                      selected.title
-                    }
+                    alt=""
                   />
                 )}
 
-                {/* AUDIENCE / STYLE */}
+                {/* AI FACT SOURCE */}
 
-                <div className="two">
+                <div className="ai-fact">
+                  <strong>
+                    AI Source
+                  </strong>
 
-                  <div className="field">
-                    <label>
-                      Audience
-                    </label>
-
-                    <select
-                      value={
-                        audience
-                      }
-                      onChange={(event) =>
-                        setAudience(
-                          event.target
-                            .value as Audience,
-                        )
-                      }
-                    >
-                      <option value="Women">
-                        Women
-                      </option>
-
-                      <option value="Men">
-                        Men
-                      </option>
-
-                      <option value="Unisex">
-                        Unisex
-                      </option>
-                    </select>
-                  </div>
-
-                  <div className="field">
-                    <label>
-                      Style
-                    </label>
-
-                    <select
-                      value={style}
-                      onChange={(event) =>
-                        setStyle(
-                          event.target
-                            .value as Style,
-                        )
-                      }
-                    >
-                      <option value="Premium / Luxury">
-                        Premium / Luxury
-                      </option>
-
-                      <option value="Professional">
-                        Professional
-                      </option>
-
-                      <option value="Everyday">
-                        Everyday
-                      </option>
-
-                      <option value="Casual">
-                        Casual
-                      </option>
-
-                      <option value="Sport">
-                        Sport
-                      </option>
-
-                      <option value="Gift">
-                        Gift
-                      </option>
-                    </select>
-                  </div>
-
+                  <span>
+                    Virello AI receives
+                    the actual Shopify
+                    product data. The
+                    frontend does not
+                    classify the product
+                    with hard-coded
+                    rules.
+                  </span>
                 </div>
 
-                {/* PRODUCT TITLE */}
+                {/* TITLE */}
 
                 <div className="field">
                   <label>
@@ -1798,13 +1620,6 @@ export default function Page() {
                       )
                     }
                   />
-
-                  <div className="small-note">
-                    Generated by the AI
-                    optimizer. You can
-                    manually edit it
-                    before saving.
-                  </div>
                 </div>
 
                 {/* PRODUCT TYPE */}
@@ -1842,14 +1657,8 @@ export default function Page() {
                           .value,
                       )
                     }
-                    placeholder="watch, automatic, stainless steel"
+                    placeholder="AI-generated tags"
                   />
-
-                  <div className="small-note">
-                    AI-generated relevant
-                    tags. Separate with
-                    commas.
-                  </div>
                 </div>
 
                 {/* DESCRIPTION */}
@@ -1870,18 +1679,11 @@ export default function Page() {
                           .value,
                       )
                     }
-                    placeholder="AI-generated conversion-focused product description..."
+                    placeholder="AI-generated conversion-focused description..."
                   />
-
-                  <div className="small-note">
-                    This is the customer-facing
-                    selling copy. It is
-                    separate from the SEO
-                    fields.
-                  </div>
                 </div>
 
-                {/* FEATURES / SPECS */}
+                {/* FEATURES / SPECIFICATIONS */}
 
                 <div className="section">
                   <div className="section-title">
@@ -1906,19 +1708,17 @@ export default function Page() {
                               <li
                                 key={`${feature}-${index}`}
                               >
-                                {
-                                  feature
-                                }
+                                {feature}
                               </li>
                             ),
                           )}
                         </ul>
                       ) : (
                         <div className="empty-detail">
-                          Run AI analysis
-                          to generate
-                          verified
-                          features.
+                          AI analysis
+                          has not
+                          generated
+                          features yet.
                         </div>
                       )}
                     </div>
@@ -1948,13 +1748,13 @@ export default function Page() {
                         </ul>
                       ) : (
                         <div className="empty-detail">
-                          AI will only
-                          show
+                          Only
                           specifications
-                          actually
-                          present in
-                          the supplied
-                          product data.
+                          supported by
+                          the source
+                          product data
+                          should be
+                          returned.
                         </div>
                       )}
                     </div>
@@ -1988,9 +1788,7 @@ export default function Page() {
                     />
 
                     <div className="counter">
-                      {
-                        seoTitle.length
-                      }
+                      {seoTitle.length}
                       /50
                     </div>
                   </div>
@@ -2023,9 +1821,7 @@ export default function Page() {
                   </div>
                 </div>
 
-                {/* =================================================
-                    AI ANALYSIS
-                ================================================= */}
+                {/* AI RESULT */}
 
                 {aiResult && (
                   <div className="section">
@@ -2038,8 +1834,7 @@ export default function Page() {
                       <div className="score">
                         <div className="score-number">
                           {
-                            aiResult
-                              .score
+                            aiResult.score
                               .overall
                           }
                         </div>
@@ -2052,8 +1847,7 @@ export default function Page() {
                       <div className="score">
                         <div className="score-number">
                           {
-                            aiResult
-                              .score
+                            aiResult.score
                               .conversionPotential
                           }
                         </div>
@@ -2066,8 +1860,7 @@ export default function Page() {
                       <div className="score">
                         <div className="score-number">
                           {
-                            aiResult
-                              .score
+                            aiResult.score
                               .seo
                           }
                         </div>
@@ -2080,8 +1873,7 @@ export default function Page() {
                       <div className="score">
                         <div className="score-number">
                           {
-                            aiResult
-                              .score
+                            aiResult.score
                               .title
                           }
                         </div>
@@ -2094,8 +1886,7 @@ export default function Page() {
                       <div className="score">
                         <div className="score-number">
                           {
-                            aiResult
-                              .score
+                            aiResult.score
                               .description
                           }
                         </div>
@@ -2108,8 +1899,7 @@ export default function Page() {
                       <div className="score">
                         <div className="score-number">
                           {
-                            aiResult
-                              .score
+                            aiResult.score
                               .productClarity
                           }
                         </div>
@@ -2121,6 +1911,8 @@ export default function Page() {
 
                     </div>
 
+                    {/* AI CLASSIFICATION */}
+
                     <div className="analysis-grid">
 
                       <div className="analysis-card">
@@ -2130,8 +1922,7 @@ export default function Page() {
 
                         <p>
                           {
-                            aiResult
-                              .analysis
+                            aiResult.analysis
                               .targetCustomer
                           }
                         </p>
@@ -2144,8 +1935,7 @@ export default function Page() {
 
                         <p>
                           {
-                            aiResult
-                              .analysis
+                            aiResult.analysis
                               .purchaseMotivation
                           }
                         </p>
@@ -2153,16 +1943,46 @@ export default function Page() {
 
                       <div className="analysis-card">
                         <h3>
+                          Strongest Features
+                        </h3>
+
+                        {aiResult.analysis
+                          .strongestFeatures
+                          .length > 0 ? (
+                          <ul className="specs">
+                            {aiResult.analysis
+                              .strongestFeatures
+                              .map(
+                                (
+                                  item,
+                                  index,
+                                ) => (
+                                  <li
+                                    key={`${item}-${index}`}
+                                  >
+                                    {item}
+                                  </li>
+                                ),
+                              )}
+                          </ul>
+                        ) : (
+                          <p>
+                            None
+                            identified.
+                          </p>
+                        )}
+                      </div>
+
+                      <div className="analysis-card">
+                        <h3>
                           Weaknesses
                         </h3>
 
-                        {aiResult
-                          .analysis
+                        {aiResult.analysis
                           .weaknesses
                           .length > 0 ? (
                           <ul className="specs">
-                            {aiResult
-                              .analysis
+                            {aiResult.analysis
                               .weaknesses
                               .map(
                                 (
@@ -2191,13 +2011,11 @@ export default function Page() {
                           Missing Information
                         </h3>
 
-                        {aiResult
-                          .analysis
+                        {aiResult.analysis
                           .missingInformation
                           .length > 0 ? (
                           <ul className="specs">
-                            {aiResult
-                              .analysis
+                            {aiResult.analysis
                               .missingInformation
                               .map(
                                 (
@@ -2222,6 +2040,38 @@ export default function Page() {
                         )}
                       </div>
 
+                      <div className="analysis-card">
+                        <h3>
+                          Conversion Opportunities
+                        </h3>
+
+                        {aiResult.analysis
+                          .conversionOpportunities
+                          .length > 0 ? (
+                          <ul className="specs">
+                            {aiResult.analysis
+                              .conversionOpportunities
+                              .map(
+                                (
+                                  item,
+                                  index,
+                                ) => (
+                                  <li
+                                    key={`${item}-${index}`}
+                                  >
+                                    {item}
+                                  </li>
+                                ),
+                              )}
+                          </ul>
+                        ) : (
+                          <p>
+                            None
+                            identified.
+                          </p>
+                        )}
+                      </div>
+
                     </div>
 
                     <div className="generated">
@@ -2237,7 +2087,6 @@ export default function Page() {
                     </div>
                   </div>
                 )}
-
               </>
             )}
           </div>
