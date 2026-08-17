@@ -1,1177 +1,2194 @@
-import { NextResponse } from "next/server";
+"use client";
 
-export const runtime = "nodejs";
+import { useEffect, useMemo, useState } from "react";
 
-const SYSTEM_PROMPT = `
-You are Virello AI, an advanced ecommerce product optimization analyst.
+/* =========================================================
+   TYPES
+========================================================= */
 
-Analyze the ACTUAL Shopify product data supplied by the store. Your job is to make commercially useful decisions from that data, not to fill a template.
+declare global {
+  interface Window {
+    shopify?: {
+      idToken?: () => Promise<string>;
+    };
+  }
+}
 
-Think like an ecommerce conversion specialist, SEO specialist, product merchandiser, Shopify copywriter, and customer-psychology analyst.
-
-FACTUAL ACCURACY IS REQUIRED.
-
-Use only information supported by the supplied product data. You may infer reasonable customer intent or positioning from the supplied facts, but you must never invent product facts.
-
-Never invent or assume materials, dimensions, weight, colors, certifications, warranty, compatibility, battery capacity, voltage, power, performance, durability, waterproofing, water resistance, safety claims, medical claims, health claims, technical specifications, shipping promises, guarantees, included accessories, movement/caliber, crystal type, case size, strap material, clasp, packaging, or other specifications that were not supplied.
-
-If important information is absent, put it in missingInformation instead of guessing.
-
-BRAND / VENDOR ACCURACY:
-If the product title contains a brand or designer name but the vendor field conflicts with it or does not confirm the relationship, do not present the brand relationship as verified. Flag the ambiguity in weaknesses or missingInformation when relevant.
-
-PRODUCT TITLE:
-- Clearly identify the actual product.
-- Use useful search terms naturally.
-- Sound professional and premium for Shopify.
-- Be specific to the product.
-- Avoid keyword stuffing, marketplace-style wording, supplier wording, fake brand claims, and unsupported claims.
-- Do not blindly reuse the original title.
-- Do not force a fixed word count.
-
-DUPLICATE TITLE PREVENTION:
-Existing store titles are provided in the user message. The new title must be genuinely different from them. Do not copy, reorder, slightly modify, or reproduce distinctive phrases from an existing title. Do not make a title different merely by adding random adjectives. Choose another accurate way to describe the same product using the supplied facts.
-
-DESCRIPTION:
-Write conversion-focused copy that explains what the product is, why the likely customer may want it, verified benefits, practical value, and supported use cases. Keep it natural, specific, easy to scan, and free of supplier filler.
-
-FEATURES:
-Only include features supported by the supplied product data.
-
-SPECIFICATIONS:
-Only include specifications actually supplied. If none are supplied, return an empty array. Never manufacture specifications.
-
-SEO TITLE:
-Maximum 50 characters. Use the most useful product keyword naturally. Do not simply copy the product title.
-
-META DESCRIPTION:
-Maximum 150 characters. Clearly explain the product and give the searcher a reason to click without making unsupported claims.
-
-TAGS:
-Create specific Shopify tags from actual product information. No random, duplicate, supplier-spam, or unsupported tags.
-
-SCORING:
-Scores must reflect the quality of the supplied listing. Do not give high scores merely because the product sounds attractive. Missing critical information should reduce product clarity and conversion potential.
-
-AI DECISION MAKING:
-The result must change meaningfully when the product data changes. Do not use one fixed answer for every product.
-
-Return only JSON matching the supplied schema.
-`;
-
-type ProductInput = {
-  id?: string;
-  title?: string;
-  description?: string;
-  productType?: string;
-  vendor?: string;
-  tags?: string[];
-  price?: string;
-  features?: string[];
-  specifications?: string[];
+type ShopifyProduct = {
+  id: string;
+  title: string;
+  description: string;
+  productType: string;
+  tags: string[];
+  status: string;
+  vendor: string;
+  price: string;
+  images?: {
+    url: string;
+    altText: string | null;
+  }[];
+  featuredImage: string | null;
 };
 
-type AnalyzeRequest = {
-  product?: ProductInput;
-  existingProductTitles?: string[];
-  existingTitles?: string[];
+type Audience = "Women" | "Men" | "Unisex";
+
+type Style =
+  | "Premium / Luxury"
+  | "Professional"
+  | "Everyday"
+  | "Casual"
+  | "Sport"
+  | "Gift";
+
+type Product = ShopifyProduct & {
+  audience: Audience;
+  style: Style;
 };
+
+type AIAnalysis = {
+  targetCustomer: string;
+  purchaseMotivation: string;
+  strongestFeatures: string[];
+  weaknesses: string[];
+  missingInformation: string[];
+  seoOpportunities: string[];
+  conversionOpportunities: string[];
+};
+
+type AIScore = {
+  title: number;
+  description: number;
+  seo: number;
+  productClarity: number;
+  conversionPotential: number;
+  overall: number;
+};
+
+type AIOptimization = {
+  title: string;
+  description: string;
+  features: string[];
+  specifications: string[];
+  seoTitle: string;
+  metaDescription: string;
+  tags: string[];
+};
+
+type AIResult = {
+  analysis: AIAnalysis;
+  score: AIScore;
+  optimization: AIOptimization;
+  reasoning: string;
+};
+
+/* =========================================================
+   HELPERS
+========================================================= */
 
 function clean(value: unknown): string {
-  return typeof value === "string"
-    ? value.replace(/\s+/g, " ").trim()
-    : "";
-}
-
-function cleanList(value: unknown, max = 50): string[] {
-  if (!Array.isArray(value)) return [];
-
-  const seen = new Set<string>();
-  const result: string[] = [];
-
-  for (const item of value) {
-    const text = clean(item);
-
-    if (!text) continue;
-
-    const key = text.toLowerCase();
-
-    if (seen.has(key)) continue;
-
-    seen.add(key);
-    result.push(text);
-  }
-
-  return result.slice(0, max);
-}
-
-const TITLE_STOP_WORDS = new Set([
-  "the",
-  "a",
-  "an",
-  "for",
-  "and",
-  "with",
-  "of",
-  "to",
-  "in",
-  "on",
-  "by",
-  "from",
-  "new",
-  "style",
-  "design",
-  "classic",
-  "premium",
-  "modern",
-  "elegant",
-  "fashion",
-  "watch",
-  "men",
-  "women",
-  "unisex",
-]);
-
-function normalizeTitle(value: string): string {
-  return clean(value)
-    .toLowerCase()
-    .replace(/&/g, " and ")
-    .replace(/[^\p{L}\p{N}\s]/gu, " ")
+  return String(value ?? "")
     .replace(/\s+/g, " ")
     .trim();
 }
 
-function titleTokens(value: string): string[] {
-  return normalizeTitle(value)
-    .split(" ")
-    .filter(Boolean)
-    .filter((word) => !TITLE_STOP_WORDS.has(word));
+function stripHtml(value: string): string {
+  return String(value || "")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/(p|div|li|h[1-6])>/gi, "\n")
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&#x27;/gi, "'")
+    .replace(/&ndash;/gi, "–")
+    .replace(/&mdash;/gi, "—")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
-function titleSimilarity(a: string, b: string): number {
-  const aSet = new Set(titleTokens(a));
-  const bSet = new Set(titleTokens(b));
+function unique(values: string[]): string[] {
+  const seen = new Set<string>();
 
-  if (!aSet.size || !bSet.size) {
-    return 0;
-  }
+  return values.filter((value) => {
+    const normalized = clean(value).toLowerCase();
 
-  let intersection = 0;
-
-  for (const token of aSet) {
-    if (bSet.has(token)) {
-      intersection++;
+    if (!normalized || seen.has(normalized)) {
+      return false;
     }
-  }
 
-  const union = new Set([
-    ...aSet,
-    ...bSet,
-  ]).size;
-
-  return union ? intersection / union : 0;
+    seen.add(normalized);
+    return true;
+  });
 }
 
-function hasDistinctiveOverlap(
-  candidate: string,
-  existing: string,
-): boolean {
-  const a = titleTokens(candidate);
-  const b = titleTokens(existing);
-
-  if (a.length < 3 || b.length < 3) {
-    return false;
-  }
-
-  const aSet = new Set(a);
-  const bSet = new Set(b);
-
-  let common = 0;
-
-  for (const token of bSet) {
-    if (aSet.has(token)) {
-      common++;
-    }
-  }
-
-  const smaller = Math.min(
-    aSet.size,
-    bSet.size,
-  );
-
-  return (
-    smaller >= 3 &&
-    common / smaller >= 0.75
-  );
-}
-
-function findSimilarTitle(
-  candidate: string,
-  existingTitles: string[],
-) {
-  const normalizedCandidate =
-    normalizeTitle(candidate);
-
-  let highestSimilarity = 0;
-  let matchedTitle = "";
-
-  if (!normalizedCandidate) {
-    return {
-      duplicate: false,
-      matchedTitle,
-      similarity: 0,
-    };
-  }
-
-  for (const existing of existingTitles) {
-    const normalizedExisting =
-      normalizeTitle(existing);
-
-    if (!normalizedExisting) {
-      continue;
-    }
-
-    if (
-      normalizedCandidate ===
-      normalizedExisting
-    ) {
-      return {
-        duplicate: true,
-        matchedTitle: existing,
-        similarity: 1,
-      };
-    }
-
-    const similarity =
-      titleSimilarity(
-        candidate,
-        existing,
-      );
-
-    if (
-      similarity >
-      highestSimilarity
-    ) {
-      highestSimilarity =
-        similarity;
-
-      matchedTitle =
-        existing;
-    }
-
-    if (
-      similarity >= 0.78 ||
-      hasDistinctiveOverlap(
-        candidate,
-        existing,
-      )
-    ) {
-      return {
-        duplicate: true,
-        matchedTitle: existing,
-        similarity,
-      };
-    }
-  }
-
-  return {
-    duplicate: false,
-    matchedTitle,
-    similarity:
-      highestSimilarity,
-  };
-}
-
-function enforceLimit(
+function limitCharacters(
   value: unknown,
   max: number,
 ): string {
   const text = clean(value);
 
-  if (!text || text.length <= max) {
+  if (text.length <= max) {
     return text;
   }
 
-  let result =
-    text.slice(0, max);
+  let result = text.slice(0, max);
+  const lastSpace = result.lastIndexOf(" ");
 
-  const lastSpace =
-    result.lastIndexOf(" ");
-
-  if (
-    lastSpace >
-    Math.floor(max * 0.65)
-  ) {
-    result =
-      result.slice(
-        0,
-        lastSpace,
-      );
+  if (lastSpace > Math.floor(max * 0.65)) {
+    result = result.slice(0, lastSpace);
   }
 
   return result
     .trim()
-    .replace(
-      /[.,;:!?-]+$/,
-      "",
-    );
+    .replace(/[.,;:!?-]+$/, "");
 }
 
-function removeDuplicateStrings(
-  value: unknown,
-  max = 30,
-): string[] {
-  return cleanList(
-    value,
-    max,
+function normalizeScore(value: unknown): number {
+  const number = Number(value);
+
+  if (!Number.isFinite(number)) {
+    return 0;
+  }
+
+  /*
+   * Backend schema is 0–100.
+   *
+   * If an older AI response returns 0–10,
+   * convert it to the new 0–100 display.
+   */
+  const normalized =
+    number > 0 && number <= 10
+      ? number * 10
+      : number;
+
+  return Math.max(
+    0,
+    Math.min(100, Math.round(normalized)),
   );
 }
 
-function extractOutputText(
-  data: any,
-): string {
-  if (
-    typeof data?.output_text ===
-      "string" &&
-    data.output_text.trim()
-  ) {
-    return data.output_text.trim();
-  }
-
-  const output =
-    Array.isArray(data?.output)
-      ? data.output
-      : [];
-
-  const chunks: string[] = [];
-
-  for (const item of output) {
-    if (
-      !Array.isArray(
-        item?.content,
-      )
-    ) {
-      continue;
-    }
-
-    for (const content of item.content) {
-      if (
-        typeof content?.text ===
-          "string" &&
-        (
-          content?.type ===
-            "output_text" ||
-          !content?.type
-        )
-      ) {
-        chunks.push(
-          content.text,
-        );
-      }
-    }
-  }
-
-  return chunks
-    .join("\n")
-    .trim();
-}
-
-function getErrorMessage(
-  data: any,
-): string {
-  return (
-    clean(
-      data?.error?.message,
-    ) ||
-    clean(data?.message) ||
-    "Virello AI analysis failed."
-  );
-}
-
-function normalizeResult(
-  result: any,
-) {
-  if (
-    !result ||
-    typeof result !==
-      "object"
-  ) {
-    throw new Error(
-      "Virello AI returned an invalid analysis object.",
-    );
-  }
-
-  if (
-    !result.analysis ||
-    !result.score ||
-    !result.optimization
-  ) {
-    throw new Error(
-      "Virello AI returned an incomplete analysis.",
-    );
-  }
-
-  result.analysis.targetCustomer =
-    clean(
-      result.analysis
-        .targetCustomer,
-    );
-
-  result.analysis.purchaseMotivation =
-    clean(
-      result.analysis
-        .purchaseMotivation,
-    );
-
-  result.analysis.strongestFeatures =
-    removeDuplicateStrings(
-      result.analysis
-        .strongestFeatures,
-    );
-
-  result.analysis.weaknesses =
-    removeDuplicateStrings(
-      result.analysis
-        .weaknesses,
-    );
-
-  result.analysis.missingInformation =
-    removeDuplicateStrings(
-      result.analysis
-        .missingInformation,
-    );
-
-  result.analysis.seoOpportunities =
-    removeDuplicateStrings(
-      result.analysis
-        .seoOpportunities,
-    );
-
-  result.analysis.conversionOpportunities =
-    removeDuplicateStrings(
-      result.analysis
-        .conversionOpportunities,
-    );
-
-  for (
-    const key of [
-      "title",
-      "description",
-      "seo",
-      "productClarity",
-      "conversionPotential",
-      "overall",
-    ]
-  ) {
-    const value =
-      Number(
-        result.score[key],
-      );
-
-    result.score[key] =
-      Number.isFinite(value)
-        ? Math.max(
-            0,
-            Math.min(
-              100,
-              Math.round(
-                value,
-              ),
-            ),
-          )
-        : 0;
-  }
-
-  result.optimization.title =
-    enforceLimit(
-      result.optimization
-        .title,
-      90,
-    );
-
-  result.optimization.description =
-    clean(
-      result.optimization
-        .description,
-    );
-
-  result.optimization.features =
-    removeDuplicateStrings(
-      result.optimization
-        .features,
-    );
-
-  result.optimization.specifications =
-    removeDuplicateStrings(
-      result.optimization
-        .specifications,
-    );
-
-  result.optimization.seoTitle =
-    enforceLimit(
-      result.optimization
-        .seoTitle,
-      50,
-    );
-
-  result.optimization.metaDescription =
-    enforceLimit(
-      result.optimization
-        .metaDescription,
-      150,
-    );
-
-  result.optimization.tags =
-    removeDuplicateStrings(
-      result.optimization.tags,
-      20,
-    );
-
-  result.reasoning =
-    clean(
-      result.reasoning,
-    );
-
-  return result;
-}
-
-const RESPONSE_SCHEMA = {
-  type: "object",
-  additionalProperties: false,
-
-  properties: {
-    analysis: {
-      type: "object",
-      additionalProperties: false,
-
-      properties: {
-        targetCustomer: {
-          type: "string",
-        },
-
-        purchaseMotivation: {
-          type: "string",
-        },
-
-        strongestFeatures: {
-          type: "array",
-          items: {
-            type: "string",
-          },
-        },
-
-        weaknesses: {
-          type: "array",
-          items: {
-            type: "string",
-          },
-        },
-
-        missingInformation: {
-          type: "array",
-          items: {
-            type: "string",
-          },
-        },
-
-        seoOpportunities: {
-          type: "array",
-          items: {
-            type: "string",
-          },
-        },
-
-        conversionOpportunities: {
-          type: "array",
-          items: {
-            type: "string",
-          },
-        },
-      },
-
-      required: [
-        "targetCustomer",
-        "purchaseMotivation",
-        "strongestFeatures",
-        "weaknesses",
-        "missingInformation",
-        "seoOpportunities",
-        "conversionOpportunities",
-      ],
-    },
+function normalizeAIResult(
+  result: AIResult,
+): AIResult {
+  return {
+    ...result,
 
     score: {
-      type: "object",
-      additionalProperties: false,
+      title: normalizeScore(result.score?.title),
+      description: normalizeScore(
+        result.score?.description,
+      ),
+      seo: normalizeScore(result.score?.seo),
+      productClarity: normalizeScore(
+        result.score?.productClarity,
+      ),
+      conversionPotential: normalizeScore(
+        result.score?.conversionPotential,
+      ),
+      overall: normalizeScore(
+        result.score?.overall,
+      ),
+    },
 
-      properties: {
-        title: {
-          type: "integer",
-          minimum: 0,
-          maximum: 100,
-        },
-
-        description: {
-          type: "integer",
-          minimum: 0,
-          maximum: 100,
-        },
-
-        seo: {
-          type: "integer",
-          minimum: 0,
-          maximum: 100,
-        },
-
-        productClarity: {
-          type: "integer",
-          minimum: 0,
-          maximum: 100,
-        },
-
-        conversionPotential: {
-          type: "integer",
-          minimum: 0,
-          maximum: 100,
-        },
-
-        overall: {
-          type: "integer",
-          minimum: 0,
-          maximum: 100,
-        },
-      },
-
-      required: [
-        "title",
-        "description",
-        "seo",
-        "productClarity",
-        "conversionPotential",
-        "overall",
-      ],
+    analysis: {
+      ...result.analysis,
+      targetCustomer: clean(
+        result.analysis?.targetCustomer,
+      ),
+      purchaseMotivation: clean(
+        result.analysis?.purchaseMotivation,
+      ),
+      strongestFeatures: unique(
+        Array.isArray(
+          result.analysis?.strongestFeatures,
+        )
+          ? result.analysis.strongestFeatures.map(clean)
+          : [],
+      ),
+      weaknesses: unique(
+        Array.isArray(result.analysis?.weaknesses)
+          ? result.analysis.weaknesses.map(clean)
+          : [],
+      ),
+      missingInformation: unique(
+        Array.isArray(
+          result.analysis?.missingInformation,
+        )
+          ? result.analysis.missingInformation.map(clean)
+          : [],
+      ),
+      seoOpportunities: unique(
+        Array.isArray(
+          result.analysis?.seoOpportunities,
+        )
+          ? result.analysis.seoOpportunities.map(clean)
+          : [],
+      ),
+      conversionOpportunities: unique(
+        Array.isArray(
+          result.analysis?.conversionOpportunities,
+        )
+          ? result.analysis.conversionOpportunities.map(
+              clean,
+            )
+          : [],
+      ),
     },
 
     optimization: {
-      type: "object",
-      additionalProperties: false,
+      ...result.optimization,
 
-      properties: {
-        title: {
-          type: "string",
-        },
-
-        description: {
-          type: "string",
-        },
-
-        features: {
-          type: "array",
-          items: {
-            type: "string",
-          },
-        },
-
-        specifications: {
-          type: "array",
-          items: {
-            type: "string",
-          },
-        },
-
-        seoTitle: {
-          type: "string",
-        },
-
-        metaDescription: {
-          type: "string",
-        },
-
-        tags: {
-          type: "array",
-          items: {
-            type: "string",
-          },
-        },
-      },
-
-      required: [
-        "title",
-        "description",
-        "features",
-        "specifications",
-        "seoTitle",
-        "metaDescription",
-        "tags",
-      ],
-    },
-
-    reasoning: {
-      type: "string",
-    },
-  },
-
-  required: [
-    "analysis",
-    "score",
-    "optimization",
-    "reasoning",
-  ],
-};
-
-async function callOpenAI(
-  apiKey: string,
-  model: string,
-  userPrompt: string,
-): Promise<any> {
-  const response =
-    await fetch(
-      "https://api.openai.com/v1/responses",
-      {
-        method: "POST",
-
-        headers: {
-          "Content-Type":
-            "application/json",
-
-          Authorization:
-            `Bearer ${apiKey}`,
-        },
-
-        body: JSON.stringify({
-          model,
-
-          input: [
-            {
-              role: "system",
-
-              content: [
-                {
-                  type:
-                    "input_text",
-
-                  text:
-                    SYSTEM_PROMPT,
-                },
-              ],
-            },
-
-            {
-              role: "user",
-
-              content: [
-                {
-                  type:
-                    "input_text",
-
-                  text:
-                    userPrompt,
-                },
-              ],
-            },
-          ],
-
-          text: {
-            format: {
-              type:
-                "json_schema",
-
-              name:
-                "virello_product_analysis",
-
-              strict: true,
-
-              schema:
-                RESPONSE_SCHEMA,
-            },
-          },
-        }),
-      },
-    );
-
-  const data =
-    await response.json();
-
-  if (!response.ok) {
-    throw new Error(
-      getErrorMessage(
-        data,
-      ),
-    );
-  }
-
-  const outputText =
-    extractOutputText(
-      data,
-    );
-
-  if (!outputText) {
-    const refusal =
-      clean(
-        data?.output
-          ?.flatMap?.(
-            (
-              item: any,
-            ) =>
-              item?.content ??
-              [],
-          )
-          ?.find?.(
-            (
-              item: any,
-            ) =>
-              item?.type ===
-              "refusal",
-          )
-          ?.refusal,
-      );
-
-    throw new Error(
-      refusal ||
-        "Virello AI returned no readable analysis output.",
-    );
-  }
-
-  try {
-    return JSON.parse(
-      outputText,
-    );
-  } catch {
-    throw new Error(
-      "Virello AI returned an invalid structured response.",
-    );
-  }
-}
-
-export async function POST(
-  request: Request,
-) {
-  try {
-    const apiKey =
-      process.env.OPENAI_API_KEY;
-
-    if (!apiKey) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "OPENAI_API_KEY is not configured.",
-        },
-        {
-          status: 500,
-        },
-      );
-    }
-
-    let body: AnalyzeRequest;
-
-    try {
-      body =
-        (await request.json()) as AnalyzeRequest;
-    } catch {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "Invalid request body.",
-        },
-        {
-          status: 400,
-        },
-      );
-    }
-
-    const product =
-      (body?.product ??
-        body) as ProductInput;
-
-    if (
-      !product ||
-      !clean(product.title)
-    ) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "A product title is required.",
-        },
-        {
-          status: 400,
-        },
-      );
-    }
-
-    const existingTitles =
-      cleanList(
-        body?.existingProductTitles ??
-          body?.existingTitles ??
-          [],
-        500,
-      ).filter(
-        (title) =>
-          normalizeTitle(
-            title,
-          ) !==
-          normalizeTitle(
-            product.title ??
-              "",
-          ),
-      );
-
-    const productData = {
-      id: clean(
-        product.id,
-      ),
-
-      title: clean(
-        product.title,
-      ),
+      title: clean(result.optimization?.title),
 
       description: clean(
-        product.description,
+        result.optimization?.description,
       ),
 
-      productType: clean(
-        product.productType,
+      features: unique(
+        Array.isArray(result.optimization?.features)
+          ? result.optimization.features.map(clean)
+          : [],
       ),
 
-      vendor: clean(
-        product.vendor,
+      specifications: unique(
+        Array.isArray(
+          result.optimization?.specifications,
+        )
+          ? result.optimization.specifications.map(clean)
+          : [],
       ),
 
-      tags: cleanList(
-        product.tags,
+      seoTitle: limitCharacters(
+        result.optimization?.seoTitle,
+        50,
       ),
 
-      price: clean(
-        product.price,
+      metaDescription: limitCharacters(
+        result.optimization?.metaDescription,
+        150,
       ),
 
-      features: cleanList(
-        product.features,
+      tags: unique(
+        Array.isArray(result.optimization?.tags)
+          ? result.optimization.tags.map(clean)
+          : [],
       ),
+    },
 
-      specifications:
-        cleanList(
-          product.specifications,
-        ),
-    };
+    reasoning: clean(result.reasoning),
+  };
+}
 
-    const model =
-      process.env.VIRELLO_AI_MODEL ||
-      "gpt-5.6";
+function escapeHtml(value: string): string {
+  return String(value).replace(
+    /[&<>'"]/g,
+    (char) =>
+      ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        "'": "&#39;",
+        '"': "&quot;",
+      })[char] || char,
+  );
+}
 
-    const existingTitlesContext =
-      existingTitles.length
-        ? `
-EXISTING STORE PRODUCT TITLES:
+function descriptionToHtml(
+  description: string,
+): string {
+  return description
+    .split(/\n\s*\n/)
+    .map(clean)
+    .filter(Boolean)
+    .map(
+      (paragraph) =>
+        `<p>${escapeHtml(paragraph)}</p>`,
+    )
+    .join("");
+}
 
-${existingTitles
-  .map(
-    (
-      title,
-      index,
-    ) =>
-      `${index + 1}. ${title}`,
-  )
-  .join("\n")}
-`
-        : `
-No existing title list was supplied.
+/* =========================================================
+   AUDIENCE / STYLE
+========================================================= */
 
-Still create a product-specific title.
-`;
+function detectAudience(
+  product: ShopifyProduct,
+): Audience {
+  const text = [
+    product.title,
+    product.productType,
+    product.vendor,
+    product.tags.join(" "),
+    stripHtml(product.description),
+  ]
+    .join(" ")
+    .toLowerCase();
 
-    const basePrompt = `
-Analyze this Shopify product using ONLY the supplied information.
+  if (
+    /\bwomen\b|\bwomen's\b|\bladies\b|\blady\b|\bfemale\b/.test(
+      text,
+    )
+  ) {
+    return "Women";
+  }
 
-CURRENT PRODUCT DATA:
+  if (
+    /\bmen\b|\bmen's\b|\bgentlemen\b|\bgents\b|\bmale\b/.test(
+      text,
+    )
+  ) {
+    return "Men";
+  }
 
-${JSON.stringify(
-  productData,
-  null,
-  2,
-)}
+  return "Unisex";
+}
 
-${existingTitlesContext}
+function detectStyle(
+  product: ShopifyProduct,
+): Style {
+  const text = [
+    product.title,
+    product.productType,
+    product.vendor,
+    product.tags.join(" "),
+    stripHtml(product.description),
+  ]
+    .join(" ")
+    .toLowerCase();
 
-IMPORTANT:
+  if (
+    /luxury|premium|elegant|sapphire|automatic|mechanical|formal|dress watch/.test(
+      text,
+    )
+  ) {
+    return "Premium / Luxury";
+  }
 
-- Do not invent missing specifications.
-- Treat the vendor field and product title as separate pieces of evidence.
-- If a brand/product-name relationship is unclear, say so instead of pretending it is verified.
-- Create a genuinely useful, premium, product-specific title.
-- The Product Title must not be an exact or near duplicate of an existing store title.
-- The description should be persuasive but factual.
-- Return empty specifications when no specifications were supplied.
-- SEO title must be 50 characters or fewer.
-- Meta description must be 150 characters or fewer.
-`;
+  if (
+    /sport|sports|diving|diver|racing|athletic|chronograph/.test(
+      text,
+    )
+  ) {
+    return "Sport";
+  }
 
-    let result =
-      normalizeResult(
-        await callOpenAI(
-          apiKey,
-          model,
-          basePrompt,
-        ),
-      );
+  if (/casual|fashion|street/.test(text)) {
+    return "Casual";
+  }
 
-    let duplicateCheck =
-      findSimilarTitle(
-        result.optimization
-          .title,
-        existingTitles,
-      );
+  if (/gift|present/.test(text)) {
+    return "Gift";
+  }
 
-    /*
-     * If the AI generated a title too similar
-     * to an existing store title, ask the AI
-     * to generate a genuinely different one.
-     */
+  if (/business|office|professional/.test(text)) {
+    return "Professional";
+  }
 
+  return "Everyday";
+}
+
+function toProduct(
+  product: ShopifyProduct,
+): Product {
+  return {
+    ...product,
+    audience: detectAudience(product),
+    style: detectStyle(product),
+  };
+}
+
+/* =========================================================
+   PAGE
+========================================================= */
+
+export default function Page() {
+  const [products, setProducts] = useState<Product[]>([]);
+  const [selectedId, setSelectedId] = useState("");
+  const [search, setSearch] = useState("");
+
+  const [loading, setLoading] = useState(true);
+  const [optimizing, setOptimizing] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
+
+  const [aiResult, setAiResult] =
+    useState<AIResult | null>(null);
+
+  const [title, setTitle] = useState("");
+  const [productType, setProductType] =
+    useState("");
+  const [tags, setTags] = useState("");
+  const [description, setDescription] =
+    useState("");
+
+  const [features, setFeatures] =
+    useState<string[]>([]);
+
+  const [specifications, setSpecifications] =
+    useState<string[]>([]);
+
+  const [seoTitle, setSeoTitle] = useState("");
+  const [metaDescription, setMetaDescription] =
+    useState("");
+
+  const [audience, setAudience] =
+    useState<Audience>("Unisex");
+
+  const [style, setStyle] =
+    useState<Style>("Everyday");
+
+  /* =========================================================
+     SHOPIFY SESSION
+  ========================================================= */
+
+  async function getSessionToken(): Promise<string> {
     if (
-      duplicateCheck.duplicate &&
-      existingTitles.length > 0
+      typeof window === "undefined" ||
+      !window.shopify?.idToken
     ) {
-      const repairPrompt = `
-${basePrompt}
-
-TITLE REPAIR REQUIRED:
-
-The previous AI-generated title was:
-
-"${result.optimization.title}"
-
-It was rejected because it is too similar to this existing store title:
-
-"${duplicateCheck.matchedTitle}"
-
-Generate a DIFFERENT title for the same product.
-
-Do NOT merely:
-- add an adjective
-- remove one word
-- reorder words
-- replace one insignificant word
-
-Use another accurate product-specific phrasing based ONLY on the supplied product data.
-
-Keep the product factual and commercially useful.
-
-All other optimization decisions must remain factual.
-`;
-
-      result =
-        normalizeResult(
-          await callOpenAI(
-            apiKey,
-            model,
-            repairPrompt,
-          ),
-        );
-
-      duplicateCheck =
-        findSimilarTitle(
-          result.optimization
-            .title,
-          existingTitles,
-        );
+      throw new Error(
+        "Shopify session unavailable. Open Virello AI Optimizer from Shopify Admin.",
+      );
     }
 
-    if (
-      duplicateCheck.duplicate &&
-      existingTitles.length > 0
-    ) {
-      return NextResponse.json(
+    const token =
+      await window.shopify.idToken();
+
+    if (!token) {
+      throw new Error(
+        "Shopify session token unavailable. Reopen the app from Shopify Admin.",
+      );
+    }
+
+    return token;
+  }
+
+  /* =========================================================
+     LOAD PRODUCTS
+  ========================================================= */
+
+  async function loadProducts() {
+    setLoading(true);
+    setError("");
+
+    try {
+      const token =
+        await getSessionToken();
+
+      const response = await fetch(
+        "/api/shopify/products",
         {
-          success: false,
-
-          error:
-            "Virello AI could not create a sufficiently unique product title. Please analyze again.",
-
-          meta: {
-            aiGenerated: true,
-
-            duplicateProtection:
-              true,
-
-            matchedTitle:
-              duplicateCheck.matchedTitle,
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "x-shopify-session-token": token,
           },
-        },
-
-        {
-          status: 422,
+          cache: "no-store",
         },
       );
+
+      const data =
+        (await response.json()) as {
+          success?: boolean;
+          error?: string;
+          products?: ShopifyProduct[];
+        };
+
+      if (
+        !response.ok ||
+        !data.success
+      ) {
+        throw new Error(
+          data.error ||
+            "Unable to load Shopify products.",
+        );
+      }
+
+      const normalized =
+        Array.isArray(data.products)
+          ? data.products.map(toProduct)
+          : [];
+
+      setProducts(normalized);
+
+      if (normalized.length > 0) {
+        setSelectedId(normalized[0].id);
+      }
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Unable to load Shopify products.",
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void loadProducts();
+  }, []);
+
+  /* =========================================================
+     SELECTED PRODUCT
+  ========================================================= */
+
+  const selected = useMemo(
+    () =>
+      products.find(
+        (product) =>
+          product.id === selectedId,
+      ) || null,
+    [products, selectedId],
+  );
+
+  /* =========================================================
+     FILTER
+  ========================================================= */
+
+  const filteredProducts =
+    useMemo(() => {
+      const query =
+        search.toLowerCase().trim();
+
+      if (!query) {
+        return products;
+      }
+
+      return products.filter(
+        (product) =>
+          product.title
+            .toLowerCase()
+            .includes(query) ||
+          product.productType
+            .toLowerCase()
+            .includes(query) ||
+          product.vendor
+            .toLowerCase()
+            .includes(query) ||
+          product.tags.some((tag) =>
+            tag
+              .toLowerCase()
+              .includes(query),
+          ),
+      );
+    }, [products, search]);
+
+  /* =========================================================
+     LOAD SELECTED PRODUCT
+  ========================================================= */
+
+  useEffect(() => {
+    if (!selected) {
+      return;
     }
 
-    result.optimization.title =
-      enforceLimit(
-        result.optimization
-          .title,
-        90,
+    setAudience(selected.audience);
+    setStyle(selected.style);
+
+    setTitle(
+      stripHtml(selected.title),
+    );
+
+    setProductType(
+      stripHtml(selected.productType),
+    );
+
+    setTags(
+      selected.tags.join(", "),
+    );
+
+    setDescription(
+      stripHtml(selected.description),
+    );
+
+    setFeatures([]);
+    setSpecifications([]);
+    setSeoTitle("");
+    setMetaDescription("");
+    setAiResult(null);
+    setMessage("");
+    setError("");
+  }, [selected]);
+
+  /* =========================================================
+     REAL AI ANALYSIS
+  ========================================================= */
+
+  async function handleOptimize() {
+    if (!selected) {
+      return;
+    }
+
+    setOptimizing(true);
+    setError("");
+    setMessage("");
+    setAiResult(null);
+
+    try {
+      const token =
+        await getSessionToken();
+
+      /*
+       * IMPORTANT:
+       * Send ALL existing Shopify titles.
+       * This enables the backend duplicate protection.
+       */
+      const existingProductTitles =
+        products
+          .filter(
+            (product) =>
+              product.id !== selected.id,
+          )
+          .map((product) =>
+            stripHtml(product.title),
+          )
+          .filter(Boolean);
+
+      const response = await fetch(
+        "/api/ai/analyze",
+        {
+          method: "POST",
+
+          headers: {
+            "Content-Type":
+              "application/json",
+
+            Authorization:
+              `Bearer ${token}`,
+
+            "x-shopify-session-token":
+              token,
+          },
+
+          body: JSON.stringify({
+            product: {
+              id: selected.id,
+
+              title:
+                stripHtml(
+                  selected.title,
+                ),
+
+              description:
+                stripHtml(
+                  selected.description,
+                ),
+
+              productType:
+                selected.productType,
+
+              vendor:
+                selected.vendor,
+
+              tags:
+                selected.tags,
+
+              price:
+                selected.price,
+
+              audience,
+              style,
+            },
+
+            /*
+             * THIS WAS MISSING BEFORE.
+             * Now the AI backend knows what
+             * titles already exist in Shopify.
+             */
+            existingProductTitles,
+          }),
+        },
       );
 
-    result.optimization.seoTitle =
-      enforceLimit(
+      const data =
+        await response.json();
+
+      if (
+        !response.ok ||
+        !data.success
+      ) {
+        throw new Error(
+          data.error ||
+            "Virello AI analysis failed.",
+        );
+      }
+
+      const rawResult =
+        (data.result ||
+          data.data ||
+          data.analysis) as
+          | AIResult
+          | undefined;
+
+      if (
+        !rawResult ||
+        !rawResult.optimization
+      ) {
+        throw new Error(
+          "Virello AI returned an incomplete optimization.",
+        );
+      }
+
+      const result =
+        normalizeAIResult(rawResult);
+
+      setAiResult(result);
+
+      setTitle(
+        result.optimization.title,
+      );
+
+      setProductType(
+        selected.productType ||
+          "Products",
+      );
+
+      setTags(
+        result.optimization.tags.join(
+          ", ",
+        ),
+      );
+
+      setDescription(
+        result.optimization.description,
+      );
+
+      setFeatures(
+        result.optimization.features,
+      );
+
+      setSpecifications(
         result.optimization
-          .seoTitle,
+          .specifications,
+      );
+
+      setSeoTitle(
+        result.optimization.seoTitle,
+      );
+
+      setMetaDescription(
+        result.optimization
+          .metaDescription,
+      );
+
+      setMessage(
+        "Virello AI completed a real product analysis using the Shopify product data.",
+      );
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Virello AI optimization failed.",
+      );
+    } finally {
+      setOptimizing(false);
+    }
+  }
+
+  /* =========================================================
+     SAVE TO SHOPIFY
+  ========================================================= */
+
+  async function handleSave() {
+    if (!selected) {
+      return;
+    }
+
+    const finalTitle =
+      clean(title);
+
+    const finalProductType =
+      clean(productType);
+
+    const finalTags = unique(
+      tags
+        .split(",")
+        .map(clean)
+        .filter(Boolean),
+    );
+
+    const finalDescription =
+      clean(description);
+
+    const finalSeoTitle =
+      limitCharacters(
+        seoTitle,
         50,
       );
 
-    result.optimization.metaDescription =
-      enforceLimit(
-        result.optimization
-          .metaDescription,
+    const finalMetaDescription =
+      limitCharacters(
+        metaDescription,
         150,
       );
 
-    return NextResponse.json({
-      success: true,
+    if (!finalTitle) {
+      setError(
+        "Product Title is required.",
+      );
+      return;
+    }
 
-      result,
+    if (!finalProductType) {
+      setError(
+        "Product Type is required.",
+      );
+      return;
+    }
 
-      meta: {
-        model,
+    if (!finalDescription) {
+      setError(
+        "Product Description is required.",
+      );
+      return;
+    }
 
-        aiGenerated: true,
+    if (!finalSeoTitle) {
+      setError(
+        "SEO Title is required.",
+      );
+      return;
+    }
 
-        duplicateProtection:
-          existingTitles.length >
-          0,
+    if (
+      finalSeoTitle.length > 50
+    ) {
+      setError(
+        "SEO Title must be 50 characters or fewer.",
+      );
+      return;
+    }
 
-        existingTitlesChecked:
-          existingTitles.length,
+    if (!finalMetaDescription) {
+      setError(
+        "Meta Description is required.",
+      );
+      return;
+    }
 
-        seoTitleMaxLength:
-          50,
+    if (
+      finalMetaDescription.length >
+      150
+    ) {
+      setError(
+        "Meta Description must be 150 characters or fewer.",
+      );
+      return;
+    }
 
-        metaDescriptionMaxLength:
-          150,
-      },
-    });
-  } catch (error) {
-    console.error(
-      "Virello AI unexpected error:",
-      error,
-    );
+    setSaving(true);
+    setError("");
+    setMessage("");
 
-    return NextResponse.json(
-      {
-        success: false,
+    try {
+      const token =
+        await getSessionToken();
 
-        error:
-          error instanceof
-          Error
-            ? error.message
-            : "Unexpected server error while analyzing the product.",
-      },
+      const response = await fetch(
+        "/api/shopify/save-product",
+        {
+          method: "POST",
 
-      {
-        status: 500,
-      },
-    );
+          headers: {
+            "Content-Type":
+              "application/json",
+
+            Authorization:
+              `Bearer ${token}`,
+
+            "x-shopify-session-token":
+              token,
+          },
+
+          body: JSON.stringify({
+            productId:
+              selected.id,
+
+            title:
+              finalTitle,
+
+            productType:
+              finalProductType,
+
+            tags:
+              finalTags,
+
+            description:
+              descriptionToHtml(
+                finalDescription,
+              ),
+
+            seoTitle:
+              finalSeoTitle,
+
+            metaDescription:
+              finalMetaDescription,
+          }),
+        },
+      );
+
+      const data =
+        await response.json();
+
+      if (
+        !response.ok ||
+        !data.success
+      ) {
+        throw new Error(
+          data.error ||
+            "Shopify rejected the save.",
+        );
+      }
+
+      setProducts(
+        (current) =>
+          current.map(
+            (product) =>
+              product.id ===
+              selected.id
+                ? {
+                    ...product,
+                    title:
+                      finalTitle,
+                    productType:
+                      finalProductType,
+                    tags:
+                      finalTags,
+                    description:
+                      finalDescription,
+                  }
+                : product,
+          ),
+      );
+
+      setTitle(finalTitle);
+      setProductType(
+        finalProductType,
+      );
+      setTags(
+        finalTags.join(", "),
+      );
+      setDescription(
+        finalDescription,
+      );
+      setSeoTitle(
+        finalSeoTitle,
+      );
+      setMetaDescription(
+        finalMetaDescription,
+      );
+
+      setMessage(
+        "Successfully saved the AI-optimized product to Shopify.",
+      );
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Unable to save to Shopify.",
+      );
+    } finally {
+      setSaving(false);
+    }
   }
+
+  /* =========================================================
+     RENDER
+  ========================================================= */
+
+  return (
+    <main className="app">
+      <style jsx global>{`
+        * {
+          box-sizing: border-box;
+        }
+
+        html,
+        body {
+          margin: 0;
+          padding: 0;
+        }
+
+        body {
+          background: #f5f5f5;
+          color: #171717;
+          font-family:
+            -apple-system,
+            BlinkMacSystemFont,
+            "Segoe UI",
+            Roboto,
+            Arial,
+            sans-serif;
+        }
+
+        button,
+        input,
+        textarea,
+        select {
+          font: inherit;
+        }
+
+        .app {
+          min-height: 100vh;
+        }
+
+        .header {
+          min-height: 72px;
+          background: #fff;
+          border-bottom: 1px solid #e1e1e1;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 0 28px;
+          position: sticky;
+          top: 0;
+          z-index: 10;
+        }
+
+        .logo {
+          font-size: 19px;
+          font-weight: 800;
+        }
+
+        .status {
+          color: #666;
+          font-size: 14px;
+        }
+
+        .container {
+          max-width: 1400px;
+          margin: 0 auto;
+          padding: 30px 24px 70px;
+          display: grid;
+          grid-template-columns: 350px 1fr;
+          gap: 22px;
+        }
+
+        .card {
+          background: #fff;
+          border: 1px solid #ddd;
+          border-radius: 20px;
+          overflow: hidden;
+        }
+
+        .sidebar-head {
+          padding: 20px;
+          border-bottom: 1px solid #e5e5e5;
+        }
+
+        .sidebar-head h2 {
+          margin: 0 0 14px;
+          font-size: 19px;
+        }
+
+        .search {
+          width: 100%;
+          padding: 13px;
+          border: 1px solid #d4d4d4;
+          border-radius: 12px;
+          outline: none;
+          background: #fff;
+        }
+
+        .products {
+          max-height: 700px;
+          overflow-y: auto;
+          padding: 9px;
+        }
+
+        .product {
+          width: 100%;
+          border: 0;
+          background: transparent;
+          padding: 14px;
+          text-align: left;
+          border-radius: 13px;
+          cursor: pointer;
+          margin-bottom: 3px;
+        }
+
+        .product:hover {
+          background: #f2f2f2;
+        }
+
+        .product.active {
+          background: #171717;
+          color: #fff;
+        }
+
+        .product-name {
+          font-weight: 700;
+          line-height: 1.35;
+        }
+
+        .product-info {
+          margin-top: 5px;
+          color: #777;
+          font-size: 12px;
+        }
+
+        .product.active .product-info {
+          color: #ccc;
+        }
+
+        .editor {
+          padding: 25px;
+        }
+
+        .editor-head {
+          display: flex;
+          justify-content: space-between;
+          gap: 20px;
+          align-items: flex-start;
+          margin-bottom: 25px;
+        }
+
+        .editor-head h1 {
+          margin: 0;
+          font-size: 28px;
+        }
+
+        .subtitle {
+          color: #777;
+          margin-top: 6px;
+          line-height: 1.45;
+        }
+
+        .actions {
+          display: flex;
+          gap: 10px;
+        }
+
+        .button {
+          border: 1px solid #d2d2d2;
+          background: #fff;
+          padding: 12px 17px;
+          border-radius: 11px;
+          font-weight: 700;
+          cursor: pointer;
+          white-space: nowrap;
+        }
+
+        .button.primary {
+          background: #171717;
+          color: #fff;
+          border-color: #171717;
+        }
+
+        .button:hover:not(:disabled) {
+          opacity: 0.88;
+        }
+
+        .button:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+        }
+
+        .notice {
+          padding: 14px 16px;
+          border-radius: 12px;
+          margin-bottom: 18px;
+          font-size: 14px;
+          line-height: 1.45;
+        }
+
+        .success {
+          background: #edf8ef;
+          border: 1px solid #cce5cf;
+          color: #246b2d;
+        }
+
+        .error {
+          background: #fff0f0;
+          border: 1px solid #e8c5c5;
+          color: #9e2020;
+        }
+
+        .image {
+          display: block;
+          width: 100%;
+          max-height: 400px;
+          object-fit: cover;
+          border-radius: 16px;
+          margin-bottom: 22px;
+        }
+
+        .two {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 16px;
+        }
+
+        .field {
+          margin-bottom: 18px;
+        }
+
+        .field label {
+          display: block;
+          margin-bottom: 7px;
+          font-size: 12px;
+          font-weight: 800;
+          color: #666;
+          text-transform: uppercase;
+          letter-spacing: 0.3px;
+        }
+
+        input,
+        textarea,
+        select {
+          width: 100%;
+          border: 1px solid #d5d5d5;
+          border-radius: 11px;
+          padding: 13px;
+          outline: none;
+          background: #fff;
+          color: #171717;
+        }
+
+        input {
+          min-height: 48px;
+        }
+
+        textarea {
+          min-height: 210px;
+          resize: vertical;
+          line-height: 1.55;
+        }
+
+        input:focus,
+        textarea:focus,
+        select:focus {
+          border-color: #777;
+          box-shadow:
+            0 0 0 2px
+            rgba(0, 0, 0, 0.04);
+        }
+
+        .description-textarea {
+          min-height: 330px;
+        }
+
+        .counter {
+          text-align: right;
+          color: #777;
+          font-size: 12px;
+          margin-top: 5px;
+        }
+
+        .section {
+          border-top: 1px solid #e5e5e5;
+          margin-top: 28px;
+          padding-top: 25px;
+        }
+
+        .section-title {
+          font-size: 20px;
+          font-weight: 800;
+          margin-bottom: 16px;
+        }
+
+        .details-grid,
+        .analysis-grid {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 16px;
+        }
+
+        .detail-card,
+        .analysis-card {
+          border: 1px solid #dedede;
+          border-radius: 14px;
+          padding: 18px;
+          background: #fafafa;
+        }
+
+        .detail-title {
+          font-size: 18px;
+          font-weight: 800;
+          margin-bottom: 13px;
+        }
+
+        .detail-list,
+        .specs {
+          margin: 0;
+          padding-left: 20px;
+          line-height: 1.7;
+        }
+
+        .detail-list li,
+        .specs li {
+          margin-bottom: 6px;
+        }
+
+        .empty-detail,
+        .empty {
+          color: #777;
+          font-size: 14px;
+          line-height: 1.5;
+        }
+
+        .analysis-card h3 {
+          margin: 0 0 10px;
+          font-size: 16px;
+        }
+
+        .analysis-card p {
+          margin: 0;
+          color: #444;
+          line-height: 1.55;
+        }
+
+        .score-grid {
+          display: grid;
+          grid-template-columns:
+            repeat(3, 1fr);
+          gap: 10px;
+          margin-bottom: 16px;
+        }
+
+        .score {
+          border: 1px solid #dedede;
+          border-radius: 12px;
+          padding: 14px;
+          text-align: center;
+          background: #fafafa;
+        }
+
+        .score-number {
+          font-size: 25px;
+          font-weight: 800;
+        }
+
+        .score-label {
+          font-size: 11px;
+          color: #777;
+          margin-top: 3px;
+        }
+
+        .generated {
+          border: 1px solid #dedede;
+          border-radius: 14px;
+          padding: 17px;
+          margin-top: 16px;
+          background: #fafafa;
+        }
+
+        .generated-head {
+          font-weight: 800;
+          margin-bottom: 10px;
+        }
+
+        .generated-content {
+          white-space: pre-wrap;
+          line-height: 1.55;
+          color: #444;
+        }
+
+        .small-note {
+          color: #777;
+          font-size: 12px;
+          line-height: 1.45;
+          margin-top: 7px;
+        }
+
+        .ai-badge {
+          display: inline-block;
+          padding: 5px 9px;
+          border-radius: 999px;
+          background: #171717;
+          color: #fff;
+          font-size: 11px;
+          font-weight: 800;
+          margin-bottom: 12px;
+        }
+
+        .empty {
+          padding: 45px 20px;
+          text-align: center;
+        }
+
+        @media (max-width: 950px) {
+          .container {
+            grid-template-columns: 1fr;
+          }
+
+          .products {
+            max-height: 300px;
+          }
+        }
+
+        @media (max-width: 700px) {
+          .details-grid,
+          .analysis-grid {
+            grid-template-columns: 1fr;
+          }
+
+          .score-grid {
+            grid-template-columns:
+              repeat(2, 1fr);
+          }
+        }
+
+        @media (max-width: 650px) {
+          .header {
+            padding: 0 15px;
+          }
+
+          .logo {
+            font-size: 16px;
+          }
+
+          .status {
+            font-size: 12px;
+          }
+
+          .container {
+            padding: 18px 12px 50px;
+          }
+
+          .editor {
+            padding: 18px;
+          }
+
+          .two {
+            grid-template-columns: 1fr;
+          }
+
+          .editor-head {
+            display: block;
+          }
+
+          .actions {
+            margin-top: 15px;
+            width: 100%;
+          }
+
+          .button {
+            flex: 1;
+          }
+
+          .editor-head h1 {
+            font-size: 25px;
+          }
+
+          .description-textarea {
+            min-height: 360px;
+          }
+        }
+      `}</style>
+
+      {/* =====================================================
+          HEADER
+      ===================================================== */}
+
+      <header className="header">
+        <div className="logo">
+          Virello AI Optimizer
+        </div>
+
+        <div className="status">
+          {loading
+            ? "Loading Shopify..."
+            : `${products.length} products`}
+        </div>
+      </header>
+
+      <div className="container">
+
+        {/* ===================================================
+            PRODUCT LIST
+        =================================================== */}
+
+        <aside className="card">
+          <div className="sidebar-head">
+            <h2>Shopify Products</h2>
+
+            <input
+              className="search"
+              placeholder="Search products..."
+              value={search}
+              onChange={(event) =>
+                setSearch(
+                  event.target.value,
+                )
+              }
+            />
+          </div>
+
+          {loading ? (
+            <div className="empty">
+              Loading products...
+            </div>
+          ) : filteredProducts.length ===
+            0 ? (
+            <div className="empty">
+              No products found.
+            </div>
+          ) : (
+            <div className="products">
+              {filteredProducts.map(
+                (product) => (
+                  <button
+                    key={product.id}
+                    type="button"
+                    className={`product ${
+                      selectedId ===
+                      product.id
+                        ? "active"
+                        : ""
+                    }`}
+                    onClick={() =>
+                      setSelectedId(
+                        product.id,
+                      )
+                    }
+                  >
+                    <div className="product-name">
+                      {product.title}
+                    </div>
+
+                    <div className="product-info">
+                      {product.productType ||
+                        "Product"}{" "}
+                      · {product.status}
+                    </div>
+                  </button>
+                ),
+              )}
+            </div>
+          )}
+        </aside>
+
+        {/* ===================================================
+            EDITOR
+        =================================================== */}
+
+        <section className="card">
+          <div className="editor">
+
+            {!selected ? (
+              <div className="empty">
+                Select a Shopify product.
+              </div>
+            ) : (
+              <>
+                {message && (
+                  <div className="notice success">
+                    {message}
+                  </div>
+                )}
+
+                {error && (
+                  <div className="notice error">
+                    {error}
+                  </div>
+                )}
+
+                <div className="editor-head">
+                  <div>
+                    <div className="ai-badge">
+                      REAL AI ANALYSIS
+                    </div>
+
+                    <h1>
+                      Product Optimizer
+                    </h1>
+
+                    <div className="subtitle">
+                      Virello AI analyzes
+                      the actual Shopify
+                      product data before
+                      generating optimized
+                      content.
+                    </div>
+                  </div>
+
+                  <div className="actions">
+                    <button
+                      type="button"
+                      className="button primary"
+                      disabled={
+                        optimizing ||
+                        saving
+                      }
+                      onClick={
+                        handleOptimize
+                      }
+                    >
+                      {optimizing
+                        ? "AI Analyzing..."
+                        : "Analyze with AI"}
+                    </button>
+
+                    <button
+                      type="button"
+                      className="button"
+                      disabled={
+                        optimizing ||
+                        saving
+                      }
+                      onClick={
+                        handleSave
+                      }
+                    >
+                      {saving
+                        ? "Saving..."
+                        : "Save to Shopify"}
+                    </button>
+                  </div>
+                </div>
+
+                {selected.featuredImage && (
+                  <img
+                    className="image"
+                    src={
+                      selected.featuredImage
+                    }
+                    alt={selected.title}
+                  />
+                )}
+
+                {/* AUDIENCE / STYLE */}
+
+                <div className="two">
+                  <div className="field">
+                    <label>
+                      Audience
+                    </label>
+
+                    <select
+                      value={audience}
+                      onChange={(event) =>
+                        setAudience(
+                          event.target
+                            .value as Audience,
+                        )
+                      }
+                    >
+                      <option value="Women">
+                        Women
+                      </option>
+
+                      <option value="Men">
+                        Men
+                      </option>
+
+                      <option value="Unisex">
+                        Unisex
+                      </option>
+                    </select>
+                  </div>
+
+                  <div className="field">
+                    <label>
+                      Style
+                    </label>
+
+                    <select
+                      value={style}
+                      onChange={(event) =>
+                        setStyle(
+                          event.target
+                            .value as Style,
+                        )
+                      }
+                    >
+                      <option value="Premium / Luxury">
+                        Premium / Luxury
+                      </option>
+
+                      <option value="Professional">
+                        Professional
+                      </option>
+
+                      <option value="Everyday">
+                        Everyday
+                      </option>
+
+                      <option value="Casual">
+                        Casual
+                      </option>
+
+                      <option value="Sport">
+                        Sport
+                      </option>
+
+                      <option value="Gift">
+                        Gift
+                      </option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* PRODUCT TITLE */}
+
+                <div className="field">
+                  <label>
+                    Product Title
+                  </label>
+
+                  <input
+                    value={title}
+                    onChange={(event) =>
+                      setTitle(
+                        event.target.value,
+                      )
+                    }
+                  />
+
+                  <div className="small-note">
+                    AI-generated and checked
+                    against existing Shopify
+                    product titles.
+                  </div>
+                </div>
+
+                {/* PRODUCT TYPE */}
+
+                <div className="field">
+                  <label>
+                    Product Type
+                  </label>
+
+                  <input
+                    value={productType}
+                    onChange={(event) =>
+                      setProductType(
+                        event.target.value,
+                      )
+                    }
+                  />
+                </div>
+
+                {/* TAGS */}
+
+                <div className="field">
+                  <label>
+                    Tags
+                  </label>
+
+                  <input
+                    value={tags}
+                    onChange={(event) =>
+                      setTags(
+                        event.target.value,
+                      )
+                    }
+                    placeholder="watch, chronograph, stainless steel"
+                  />
+
+                  <div className="small-note">
+                    AI-generated tags based
+                    only on actual product
+                    information.
+                  </div>
+                </div>
+
+                {/* DESCRIPTION */}
+
+                <div className="field">
+                  <label>
+                    Product Description
+                  </label>
+
+                  <textarea
+                    className="description-textarea"
+                    value={description}
+                    onChange={(event) =>
+                      setDescription(
+                        event.target.value,
+                      )
+                    }
+                    placeholder="AI-generated conversion-focused product description..."
+                  />
+
+                  <div className="small-note">
+                    Customer-facing product
+                    copy generated by Virello AI.
+                  </div>
+                </div>
+
+                {/* FEATURES / SPECIFICATIONS */}
+
+                <div className="section">
+                  <div className="section-title">
+                    Product Details
+                  </div>
+
+                  <div className="details-grid">
+                    <div className="detail-card">
+                      <div className="detail-title">
+                        Key Features
+                      </div>
+
+                      {features.length > 0 ? (
+                        <ul className="detail-list">
+                          {features.map(
+                            (feature, index) => (
+                              <li
+                                key={`${feature}-${index}`}
+                              >
+                                {feature}
+                              </li>
+                            ),
+                          )}
+                        </ul>
+                      ) : (
+                        <div className="empty-detail">
+                          Run AI analysis to
+                          generate verified
+                          features.
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="detail-card">
+                      <div className="detail-title">
+                        Specifications
+                      </div>
+
+                      {specifications.length >
+                      0 ? (
+                        <ul className="detail-list">
+                          {specifications.map(
+                            (
+                              specification,
+                              index,
+                            ) => (
+                              <li
+                                key={`${specification}-${index}`}
+                              >
+                                {specification}
+                              </li>
+                            ),
+                          )}
+                        </ul>
+                      ) : (
+                        <div className="empty-detail">
+                          Only specifications
+                          supplied in the
+                          product data will
+                          appear here.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* SEO */}
+
+                <div className="section">
+                  <div className="section-title">
+                    Google SEO
+                  </div>
+
+                  <div className="field">
+                    <label>
+                      SEO Title · Max 50
+                    </label>
+
+                    <input
+                      maxLength={50}
+                      value={seoTitle}
+                      onChange={(event) =>
+                        setSeoTitle(
+                          event.target.value,
+                        )
+                      }
+                    />
+
+                    <div className="counter">
+                      {seoTitle.length}/50
+                    </div>
+                  </div>
+
+                  <div className="field">
+                    <label>
+                      Meta Description · Max 150
+                    </label>
+
+                    <textarea
+                      maxLength={150}
+                      value={metaDescription}
+                      onChange={(event) =>
+                        setMetaDescription(
+                          event.target.value,
+                        )
+                      }
+                    />
+
+                    <div className="counter">
+                      {metaDescription.length}/150
+                    </div>
+                  </div>
+                </div>
+
+                {/* =================================================
+                    AI ANALYSIS
+                ================================================= */}
+
+                {aiResult && (
+                  <div className="section">
+                    <div className="section-title">
+                      Virello AI Analysis
+                    </div>
+
+                    <div className="score-grid">
+                      <div className="score">
+                        <div className="score-number">
+                          {
+                            aiResult.score
+                              .overall
+                          }
+                        </div>
+                        <div className="score-label">
+                          Overall / 100
+                        </div>
+                      </div>
+
+                      <div className="score">
+                        <div className="score-number">
+                          {
+                            aiResult.score
+                              .conversionPotential
+                          }
+                        </div>
+                        <div className="score-label">
+                          Conversion / 100
+                        </div>
+                      </div>
+
+                      <div className="score">
+                        <div className="score-number">
+                          {
+                            aiResult.score
+                              .seo
+                          }
+                        </div>
+                        <div className="score-label">
+                          SEO / 100
+                        </div>
+                      </div>
+
+                      <div className="score">
+                        <div className="score-number">
+                          {
+                            aiResult.score
+                              .title
+                          }
+                        </div>
+                        <div className="score-label">
+                          Title / 100
+                        </div>
+                      </div>
+
+                      <div className="score">
+                        <div className="score-number">
+                          {
+                            aiResult.score
+                              .description
+                          }
+                        </div>
+                        <div className="score-label">
+                          Description / 100
+                        </div>
+                      </div>
+
+                      <div className="score">
+                        <div className="score-number">
+                          {
+                            aiResult.score
+                              .productClarity
+                          }
+                        </div>
+                        <div className="score-label">
+                          Clarity / 100
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="analysis-grid">
+                      <div className="analysis-card">
+                        <h3>
+                          Target Customer
+                        </h3>
+
+                        <p>
+                          {
+                            aiResult.analysis
+                              .targetCustomer
+                          }
+                        </p>
+                      </div>
+
+                      <div className="analysis-card">
+                        <h3>
+                          Purchase Motivation
+                        </h3>
+
+                        <p>
+                          {
+                            aiResult.analysis
+                              .purchaseMotivation
+                          }
+                        </p>
+                      </div>
+
+                      <div className="analysis-card">
+                        <h3>
+                          Strongest Features
+                        </h3>
+
+                        {aiResult.analysis
+                          .strongestFeatures
+                          .length > 0 ? (
+                          <ul className="specs">
+                            {aiResult.analysis
+                              .strongestFeatures
+                              .map(
+                                (
+                                  item,
+                                  index,
+                                ) => (
+                                  <li
+                                    key={`${item}-${index}`}
+                                  >
+                                    {item}
+                                  </li>
+                                ),
+                              )}
+                          </ul>
+                        ) : (
+                          <p>
+                            No verified
+                            features
+                            identified.
+                          </p>
+                        )}
+                      </div>
+
+                      <div className="analysis-card">
+                        <h3>
+                          Weaknesses
+                        </h3>
+
+                        {aiResult.analysis
+                          .weaknesses
+                          .length > 0 ? (
+                          <ul className="specs">
+                            {aiResult.analysis
+                              .weaknesses
+                              .map(
+                                (
+                                  item,
+                                  index,
+                                ) => (
+                                  <li
+                                    key={`${item}-${index}`}
+                                  >
+                                    {item}
+                                  </li>
+                                ),
+                              )}
+                          </ul>
+                        ) : (
+                          <p>
+                            No major
+                            weaknesses
+                            identified.
+                          </p>
+                        )}
+                      </div>
+
+                      <div className="analysis-card">
+                        <h3>
+                          Missing Information
+                        </h3>
+
+                        {aiResult.analysis
+                          .missingInformation
+                          .length > 0 ? (
+                          <ul className="specs">
+                            {aiResult.analysis
+                              .missingInformation
+                              .map(
+                                (
+                                  item,
+                                  index,
+                                ) => (
+                                  <li
+                                    key={`${item}-${index}`}
+                                  >
+                                    {item}
+                                  </li>
+                                ),
+                              )}
+                          </ul>
+                        ) : (
+                          <p>
+                            No important
+                            missing
+                            information
+                            detected.
+                          </p>
+                        )}
+                      </div>
+
+                      <div className="analysis-card">
+                        <h3>
+                          Conversion Opportunities
+                        </h3>
+
+                        {aiResult.analysis
+                          .conversionOpportunities
+                          .length > 0 ? (
+                          <ul className="specs">
+                            {aiResult.analysis
+                              .conversionOpportunities
+                              .map(
+                                (
+                                  item,
+                                  index,
+                                ) => (
+                                  <li
+                                    key={`${item}-${index}`}
+                                  >
+                                    {item}
+                                  </li>
+                                ),
+                              )}
+                          </ul>
+                        ) : (
+                          <p>
+                            No additional
+                            opportunities
+                            identified.
+                          </p>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="generated">
+                      <div className="generated-head">
+                        AI Reasoning
+                      </div>
+
+                      <div className="generated-content">
+                        {
+                          aiResult.reasoning
+                        }
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        </section>
+      </div>
+    </main>
+  );
 }
