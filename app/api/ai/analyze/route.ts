@@ -2,37 +2,18 @@ import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 
-/* =========================================================
-   VIRELLO AI SYSTEM PROMPT
-========================================================= */
-
 const SYSTEM_PROMPT = `
 You are Virello AI, an advanced ecommerce product optimization analyst.
 
-Your job is to analyze the ACTUAL product data supplied by the store and
-generate a better ecommerce presentation based only on verified information.
+Analyze the ACTUAL Shopify product data supplied by the store and generate a better ecommerce presentation based only on verified information.
 
-You must think like:
-- Ecommerce conversion specialist
-- SEO specialist
-- Product merchandising specialist
-- Shopify product copywriter
-- Customer psychology analyst
+Think like an ecommerce conversion specialist, SEO specialist, product merchandising specialist, Shopify copywriter, and customer psychology analyst.
 
-IMPORTANT:
-The product data comes from Shopify and may contain supplier information.
-You must analyze it before generating recommendations.
-
-=========================================================
 CORE OBJECTIVES
-=========================================================
-
-For every product:
-
 1. Understand what the product actually is.
 2. Determine the most likely target customer.
-3. Identify the strongest legitimate purchase motivations.
-4. Identify the strongest verified benefits.
+3. Identify legitimate purchase motivations.
+4. Identify verified benefits.
 5. Identify weaknesses that may reduce conversions.
 6. Identify missing information.
 7. Identify SEO opportunities.
@@ -43,177 +24,82 @@ For every product:
 12. Organize verified specifications.
 13. Create an SEO title of 50 characters or fewer.
 14. Create a meta description of 150 characters or fewer.
-15. Create relevant product tags.
+15. Create relevant Shopify product tags.
 
-=========================================================
-FACTUAL ACCURACY RULES
-=========================================================
+FACTUAL ACCURACY
+Never invent materials, dimensions, weight, colors, certifications, warranty, compatibility, battery capacity, voltage, power, performance, durability, waterproof ratings, safety claims, medical claims, health claims, technical specifications, shipping claims, guarantees, or included accessories.
 
-NEVER invent:
+If information is missing, do not guess. Put important missing information in missingInformation.
 
-- Materials
-- Dimensions
-- Weight
-- Colors not supplied
-- Certifications
-- Warranty
-- Compatibility
-- Battery capacity
-- Voltage
-- Power
-- Performance
-- Durability
-- Waterproof ratings
-- Safety claims
-- Medical claims
-- Health claims
-- Technical specifications
-- Shipping claims
-- Guarantees
-- Included accessories
+TITLE
+Create a natural, professional ecommerce product title. Clearly identify the product, use important search keywords naturally, avoid keyword stuffing, excessive adjectives, generic marketplace wording, repeated words, fake brand names, and unsupported supplier claims.
 
-If information is not provided, do not guess.
+Do not force a fixed number of words.
 
-If an important piece of information is missing, place it in
-missingInformation.
+Make it suitable for a premium Shopify store.
 
-=========================================================
-TITLE RULES
-=========================================================
+DESCRIPTION
+Create conversion-focused product copy.
 
-Create a natural, professional ecommerce product title.
+Explain:
+- what the product is
+- why the customer would want it
+- the verified benefits
+- the practical value
+- the best use cases when supported by the supplied information
 
-The title should:
+Use natural persuasive language.
 
-- Clearly identify the product.
-- Use important search keywords naturally.
-- Focus on the product rather than supplier wording.
-- Avoid unnecessary keyword stuffing.
-- Avoid excessive adjectives.
-- Avoid generic marketplace-style titles.
-- Avoid repeating the same words.
-- Avoid fake brand names.
-- Avoid supplier names unless they are legitimate product information.
-- Be suitable for a premium Shopify store.
+Make it easy to scan.
 
-Do NOT force a fixed number of words.
+Avoid generic supplier language.
 
-The title can be short or longer when necessary.
+Avoid unsupported claims.
 
-=========================================================
-DESCRIPTION RULES
-=========================================================
+Sound like a professional ecommerce brand.
 
-Create a conversion-focused product description.
-
-The description should:
-
-- Explain what the product is.
-- Explain why the customer would want it.
-- Highlight verified benefits.
-- Use natural persuasive language.
-- Be easy to scan.
-- Avoid generic supplier language.
-- Avoid unsupported claims.
-- Avoid exaggerated promises.
-- Avoid keyword stuffing.
-- Sound like a professional ecommerce brand.
-
-Use the actual product information supplied.
-
-=========================================================
-FEATURE RULES
-=========================================================
-
+FEATURES
 Only include features that can be verified from the supplied product data.
 
-Do not create features simply because they are common for this type
-of product.
+Do not assume features simply because they are common for this product category.
 
-=========================================================
-SPECIFICATION RULES
-=========================================================
+SPECIFICATIONS
+Only include specifications supplied in the product data.
 
-Specifications must come from the supplied product information.
+If none are supplied, return an empty array.
 
-If specifications are missing, return an empty array.
-
-Never manufacture specifications.
-
-=========================================================
-SEO RULES
-=========================================================
-
-SEO TITLE:
-
+SEO TITLE
 Maximum 50 characters.
 
-It must:
-- Contain the most useful product keyword.
-- Read naturally.
-- Avoid keyword stuffing.
-- Be suitable for Google search results.
+Include the most useful product keyword naturally.
 
-META DESCRIPTION:
+Avoid keyword stuffing.
 
+META DESCRIPTION
 Maximum 150 characters.
 
-It must:
-- Explain the product clearly.
-- Include a useful keyword naturally.
-- Give the customer a reason to click.
-- Avoid keyword stuffing.
-- Avoid unsupported claims.
+Explain the product clearly.
 
-=========================================================
-TAG RULES
-=========================================================
+Include a useful keyword naturally.
 
-Create relevant Shopify product tags.
+Give the searcher a reason to click without unsupported claims.
 
-Tags should be:
-- Relevant
-- Specific
-- Useful for organization and search
-- Based on actual product information
+TAGS
+Create relevant, specific Shopify tags based on actual product information.
 
-Do not create random tags.
+Do not create random, duplicate, or unsupported tags.
 
-Do not repeat identical tags.
-
-Do not create unsupported claims as tags.
-
-=========================================================
 DUPLICATE PREVENTION
-=========================================================
+Do not blindly reuse the original title.
 
-Do NOT blindly reuse the original title as the optimized title.
-
-Do NOT repeat identical features.
-
-Do NOT repeat identical specifications.
-
-Do NOT repeat identical tags.
-
-Do NOT create multiple variations of the same phrase simply to increase
-the number of results.
-
-Analyze the product first and then create the best result.
-
-=========================================================
-IMPORTANT
-=========================================================
+Do not repeat identical features, specifications, tags, or near-identical phrases simply to increase the number of results.
 
 The AI must make decisions dynamically from the supplied product data.
 
-Do not use fixed templates that produce the same answer for every product.
+Do not use a fixed template that produces the same answer for every product.
 
-Return ONLY valid JSON matching the supplied schema.
+Return only valid JSON matching the supplied schema.
 `;
-
-/* =========================================================
-   TYPES
-========================================================= */
 
 type ProductInput = {
   id?: string;
@@ -226,10 +112,6 @@ type ProductInput = {
   features?: string[];
   specifications?: string[];
 };
-
-/* =========================================================
-   CLEANING HELPERS
-========================================================= */
 
 function clean(value: unknown): string {
   if (typeof value !== "string") {
@@ -247,6 +129,7 @@ function cleanList(value: unknown): string[] {
   }
 
   const result: string[] = [];
+  const seen = new Set<string>();
 
   for (const item of value) {
     const cleaned = clean(item);
@@ -255,17 +138,18 @@ function cleanList(value: unknown): string[] {
       continue;
     }
 
-    if (!result.includes(cleaned)) {
-      result.push(cleaned);
+    const key = cleaned.toLowerCase();
+
+    if (seen.has(key)) {
+      continue;
     }
+
+    seen.add(key);
+    result.push(cleaned);
   }
 
   return result.slice(0, 30);
 }
-
-/* =========================================================
-   CHARACTER LIMIT
-========================================================= */
 
 function enforceLimit(
   value: unknown,
@@ -283,20 +167,21 @@ function enforceLimit(
 
   let result = text.slice(0, max);
 
-  const lastSpace = result.lastIndexOf(" ");
+  const lastSpace =
+    result.lastIndexOf(" ");
 
-  if (lastSpace > Math.floor(max * 0.65)) {
-    result = result.slice(0, lastSpace);
+  if (
+    lastSpace >
+    Math.floor(max * 0.65)
+  ) {
+    result =
+      result.slice(0, lastSpace);
   }
 
   return result
     .trim()
     .replace(/[.,;:!?-]+$/, "");
 }
-
-/* =========================================================
-   REMOVE DUPLICATES
-========================================================= */
 
 function removeDuplicateStrings(
   value: unknown,
@@ -315,7 +200,8 @@ function removeDuplicateStrings(
       continue;
     }
 
-    const key = cleaned.toLowerCase();
+    const key =
+      cleaned.toLowerCase();
 
     if (seen.has(key)) {
       continue;
@@ -324,6 +210,251 @@ function removeDuplicateStrings(
     seen.add(key);
     result.push(cleaned);
   }
+
+  return result;
+}
+
+/* =========================================================
+   OPENAI OUTPUT EXTRACTION
+
+   This is the important fix for:
+
+   "Virello AI returned no analysis."
+
+   OpenAI Responses API can return generated text inside
+   output[].content[].text.
+
+   We check both output_text and output[].content[].
+========================================================= */
+
+function extractOutputText(
+  data: any,
+): string {
+  if (
+    typeof data?.output_text ===
+      "string" &&
+    data.output_text.trim()
+  ) {
+    return data.output_text.trim();
+  }
+
+  const output = Array.isArray(
+    data?.output,
+  )
+    ? data.output
+    : [];
+
+  const chunks: string[] = [];
+
+  for (const item of output) {
+    if (
+      !Array.isArray(
+        item?.content,
+      )
+    ) {
+      continue;
+    }
+
+    for (const content of item.content) {
+      if (
+        typeof content?.text ===
+          "string" &&
+        (
+          content?.type ===
+            "output_text" ||
+          !content?.type
+        )
+      ) {
+        chunks.push(
+          content.text,
+        );
+      }
+    }
+  }
+
+  return chunks
+    .join("\n")
+    .trim();
+}
+
+/* =========================================================
+   OPENAI ERROR
+========================================================= */
+
+function getErrorMessage(
+  data: any,
+): string {
+  return (
+    clean(
+      data?.error?.message,
+    ) ||
+    clean(data?.message) ||
+    "Virello AI analysis failed."
+  );
+}
+
+/* =========================================================
+   NORMALIZE AI RESULT
+========================================================= */
+
+function normalizeResult(
+  result: any,
+) {
+  if (
+    !result ||
+    typeof result !==
+      "object"
+  ) {
+    throw new Error(
+      "Virello AI returned an invalid analysis object.",
+    );
+  }
+
+  if (
+    !result.analysis ||
+    !result.score ||
+    !result.optimization
+  ) {
+    throw new Error(
+      "Virello AI returned an incomplete analysis.",
+    );
+  }
+
+  /* -------------------------
+     ANALYSIS
+  ------------------------- */
+
+  result.analysis.targetCustomer =
+    clean(
+      result.analysis
+        .targetCustomer,
+    );
+
+  result.analysis.purchaseMotivation =
+    clean(
+      result.analysis
+        .purchaseMotivation,
+    );
+
+  result.analysis.strongestFeatures =
+    removeDuplicateStrings(
+      result.analysis
+        .strongestFeatures,
+    );
+
+  result.analysis.weaknesses =
+    removeDuplicateStrings(
+      result.analysis
+        .weaknesses,
+    );
+
+  result.analysis.missingInformation =
+    removeDuplicateStrings(
+      result.analysis
+        .missingInformation,
+    );
+
+  result.analysis.seoOpportunities =
+    removeDuplicateStrings(
+      result.analysis
+        .seoOpportunities,
+    );
+
+  result.analysis.conversionOpportunities =
+    removeDuplicateStrings(
+      result.analysis
+        .conversionOpportunities,
+    );
+
+  /* -------------------------
+     SCORES
+  ------------------------- */
+
+  const scoreKeys = [
+    "title",
+    "description",
+    "seo",
+    "productClarity",
+    "conversionPotential",
+    "overall",
+  ];
+
+  for (
+    const key of scoreKeys
+  ) {
+    const numberValue =
+      Number(
+        result.score[key],
+      );
+
+    result.score[key] =
+      Number.isFinite(
+        numberValue,
+      )
+        ? Math.max(
+            0,
+            Math.min(
+              100,
+              Math.round(
+                numberValue,
+              ),
+            ),
+          )
+        : 0;
+  }
+
+  /* -------------------------
+     OPTIMIZATION
+  ------------------------- */
+
+  result.optimization.title =
+    clean(
+      result.optimization
+        .title,
+    );
+
+  result.optimization.description =
+    clean(
+      result.optimization
+        .description,
+    );
+
+  result.optimization.features =
+    removeDuplicateStrings(
+      result.optimization
+        .features,
+    );
+
+  result.optimization.specifications =
+    removeDuplicateStrings(
+      result.optimization
+        .specifications,
+    );
+
+  result.optimization.tags =
+    removeDuplicateStrings(
+      result.optimization
+        .tags,
+    );
+
+  result.optimization.seoTitle =
+    enforceLimit(
+      result.optimization
+        .seoTitle,
+      50,
+    );
+
+  result.optimization.metaDescription =
+    enforceLimit(
+      result.optimization
+        .metaDescription,
+      150,
+    );
+
+  result.reasoning =
+    clean(
+      result.reasoning,
+    );
 
   return result;
 }
@@ -360,10 +491,27 @@ export async function POST(
        REQUEST BODY
     ===================================================== */
 
-    const body = await request.json();
+    let body: any;
+
+    try {
+      body =
+        await request.json();
+    } catch {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Invalid request body.",
+        },
+        {
+          status: 400,
+        },
+      );
+    }
 
     const product =
-      (body?.product ?? body) as ProductInput;
+      (body?.product ??
+        body) as ProductInput;
 
     if (
       !product ||
@@ -382,83 +530,101 @@ export async function POST(
     }
 
     /* =====================================================
-       NORMALIZE PRODUCT DATA
+       PRODUCT DATA
     ===================================================== */
 
     const productData = {
       id: clean(product.id),
 
-      title: clean(product.title),
+      title: clean(
+        product.title,
+      ),
 
-      description:
-        clean(product.description),
+      description: clean(
+        product.description,
+      ),
 
-      productType:
-        clean(product.productType),
+      productType: clean(
+        product.productType,
+      ),
 
-      vendor:
-        clean(product.vendor),
+      vendor: clean(
+        product.vendor,
+      ),
 
-      tags:
-        cleanList(product.tags),
+      tags: cleanList(
+        product.tags,
+      ),
 
-      price:
-        clean(product.price),
+      price: clean(
+        product.price,
+      ),
 
-      features:
-        cleanList(product.features),
+      features: cleanList(
+        product.features,
+      ),
 
       specifications:
-        cleanList(product.specifications),
+        cleanList(
+          product.specifications,
+        ),
     };
+
+    /* =====================================================
+       MODEL
+    ===================================================== */
+
+    const model =
+      process.env.VIRELLO_AI_MODEL ||
+      "gpt-5.6";
 
     /* =====================================================
        OPENAI REQUEST
     ===================================================== */
 
-    const response = await fetch(
-      "https://api.openai.com/v1/responses",
-      {
-        method: "POST",
+    const response =
+      await fetch(
+        "https://api.openai.com/v1/responses",
+        {
+          method: "POST",
 
-        headers: {
-          "Content-Type":
-            "application/json",
+          headers: {
+            "Content-Type":
+              "application/json",
 
-          Authorization:
-            `Bearer ${apiKey}`,
-        },
+            Authorization:
+              `Bearer ${apiKey}`,
+          },
 
-        body: JSON.stringify({
-          model:
-            process.env.VIRELLO_AI_MODEL ||
-            "gpt-5.6",
+          body: JSON.stringify({
+            model,
 
-          input: [
-            {
-              role: "system",
+            input: [
+              {
+                role: "system",
 
-              content: [
-                {
-                  type: "input_text",
-                  text: SYSTEM_PROMPT,
-                },
-              ],
-            },
+                content: [
+                  {
+                    type:
+                      "input_text",
 
-            {
-              role: "user",
+                    text:
+                      SYSTEM_PROMPT,
+                  },
+                ],
+              },
 
-              content: [
-                {
-                  type: "input_text",
+              {
+                role: "user",
 
-                  text:
-                    `
-Analyze this Shopify product.
+                content: [
+                  {
+                    type:
+                      "input_text",
 
-IMPORTANT:
-Use only the supplied information.
+                    text: `
+Analyze this Shopify product using only the supplied information.
+
 Do not invent specifications.
 
 PRODUCT DATA:
@@ -469,231 +635,283 @@ ${JSON.stringify(
   2,
 )}
 `,
-                },
-              ],
-            },
-          ],
-
-          text: {
-            format: {
-              type: "json_schema",
-
-              name:
-                "virello_product_analysis",
-
-              strict: true,
-
-              schema: {
-                type: "object",
-
-                additionalProperties:
-                  false,
-
-                properties: {
-                  analysis: {
-                    type: "object",
-
-                    additionalProperties:
-                      false,
-
-                    properties: {
-                      targetCustomer: {
-                        type: "string",
-                      },
-
-                      purchaseMotivation: {
-                        type: "string",
-                      },
-
-                      strongestFeatures: {
-                        type: "array",
-
-                        items: {
-                          type: "string",
-                        },
-                      },
-
-                      weaknesses: {
-                        type: "array",
-
-                        items: {
-                          type: "string",
-                        },
-                      },
-
-                      missingInformation: {
-                        type: "array",
-
-                        items: {
-                          type: "string",
-                        },
-                      },
-
-                      seoOpportunities: {
-                        type: "array",
-
-                        items: {
-                          type: "string",
-                        },
-                      },
-
-                      conversionOpportunities: {
-                        type: "array",
-
-                        items: {
-                          type: "string",
-                        },
-                      },
-                    },
-
-                    required: [
-                      "targetCustomer",
-                      "purchaseMotivation",
-                      "strongestFeatures",
-                      "weaknesses",
-                      "missingInformation",
-                      "seoOpportunities",
-                      "conversionOpportunities",
-                    ],
                   },
-
-                  score: {
-                    type: "object",
-
-                    additionalProperties:
-                      false,
-
-                    properties: {
-                      title: {
-                        type: "integer",
-                        minimum: 0,
-                        maximum: 100,
-                      },
-
-                      description: {
-                        type: "integer",
-                        minimum: 0,
-                        maximum: 100,
-                      },
-
-                      seo: {
-                        type: "integer",
-                        minimum: 0,
-                        maximum: 100,
-                      },
-
-                      productClarity: {
-                        type: "integer",
-                        minimum: 0,
-                        maximum: 100,
-                      },
-
-                      conversionPotential: {
-                        type: "integer",
-                        minimum: 0,
-                        maximum: 100,
-                      },
-
-                      overall: {
-                        type: "integer",
-                        minimum: 0,
-                        maximum: 100,
-                      },
-                    },
-
-                    required: [
-                      "title",
-                      "description",
-                      "seo",
-                      "productClarity",
-                      "conversionPotential",
-                      "overall",
-                    ],
-                  },
-
-                  optimization: {
-                    type: "object",
-
-                    additionalProperties:
-                      false,
-
-                    properties: {
-                      title: {
-                        type: "string",
-                      },
-
-                      description: {
-                        type: "string",
-                      },
-
-                      features: {
-                        type: "array",
-
-                        items: {
-                          type: "string",
-                        },
-                      },
-
-                      specifications: {
-                        type: "array",
-
-                        items: {
-                          type: "string",
-                        },
-                      },
-
-                      seoTitle: {
-                        type: "string",
-                      },
-
-                      metaDescription: {
-                        type: "string",
-                      },
-
-                      tags: {
-                        type: "array",
-
-                        items: {
-                          type: "string",
-                        },
-                      },
-                    },
-
-                    required: [
-                      "title",
-                      "description",
-                      "features",
-                      "specifications",
-                      "seoTitle",
-                      "metaDescription",
-                      "tags",
-                    ],
-                  },
-
-                  reasoning: {
-                    type: "string",
-                  },
-                },
-
-                required: [
-                  "analysis",
-                  "score",
-                  "optimization",
-                  "reasoning",
                 ],
               },
+            ],
+
+            /* =============================================
+               STRUCTURED OUTPUT
+            ============================================= */
+
+            text: {
+              format: {
+                type:
+                  "json_schema",
+
+                name:
+                  "virello_product_analysis",
+
+                strict: true,
+
+                schema: {
+                  type:
+                    "object",
+
+                  additionalProperties:
+                    false,
+
+                  properties: {
+                    analysis: {
+                      type:
+                        "object",
+
+                      additionalProperties:
+                        false,
+
+                      properties: {
+                        targetCustomer:
+                          {
+                            type:
+                              "string",
+                          },
+
+                        purchaseMotivation:
+                          {
+                            type:
+                              "string",
+                          },
+
+                        strongestFeatures:
+                          {
+                            type:
+                              "array",
+
+                            items: {
+                              type:
+                                "string",
+                            },
+                          },
+
+                        weaknesses:
+                          {
+                            type:
+                              "array",
+
+                            items: {
+                              type:
+                                "string",
+                            },
+                          },
+
+                        missingInformation:
+                          {
+                            type:
+                              "array",
+
+                            items: {
+                              type:
+                                "string",
+                            },
+                          },
+
+                        seoOpportunities:
+                          {
+                            type:
+                              "array",
+
+                            items: {
+                              type:
+                                "string",
+                            },
+                          },
+
+                        conversionOpportunities:
+                          {
+                            type:
+                              "array",
+
+                            items: {
+                              type:
+                                "string",
+                            },
+                          },
+                      },
+
+                      required: [
+                        "targetCustomer",
+                        "purchaseMotivation",
+                        "strongestFeatures",
+                        "weaknesses",
+                        "missingInformation",
+                        "seoOpportunities",
+                        "conversionOpportunities",
+                      ],
+                    },
+
+                    score: {
+                      type:
+                        "object",
+
+                      additionalProperties:
+                        false,
+
+                      properties: {
+                        title: {
+                          type:
+                            "integer",
+                          minimum: 0,
+                          maximum: 100,
+                        },
+
+                        description: {
+                          type:
+                            "integer",
+                          minimum: 0,
+                          maximum: 100,
+                        },
+
+                        seo: {
+                          type:
+                            "integer",
+                          minimum: 0,
+                          maximum: 100,
+                        },
+
+                        productClarity:
+                          {
+                            type:
+                              "integer",
+                            minimum: 0,
+                            maximum: 100,
+                          },
+
+                        conversionPotential:
+                          {
+                            type:
+                              "integer",
+                            minimum: 0,
+                            maximum: 100,
+                          },
+
+                        overall: {
+                          type:
+                            "integer",
+                          minimum: 0,
+                          maximum: 100,
+                        },
+                      },
+
+                      required: [
+                        "title",
+                        "description",
+                        "seo",
+                        "productClarity",
+                        "conversionPotential",
+                        "overall",
+                      ],
+                    },
+
+                    optimization: {
+                      type:
+                        "object",
+
+                      additionalProperties:
+                        false,
+
+                      properties: {
+                        title: {
+                          type:
+                            "string",
+                        },
+
+                        description: {
+                          type:
+                            "string",
+                        },
+
+                        features: {
+                          type:
+                            "array",
+
+                          items: {
+                            type:
+                              "string",
+                          },
+                        },
+
+                        specifications: {
+                          type:
+                            "array",
+
+                          items: {
+                            type:
+                              "string",
+                          },
+                        },
+
+                        seoTitle: {
+                          type:
+                            "string",
+                        },
+
+                        metaDescription:
+                          {
+                            type:
+                              "string",
+                          },
+
+                        tags: {
+                          type:
+                            "array",
+
+                          items: {
+                            type:
+                              "string",
+                          },
+                        },
+                      },
+
+                      required: [
+                        "title",
+                        "description",
+                        "features",
+                        "specifications",
+                        "seoTitle",
+                        "metaDescription",
+                        "tags",
+                      ],
+                    },
+
+                    reasoning: {
+                      type:
+                        "string",
+                    },
+                  },
+
+                  required: [
+                    "analysis",
+                    "score",
+                    "optimization",
+                    "reasoning",
+                  ],
+                },
+              },
             },
-          },
-        }),
-      },
-    );
+          }),
+        },
+      );
 
     /* =====================================================
-       OPENAI RESPONSE
+       READ OPENAI RESPONSE
     ===================================================== */
 
     const data =
       await response.json();
+
+    /* =====================================================
+       OPENAI ERROR
+    ===================================================== */
 
     if (!response.ok) {
       console.error(
@@ -704,12 +922,11 @@ ${JSON.stringify(
       return NextResponse.json(
         {
           success: false,
-
           error:
-            data?.error?.message ||
-            "Virello AI analysis failed.",
+            getErrorMessage(
+              data,
+            ),
         },
-
         {
           status:
             response.status,
@@ -718,27 +935,39 @@ ${JSON.stringify(
     }
 
     /* =====================================================
-       OUTPUT TEXT
+       EXTRACT AI TEXT
+
+       THIS FIXES:
+       "Virello AI returned no analysis."
     ===================================================== */
 
     const outputText =
-      typeof data?.output_text ===
-      "string"
-        ? data.output_text
-        : "";
+      extractOutputText(
+        data,
+      );
 
     if (!outputText) {
       console.error(
-        "OpenAI returned no output:",
+        "OpenAI returned no readable output:",
         data,
       );
+
+      const refusal =
+        clean(
+          data?.output?.[0]?.content?.find(
+            (item: any) =>
+              item?.type ===
+              "refusal",
+          )?.refusal,
+        );
 
       return NextResponse.json(
         {
           success: false,
 
           error:
-            "Virello AI returned no analysis.",
+            refusal ||
+            "Virello AI returned no readable analysis output.",
         },
 
         {
@@ -755,7 +984,9 @@ ${JSON.stringify(
 
     try {
       result =
-        JSON.parse(outputText);
+        JSON.parse(
+          outputText,
+        );
     } catch (error) {
       console.error(
         "Invalid Virello AI JSON:",
@@ -768,7 +999,7 @@ ${JSON.stringify(
           success: false,
 
           error:
-            "Virello AI returned an invalid response.",
+            "Virello AI returned an invalid structured response.",
         },
 
         {
@@ -778,90 +1009,39 @@ ${JSON.stringify(
     }
 
     /* =====================================================
-       NORMALIZE AI OUTPUT
+       NORMALIZE
     ===================================================== */
 
-    if (result?.analysis) {
-      result.analysis.strongestFeatures =
-        removeDuplicateStrings(
-          result.analysis
-            .strongestFeatures,
+    try {
+      result =
+        normalizeResult(
+          result,
         );
+    } catch (error) {
+      console.error(
+        "Virello AI normalization error:",
+        error,
+      );
 
-      result.analysis.weaknesses =
-        removeDuplicateStrings(
-          result.analysis.weaknesses,
-        );
+      return NextResponse.json(
+        {
+          success: false,
 
-      result.analysis.missingInformation =
-        removeDuplicateStrings(
-          result.analysis
-            .missingInformation,
-        );
+          error:
+            error instanceof
+            Error
+              ? error.message
+              : "Virello AI returned an incomplete analysis.",
+        },
 
-      result.analysis.seoOpportunities =
-        removeDuplicateStrings(
-          result.analysis
-            .seoOpportunities,
-        );
-
-      result.analysis.conversionOpportunities =
-        removeDuplicateStrings(
-          result.analysis
-            .conversionOpportunities,
-        );
+        {
+          status: 502,
+        },
+      );
     }
 
     /* =====================================================
-       NORMALIZE OPTIMIZATION
-    ===================================================== */
-
-    if (result?.optimization) {
-      result.optimization.title =
-        clean(
-          result.optimization.title,
-        );
-
-      result.optimization.description =
-        clean(
-          result.optimization
-            .description,
-        );
-
-      result.optimization.seoTitle =
-        enforceLimit(
-          result.optimization
-            .seoTitle,
-          50,
-        );
-
-      result.optimization.metaDescription =
-        enforceLimit(
-          result.optimization
-            .metaDescription,
-          150,
-        );
-
-      result.optimization.features =
-        removeDuplicateStrings(
-          result.optimization
-            .features,
-        );
-
-      result.optimization.specifications =
-        removeDuplicateStrings(
-          result.optimization
-            .specifications,
-        );
-
-      result.optimization.tags =
-        removeDuplicateStrings(
-          result.optimization.tags,
-        );
-    }
-
-    /* =====================================================
-       FINAL RESPONSE
+       SUCCESS
     ===================================================== */
 
     return NextResponse.json({
@@ -870,15 +1050,15 @@ ${JSON.stringify(
       result,
 
       meta: {
-        model:
-          process.env.VIRELLO_AI_MODEL ||
-          "gpt-5.6",
+        model,
 
         aiGenerated: true,
 
-        seoTitleMaxLength: 50,
+        seoTitleMaxLength:
+          50,
 
-        metaDescriptionMaxLength: 150,
+        metaDescriptionMaxLength:
+          150,
       },
     });
   } catch (error) {
@@ -892,7 +1072,10 @@ ${JSON.stringify(
         success: false,
 
         error:
-          "Unexpected server error while analyzing the product.",
+          error instanceof
+          Error
+            ? error.message
+            : "Unexpected server error while analyzing the product.",
       },
 
       {
