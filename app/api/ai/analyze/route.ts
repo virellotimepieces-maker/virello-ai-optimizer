@@ -82,8 +82,8 @@ type AIResult = {
    SEO LIMITS
 ========================================================= */
 
-const SEO_TITLE_MAX = 50;
-const META_DESCRIPTION_MAX = 150;
+const SEO_TITLE_MAX = 60;
+const META_DESCRIPTION_MAX = 160;
 
 /* =========================================================
    HELPERS
@@ -162,88 +162,6 @@ function clampScore(value: unknown): number {
     0,
     Math.min(100, Math.round(number)),
   );
-}
-
-/* =========================================================
-   AUDIENCE DETECTION
-========================================================= */
-
-function detectAudience(
-  product: ProductInput,
-): "Men" | "Women" | "Unisex" {
-  const title = clean(
-    product.title,
-  ).toLowerCase();
-
-  const productType = clean(
-    product.productType,
-  ).toLowerCase();
-
-  const tags = Array.isArray(
-    product.tags,
-  )
-    ? product.tags.join(" ").toLowerCase()
-    : "";
-
-  const description = stripHtml(
-    product.description,
-  ).toLowerCase();
-
-  const primaryText = [
-    title,
-    productType,
-    tags,
-  ].join(" ");
-
-  const menStrong =
-    /\bmen\b|\bmen's\b|\bmens\b|\bgentlemen\b|\bgents\b|\bmale\b|\bman\b/.test(
-      primaryText,
-    );
-
-  const womenStrong =
-    /\bwomen\b|\bwomen's\b|\bwomens\b|\bladies\b|\blady\b|\bfemale\b|\bwoman\b/.test(
-      primaryText,
-    );
-
-  if (
-    menStrong &&
-    !womenStrong
-  ) {
-    return "Men";
-  }
-
-  if (
-    womenStrong &&
-    !menStrong
-  ) {
-    return "Women";
-  }
-
-  const menDescription =
-    /\bmen\b|\bmen's\b|\bmens\b|\bgentlemen\b|\bgents\b|\bmale\b|\bman\b/.test(
-      description,
-    );
-
-  const womenDescription =
-    /\bwomen\b|\bwomen's\b|\bwomens\b|\bladies\b|\blady\b|\bfemale\b|\bwoman\b/.test(
-      description,
-    );
-
-  if (
-    menDescription &&
-    !womenDescription
-  ) {
-    return "Men";
-  }
-
-  if (
-    womenDescription &&
-    !menDescription
-  ) {
-    return "Women";
-  }
-
-  return "Unisex";
 }
 
 /* =========================================================
@@ -795,17 +713,11 @@ export async function POST(
     }
 
     /* =====================================================
-       4. AUDIENCE
+       4. AUDIENCE CONTEXT
     ===================================================== */
 
-    const detectedAudience =
-      detectAudience(
-        product,
-      );
-
     const suppliedAudience =
-      product.audience ||
-      detectedAudience;
+      product.audience || "";
 
     /* =====================================================
        5. PRODUCT CONTEXT
@@ -826,8 +738,6 @@ export async function POST(
       tags,
 
       price,
-
-      detectedAudience,
 
       suppliedAudience,
 
@@ -869,26 +779,25 @@ You MUST return a non-empty optimization.productType.
 Determine the Product Type from the actual product
 information.
 
+The Product Type must describe WHAT THE PRODUCT IS,
+not merely its marketing style.
+
 For example, if the actual product is a watch, use a
-specific useful type such as:
+specific useful type only when supported by the actual
+product information, such as:
 
-"Men's Automatic Watch"
+"Men's Watch"
+"Women's Watch"
+"Automatic Watch"
 "Men's Chronograph Watch"
-"Women's Dress Watch"
-"Luxury Watch"
 "Quartz Watch"
-
-ONLY use a specific classification when supported
-by the actual product information.
+"Luxury Watch"
 
 Do not blindly copy the existing Shopify Product Type
 if it is obviously inaccurate.
 
 Do not create a Product Type that depends on an
 unsupported specification.
-
-The Product Type must describe WHAT THE PRODUCT IS,
-not merely its marketing style.
 
 Bad examples:
 
@@ -905,19 +814,28 @@ Good examples when supported:
 "Stainless Steel Watch"
 
 ========================================================
-AUDIENCE
+AUDIENCE ANALYSIS
 ========================================================
 
-The backend detected:
+Determine the target customer from the ACTUAL PRODUCT
+INFORMATION provided in PRODUCT CONTEXT.
 
-${detectedAudience}
+Use all relevant evidence available in:
 
-If detectedAudience is Men:
+- product title
+- product description
+- existing Shopify Product Type
+- vendor
+- Shopify tags
+- supplied audience, if present
+- product variants
+- image alt text
+- verified product characteristics
 
-The target customer MUST remain men.
+Do NOT determine audience from generic marketing words
+alone.
 
-Do not classify the product as Women's because of words
-such as:
+Words such as:
 
 fashion
 elegant
@@ -929,14 +847,23 @@ classic
 premium
 jewelry
 
-If detectedAudience is Women:
+are NOT sufficient by themselves to classify a product
+as Men or Women.
 
-Keep the customer positioning female.
+If the actual product information clearly identifies the
+product as Men's, use male/men positioning.
 
-If detectedAudience is Unisex:
+If the actual product information clearly identifies the
+product as Women's, use female/women positioning.
 
-Use unisex positioning unless the actual product data
-clearly supports a more specific audience.
+If the evidence supports both or does not clearly support
+one audience, use Unisex positioning.
+
+Do not force an audience classification when the product
+data does not support it.
+
+The AI analysis is the source of truth for the target
+customer.
 
 ========================================================
 WATCH ANALYSIS
@@ -1136,6 +1063,11 @@ Do not make the title sound like a dropshipping listing.
 For men's watches, make the men's positioning clear
 when supported by the actual product.
 
+For women's watches, make the women's positioning clear
+when supported by the actual product.
+
+For unisex watches, use neutral positioning.
+
 ========================================================
 DESCRIPTION OPTIMIZATION
 ========================================================
@@ -1188,7 +1120,7 @@ return fewer specifications rather than inventing them.
 SEO TITLE
 ========================================================
 
-Maximum 50 characters.
+Maximum 60 characters.
 
 Must be natural.
 
@@ -1200,7 +1132,7 @@ No keyword stuffing.
 META DESCRIPTION
 ========================================================
 
-Maximum 150 characters.
+Maximum 160 characters.
 
 Make it useful and compelling.
 
@@ -1294,8 +1226,8 @@ ${JSON.stringify(
 
 IMPORTANT:
 
-Detected audience:
-${detectedAudience}
+Supplied audience, if provided:
+${suppliedAudience || "(not provided)"}
 
 Existing Shopify Product Type:
 ${productType || "(blank)"}
@@ -1307,6 +1239,12 @@ optimization.
 
 Do not confuse missing information with unsupported
 facts.
+
+Determine the target customer from the complete product
+evidence.
+
+Do not use generic marketing adjectives as proof of
+gender.
 
 Identify the actual barriers to purchase confidence.
 `;
@@ -1489,77 +1427,7 @@ Identify the actual barriers to purchase confidence.
     }
 
     /* =====================================================
-       15. AUDIENCE SAFETY
-    ===================================================== */
-
-    if (
-      detectedAudience ===
-        "Men" &&
-      /women|female|ladies|woman/i.test(
-        result.analysis
-          .targetCustomer,
-      )
-    ) {
-      result.analysis
-        .targetCustomer =
-        "Men looking for a premium watch suited to their personal style and everyday or occasion-based wear.";
-    }
-
-    if (
-      detectedAudience ===
-        "Women" &&
-      /men|male|gentlemen|man/i.test(
-        result.analysis
-          .targetCustomer,
-      )
-    ) {
-      result.analysis
-        .targetCustomer =
-        "Women looking for a stylish watch suited to their personal style and everyday or occasion-based wear.";
-    }
-
-    /* =====================================================
-       16. PRODUCT TYPE SAFETY
-    ===================================================== */
-
-    if (
-      detectedAudience ===
-        "Men" &&
-      /women|female|ladies|woman/i.test(
-        result.optimization
-          .productType,
-      )
-    ) {
-      result.optimization
-        .productType =
-        result.optimization.productType
-          .replace(
-            /women'?s?|female|ladies'?|woman/gi,
-            "Men's",
-          )
-          .trim();
-    }
-
-    if (
-      detectedAudience ===
-        "Women" &&
-      /men|male|gentlemen|man/i.test(
-        result.optimization
-          .productType,
-      )
-    ) {
-      result.optimization
-        .productType =
-        result.optimization.productType
-          .replace(
-            /men'?s?|male|gentlemen|man/gi,
-            "Women's",
-          )
-          .trim();
-    }
-
-    /* =====================================================
-       17. FINAL SEO LIMITS
+       15. FINAL SEO LIMITS
     ===================================================== */
 
     result.optimization
@@ -1579,7 +1447,7 @@ Identify the actual barriers to purchase confidence.
       );
 
     /* =====================================================
-       18. RETURN
+       16. RETURN
     ===================================================== */
 
     return NextResponse.json(
@@ -1588,7 +1456,7 @@ Identify the actual barriers to purchase confidence.
 
         result,
 
-        detectedAudience,
+        suppliedAudience,
 
         productId:
           clean(product.id),
