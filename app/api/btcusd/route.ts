@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 type Candle = [
   number,
@@ -14,7 +15,7 @@ type Candle = [
   number,
   string,
   string,
-  string
+  string,
 ];
 
 type Trend = "BULLISH" | "BEARISH" | "NEUTRAL";
@@ -43,15 +44,22 @@ function round(value: number): number {
   return Number(value.toFixed(2));
 }
 
+/* =========================
+   EMA
+========================= */
+
 function ema(values: number[], period: number): number {
-  if (values.length < period) return 0;
+  if (values.length < period) {
+    return 0;
+  }
 
   const multiplier = 2 / (period + 1);
 
   let result =
     values
       .slice(0, period)
-      .reduce((a, b) => a + b, 0) / period;
+      .reduce((sum, value) => sum + value, 0) /
+    period;
 
   for (let i = period; i < values.length; i++) {
     result =
@@ -61,14 +69,24 @@ function ema(values: number[], period: number): number {
   return result;
 }
 
-function rsi(values: number[], period = 14): number {
-  if (values.length <= period) return 50;
+/* =========================
+   RSI
+========================= */
+
+function rsi(
+  values: number[],
+  period = 14,
+): number {
+  if (values.length <= period) {
+    return 50;
+  }
 
   let gains = 0;
   let losses = 0;
 
   for (let i = 1; i <= period; i++) {
-    const change = values[i] - values[i - 1];
+    const change =
+      values[i] - values[i - 1];
 
     if (change >= 0) {
       gains += change;
@@ -80,72 +98,117 @@ function rsi(values: number[], period = 14): number {
   let avgGain = gains / period;
   let avgLoss = losses / period;
 
-  for (let i = period + 1; i < values.length; i++) {
-    const change = values[i] - values[i - 1];
+  for (
+    let i = period + 1;
+    i < values.length;
+    i++
+  ) {
+    const change =
+      values[i] - values[i - 1];
 
-    const gain = change > 0 ? change : 0;
-    const loss = change < 0 ? Math.abs(change) : 0;
+    const gain =
+      change > 0 ? change : 0;
+
+    const loss =
+      change < 0 ? Math.abs(change) : 0;
 
     avgGain =
-      (avgGain * (period - 1) + gain) / period;
+      (avgGain * (period - 1) + gain) /
+      period;
 
     avgLoss =
-      (avgLoss * (period - 1) + loss) / period;
+      (avgLoss * (period - 1) + loss) /
+      period;
   }
 
-  if (avgLoss === 0) return 100;
+  if (avgLoss === 0) {
+    return 100;
+  }
 
   const rs = avgGain / avgLoss;
 
   return 100 - 100 / (1 + rs);
 }
 
+/* =========================
+   ATR
+========================= */
+
 function atr(
   candles: Candle[],
   period = 14,
 ): number {
-  if (candles.length <= period) return 0;
+  if (candles.length <= period) {
+    return 0;
+  }
 
   const ranges: number[] = [];
 
   for (let i = 1; i < candles.length; i++) {
     const high = Number(candles[i][2]);
     const low = Number(candles[i][3]);
-    const previousClose = Number(candles[i - 1][4]);
 
-    ranges.push(
-      Math.max(
-        high - low,
-        Math.abs(high - previousClose),
-        Math.abs(low - previousClose),
-      ),
+    const previousClose =
+      Number(candles[i - 1][4]);
+
+    const trueRange = Math.max(
+      high - low,
+      Math.abs(high - previousClose),
+      Math.abs(low - previousClose),
     );
+
+    ranges.push(trueRange);
   }
 
-  const recent = ranges.slice(-period);
+  const recent =
+    ranges.slice(-period);
 
-  if (!recent.length) return 0;
+  if (recent.length === 0) {
+    return 0;
+  }
 
   return (
-    recent.reduce((a, b) => a + b, 0) /
-    recent.length
+    recent.reduce(
+      (sum, value) => sum + value,
+      0,
+    ) / recent.length
   );
 }
+
+/* =========================
+   SUPPORT / RESISTANCE
+========================= */
 
 function supportResistance(
   candles: Candle[],
 ) {
-  const recent = candles.slice(-50);
+  const recent =
+    candles.slice(-50);
+
+  if (recent.length === 0) {
+    return {
+      support: 0,
+      resistance: 0,
+    };
+  }
+
+  const lows = recent.map((c) =>
+    Number(c[3]),
+  );
+
+  const highs = recent.map((c) =>
+    Number(c[2]),
+  );
 
   return {
-    support: Math.min(
-      ...recent.map((c) => Number(c[3])),
-    ),
-    resistance: Math.max(
-      ...recent.map((c) => Number(c[2])),
-    ),
+    support: Math.min(...lows),
+    resistance: Math.max(...highs),
   };
 }
+
+/* =========================
+   TREND
+========================= */
 
 function detectTrend(
   price: number,
@@ -172,14 +235,18 @@ function detectTrend(
   return "NEUTRAL";
 }
 
+/* =========================
+   BINANCE LIVE DATA
+========================= */
+
 async function fetchBinance(
   interval: string,
 ): Promise<Candle[]> {
   const url =
-    `https://data-api.binance.vision/api/v3/klines` +
-    `?symbol=BTCUSDT` +
-    `&interval=${interval}` +
-    `&limit=250`;
+    "https://data-api.binance.vision/api/v3/klines" +
+    "?symbol=BTCUSDT" +
+    `&interval=${encodeURIComponent(interval)}` +
+    "&limit=250";
 
   const response = await fetch(url, {
     cache: "no-store",
@@ -191,9 +258,13 @@ async function fetchBinance(
     );
   }
 
-  const data = await response.json();
+  const data =
+    (await response.json()) as unknown;
 
-  if (!Array.isArray(data) || data.length < 200) {
+  if (
+    !Array.isArray(data) ||
+    data.length < 200
+  ) {
     throw new Error(
       `Insufficient live Binance data for ${interval}.`,
     );
@@ -202,14 +273,11 @@ async function fetchBinance(
   return data as Candle[];
 }
 
-/**
- * CoinGlass LIVE liquidation heatmap.
- *
- * Requires:
- * COINGLASS_API_KEY
- *
- * No liquidation values are generated locally.
- */
+/* =========================
+   COINGLASS LIVE
+   LIQUIDATION HEATMAP
+========================= */
+
 async function fetchCoinGlassHeatmap() {
   const apiKey =
     process.env.COINGLASS_API_KEY;
@@ -222,9 +290,9 @@ async function fetchCoinGlassHeatmap() {
 
   const url =
     "https://open-api-v4.coinglass.com/api/futures/liquidation/heatmap/model1" +
-    "?symbol=BTCUSDT" +
-    "&exchange=Binance" +
-    "&interval=1h";
+    "?exchange=Binance" +
+    "&symbol=BTCUSDT" +
+    "&range=3d";
 
   const response = await fetch(url, {
     cache: "no-store",
@@ -235,12 +303,16 @@ async function fetchCoinGlassHeatmap() {
   });
 
   if (!response.ok) {
+    const errorText =
+      await response.text();
+
     throw new Error(
-      `Live CoinGlass liquidation heatmap failed: HTTP ${response.status}`,
+      `Live CoinGlass liquidation heatmap failed: HTTP ${response.status} - ${errorText}`,
     );
   }
 
-  const data = await response.json();
+  const data =
+    (await response.json()) as unknown;
 
   if (!data) {
     throw new Error(
@@ -251,15 +323,11 @@ async function fetchCoinGlassHeatmap() {
   return data;
 }
 
-/**
- * Signa LIVE Elliott Wave.
- *
- * Requires:
- * SIGNA_API_KEY
- *
- * The exact response is preserved so the frontend
- * can consume the provider's live Elliott analysis.
- */
+/* =========================
+   SIGNА LIVE SIGNAL
+   ELLIOTT WAVE INCLUDED
+========================= */
+
 async function fetchSignaElliottWave() {
   const apiKey =
     process.env.SIGNA_API_KEY;
@@ -270,71 +338,102 @@ async function fetchSignaElliottWave() {
     );
   }
 
-  const response = await fetch(
-    "https://api.getsigna.ai/v1/signals/BTCUSD",
-    {
-      cache: "no-store",
-      headers: {
-        accept: "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
+  const url =
+    "https://getsigna.ai/api/v1/signal" +
+    "?sym=BTC%2FUSD" +
+    "&tf=1h";
+
+  const response = await fetch(url, {
+    cache: "no-store",
+    headers: {
+      accept: "application/json",
+      Authorization: `Bearer ${apiKey}`,
     },
-  );
+  });
 
   if (!response.ok) {
+    const errorText =
+      await response.text();
+
     throw new Error(
-      `Live Signa Elliott Wave request failed: HTTP ${response.status}`,
+      `Live Signa signal request failed: HTTP ${response.status} - ${errorText}`,
     );
   }
 
-  const data = await response.json();
+  const data =
+    (await response.json()) as unknown;
 
   if (!data) {
     throw new Error(
-      "Signa returned empty Elliott Wave data.",
+      "Signa returned empty live signal data.",
     );
   }
 
   return data;
 }
 
+/* =========================
+   LOCAL TIMEFRAME ANALYSIS
+========================= */
+
 function buildLocalTimeframe(
   candles: Candle[],
 ): Timeframe {
-  const closes = candles.map((c) =>
-    Number(c[4]),
-  );
+  const closes =
+    candles.map((c) =>
+      Number(c[4]),
+    );
 
   const price =
     closes[closes.length - 1];
 
-  const ema20 = ema(closes, 20);
-  const ema50 = ema(closes, 50);
-  const ema200 = ema(closes, 200);
+  const ema20 =
+    ema(closes, 20);
 
-  const rsi14 = rsi(closes, 14);
-  const atr14 = atr(candles, 14);
+  const ema50 =
+    ema(closes, 50);
+
+  const ema200 =
+    ema(closes, 200);
+
+  const rsi14 =
+    rsi(closes, 14);
+
+  const atr14 =
+    atr(candles, 14);
 
   const levels =
     supportResistance(candles);
 
-  const trend = detectTrend(
-    price,
-    ema20,
-    ema50,
-    ema200,
-  );
+  const trend =
+    detectTrend(
+      price,
+      ema20,
+      ema50,
+      ema200,
+    );
 
   return {
     price: round(price),
+
     ema20: round(ema20),
+
     ema50: round(ema50),
+
     ema200: round(ema200),
+
     rsi14: round(rsi14),
+
     atr14: round(atr14),
-    support: round(levels.support),
-    resistance: round(levels.resistance),
+
+    support:
+      round(levels.support),
+
+    resistance:
+      round(levels.resistance),
+
     trend,
+
     elliottWave: {
       wave: "LIVE_PROVIDER_DATA",
       bias: "NEUTRAL",
@@ -343,11 +442,135 @@ function buildLocalTimeframe(
   };
 }
 
+/* =========================
+   SIGNAL ENGINE
+========================= */
+
+function buildSignal(
+  timeframe: Timeframe,
+): {
+  signal: Signal;
+  confidence: number;
+} {
+  let signal: Signal = "WAIT";
+
+  let confidence = 50;
+
+  if (
+    timeframe.trend === "BULLISH" &&
+    timeframe.rsi14 >= 45 &&
+    timeframe.rsi14 <= 70
+  ) {
+    signal = "LONG";
+    confidence = 68;
+  }
+
+  if (
+    timeframe.trend === "BEARISH" &&
+    timeframe.rsi14 >= 30 &&
+    timeframe.rsi14 <= 55
+  ) {
+    signal = "SHORT";
+    confidence = 68;
+  }
+
+  /*
+   * Avoid LONG when RSI is already overbought.
+   */
+  if (
+    signal === "LONG" &&
+    timeframe.rsi14 > 70
+  ) {
+    signal = "WAIT";
+    confidence = 45;
+  }
+
+  /*
+   * Avoid SHORT when RSI is already oversold.
+   */
+  if (
+    signal === "SHORT" &&
+    timeframe.rsi14 < 30
+  ) {
+    signal = "WAIT";
+    confidence = 45;
+  }
+
+  return {
+    signal,
+    confidence,
+  };
+}
+
+/* =========================
+   TRADE PLAN
+========================= */
+
+function buildTradePlan(
+  signal: Signal,
+  entry: number,
+  atr14: number,
+) {
+  const risk =
+    atr14 > 0
+      ? atr14
+      : entry * 0.01;
+
+  let stopLoss = entry;
+
+  let takeProfit1 = entry;
+
+  let takeProfit2 = entry;
+
+  if (signal === "LONG") {
+    stopLoss =
+      entry - risk * 1.5;
+
+    takeProfit1 =
+      entry + risk * 2;
+
+    takeProfit2 =
+      entry + risk * 3;
+  }
+
+  if (signal === "SHORT") {
+    stopLoss =
+      entry + risk * 1.5;
+
+    takeProfit1 =
+      entry - risk * 2;
+
+    takeProfit2 =
+      entry - risk * 3;
+  }
+
+  return {
+    entry: round(entry),
+
+    stopLoss:
+      round(stopLoss),
+
+    takeProfit1:
+      round(takeProfit1),
+
+    takeProfit2:
+      round(takeProfit2),
+
+    riskDistance:
+      round(risk),
+  };
+}
+
+/* =========================
+   GET
+========================= */
+
 export async function GET() {
   try {
     /*
      * LIVE BINANCE MARKET DATA
      */
+
     const intervals = [
       "15m",
       "1h",
@@ -362,132 +585,94 @@ export async function GET() {
         await fetchBinance(interval);
 
       timeframes[interval] =
-        buildLocalTimeframe(candles);
+        buildLocalTimeframe(
+          candles,
+        );
     }
 
     /*
-     * LIVE ELLIOTT WAVE PROVIDER
+     * LIVE SIGNA
+     * Includes Elliott Wave data.
      */
+
     const elliottWave =
       await fetchSignaElliottWave();
 
     /*
-     * LIVE LIQUIDATION HEATMAP
+     * LIVE COINGLASS
+     * Liquidation heatmap.
      */
+
     const liquidationHeatmap =
       await fetchCoinGlassHeatmap();
+
+    /*
+     * PRIMARY TIMEFRAME
+     */
 
     const primary =
       timeframes["1h"];
 
     /*
-     * Signal is intentionally conservative.
-     * It is based on live Binance indicators.
+     * SIGNAL
      */
-    let signal: Signal = "WAIT";
-    let confidence = 50;
 
-    if (
-      primary.trend === "BULLISH" &&
-      primary.rsi14 >= 45 &&
-      primary.rsi14 <= 70
-    ) {
-      signal = "LONG";
-      confidence = 68;
-    }
+    const signalResult =
+      buildSignal(primary);
 
-    if (
-      primary.trend === "BEARISH" &&
-      primary.rsi14 >= 30 &&
-      primary.rsi14 <= 55
-    ) {
-      signal = "SHORT";
-      confidence = 68;
-    }
+    /*
+     * TRADE PLAN
+     */
 
-    const entry =
-      primary.price;
+    const tradePlan =
+      buildTradePlan(
+        signalResult.signal,
+        primary.price,
+        primary.atr14,
+      );
 
-    const risk =
-      primary.atr14 > 0
-        ? primary.atr14
-        : entry * 0.01;
-
-    let stopLoss = entry;
-    let takeProfit1 = entry;
-    let takeProfit2 = entry;
-
-    if (signal === "LONG") {
-      stopLoss =
-        entry - risk * 1.5;
-
-      takeProfit1 =
-        entry + risk * 2;
-
-      takeProfit2 =
-        entry + risk * 3;
-    }
-
-    if (signal === "SHORT") {
-      stopLoss =
-        entry + risk * 1.5;
-
-      takeProfit1 =
-        entry - risk * 2;
-
-      takeProfit2 =
-        entry - risk * 3;
-    }
+    /*
+     * RETURN LIVE DATA
+     */
 
     return NextResponse.json({
       success: true,
 
+      live: true,
+
       symbol: "BTCUSDT",
+
+      providerSymbol: "BTC/USD",
 
       generatedAt:
         new Date().toISOString(),
 
-      signal,
+      signal:
+        signalResult.signal,
 
-      confidence,
+      confidence:
+        signalResult.confidence,
 
       timeframes,
 
-      tradePlan: {
-        entry: round(entry),
-        stopLoss: round(stopLoss),
-        takeProfit1:
-          round(takeProfit1),
-        takeProfit2:
-          round(takeProfit2),
-      },
+      tradePlan,
 
       elliottWave,
 
       liquidationHeatmap,
 
-      riskManagement: {
-        riskPerTrade:
-          "Use a predefined percentage of account equity.",
-
-        stopLossRequired: true,
-
-        leverage:
-          "Avoid excessive leverage.",
-      },
-
       analysis: {
         trend:
           primary.trend,
 
-        rsi:
+        price:
+          primary.price,
+
+        rsi14:
           primary.rsi14,
 
-        support:
-          primary.support,
-
-        resistance:
-          primary.resistance,
+        atr14:
+          primary.atr14,
 
         ema20:
           primary.ema20,
@@ -497,6 +682,33 @@ export async function GET() {
 
         ema200:
           primary.ema200,
+
+        support:
+          primary.support,
+
+        resistance:
+          primary.resistance,
+      },
+
+      dataSources: {
+        market:
+          "Binance Live",
+
+        liquidation:
+          "CoinGlass Live",
+
+        elliottWave:
+          "Signa Live",
+      },
+
+      riskManagement: {
+        stopLossRequired: true,
+
+        leverage:
+          "Use conservative leverage.",
+
+        warning:
+          "This is live market analysis, not a guarantee of profit.",
       },
     });
   } catch (error) {
@@ -508,6 +720,8 @@ export async function GET() {
     return NextResponse.json(
       {
         success: false,
+
+        live: false,
 
         error:
           error instanceof Error
