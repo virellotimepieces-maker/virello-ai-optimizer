@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 type Trend = "BULLISH" | "BEARISH" | "NEUTRAL";
 type Signal = "LONG" | "SHORT" | "WAIT";
@@ -28,29 +28,24 @@ type BTCResponse = {
   generatedAt: string;
   signal: Signal;
   confidence: number;
-
   timeframes: {
     "15m": Timeframe;
     "1h": Timeframe;
     "4h": Timeframe;
   };
-
   tradePlan: {
     entry: number;
     stopLoss: number;
     takeProfit1: number;
     takeProfit2: number;
   };
-
   elliottWave: unknown;
   liquidationHeatmap: unknown;
-
   riskManagement?: {
     riskPerTrade?: string;
     stopLossRequired?: boolean;
     leverage?: string;
   };
-
   analysis?: {
     trend?: Trend;
     rsi?: number;
@@ -60,7 +55,6 @@ type BTCResponse = {
     ema50?: number;
     ema200?: number;
   };
-
   error?: string;
 };
 
@@ -72,33 +66,21 @@ function money(value: number): string {
   }).format(value);
 }
 
-function number(value: number): string {
+function formatNumber(value: number): string {
   return new Intl.NumberFormat("en-US", {
     maximumFractionDigits: 2,
   }).format(value);
 }
 
 function signalClass(signal: Signal): string {
-  if (signal === "LONG") {
-    return "long";
-  }
-
-  if (signal === "SHORT") {
-    return "short";
-  }
-
+  if (signal === "LONG") return "long";
+  if (signal === "SHORT") return "short";
   return "wait";
 }
 
 function trendClass(trend: Trend): string {
-  if (trend === "BULLISH") {
-    return "bullish";
-  }
-
-  if (trend === "BEARISH") {
-    return "bearish";
-  }
-
+  if (trend === "BULLISH") return "bullish";
+  if (trend === "BEARISH") return "bearish";
   return "neutral";
 }
 
@@ -111,17 +93,9 @@ function TimeframeCard({
 }) {
   return (
     <div className="timeframe-card">
-      <div className="timeframe-title">
-        import { redirect } from "next/navigation";
+      <div className="timeframe-title">{name}</div>
 
-export default function Home() {
-  redirect("/btcusd");
-}
-      </div>
-
-      <div className="price">
-        {money(data.price)}
-      </div>
+      <div className="price">{money(data.price)}</div>
 
       <div className={`trend ${trendClass(data.trend)}`}>
         {data.trend}
@@ -130,27 +104,27 @@ export default function Home() {
       <div className="stats">
         <div>
           <span>EMA 20</span>
-          <strong>{number(data.ema20)}</strong>
+          <strong>{formatNumber(data.ema20)}</strong>
         </div>
 
         <div>
           <span>EMA 50</span>
-          <strong>{number(data.ema50)}</strong>
+          <strong>{formatNumber(data.ema50)}</strong>
         </div>
 
         <div>
           <span>EMA 200</span>
-          <strong>{number(data.ema200)}</strong>
+          <strong>{formatNumber(data.ema200)}</strong>
         </div>
 
         <div>
           <span>RSI 14</span>
-          <strong>{number(data.rsi14)}</strong>
+          <strong>{formatNumber(data.rsi14)}</strong>
         </div>
 
         <div>
           <span>ATR 14</span>
-          <strong>{number(data.atr14)}</strong>
+          <strong>{formatNumber(data.atr14)}</strong>
         </div>
 
         <div>
@@ -173,34 +147,24 @@ export default function Home() {
 }
 
 export default function Page() {
-  const [data, setData] =
-    useState<BTCResponse | null>(null);
+  const [data, setData] = useState<BTCResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
-  const [loading, setLoading] =
-    useState(true);
-
-  const [error, setError] =
-    useState("");
-
-  const loadBTC = async () => {
+  const loadBTC = useCallback(async () => {
     try {
       setError("");
 
-      const response = await fetch(
-        "/api/btcusd",
-        {
-          method: "GET",
-          cache: "no-store",
-        },
-      );
+      const response = await fetch("/api/btcusd", {
+        method: "GET",
+        cache: "no-store",
+      });
 
-      const result =
-        (await response.json()) as BTCResponse;
+      const result = (await response.json()) as BTCResponse;
 
       if (!response.ok || !result.success) {
         throw new Error(
-          result.error ||
-            "BTCUSD live analysis failed.",
+          result.error || "BTCUSD live analysis failed.",
         );
       }
 
@@ -214,20 +178,19 @@ export default function Page() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     void loadBTC();
 
-    const interval =
-      window.setInterval(() => {
-        void loadBTC();
-      }, 30000);
+    const interval = window.setInterval(() => {
+      void loadBTC();
+    }, 30000);
 
     return () => {
       window.clearInterval(interval);
     };
-  }, []);
+  }, [loadBTC]);
 
   return (
     <main className="dashboard">
@@ -237,9 +200,8 @@ export default function Page() {
             <h1>BTCUSD Live Analysis</h1>
 
             <p>
-              Live market analysis using real
-              market data. No simulated trading
-              data.
+              Live market analysis using real market data.
+              No simulated trading data.
             </p>
           </div>
 
@@ -248,9 +210,7 @@ export default function Page() {
             disabled={loading}
             className="refresh"
           >
-            {loading
-              ? "Updating..."
-              : "Refresh"}
+            {loading ? "Updating..." : "Refresh"}
           </button>
         </header>
 
@@ -271,20 +231,14 @@ export default function Page() {
           <>
             <section className="hero">
               <div>
-                <div className="label">
-                  BTCUSDT LIVE PRICE
-                </div>
+                <div className="label">BTCUSDT LIVE PRICE</div>
 
                 <div className="hero-price">
-                  {money(
-                    data.timeframes["1h"].price,
-                  )}
+                  {money(data.timeframes["1h"].price)}
                 </div>
 
                 <div
-                  className={`signal ${signalClass(
-                    data.signal,
-                  )}`}
+                  className={`signal ${signalClass(data.signal)}`}
                 >
                   {data.signal}
                 </div>
@@ -292,9 +246,7 @@ export default function Page() {
 
               <div className="confidence">
                 <span>Confidence</span>
-                <strong>
-                  {data.confidence}%
-                </strong>
+                <strong>{data.confidence}%</strong>
               </div>
             </section>
 
@@ -322,38 +274,28 @@ export default function Page() {
                 <div>
                   <span>Entry</span>
                   <strong>
-                    {money(
-                      data.tradePlan.entry,
-                    )}
+                    {money(data.tradePlan.entry)}
                   </strong>
                 </div>
 
                 <div>
                   <span>Stop Loss</span>
                   <strong>
-                    {money(
-                      data.tradePlan.stopLoss,
-                    )}
+                    {money(data.tradePlan.stopLoss)}
                   </strong>
                 </div>
 
                 <div>
                   <span>Take Profit 1</span>
                   <strong>
-                    {money(
-                      data.tradePlan
-                        .takeProfit1,
-                    )}
+                    {money(data.tradePlan.takeProfit1)}
                   </strong>
                 </div>
 
                 <div>
                   <span>Take Profit 2</span>
                   <strong>
-                    {money(
-                      data.tradePlan
-                        .takeProfit2,
-                    )}
+                    {money(data.tradePlan.takeProfit2)}
                   </strong>
                 </div>
               </div>
@@ -367,18 +309,16 @@ export default function Page() {
                   <span>Trend</span>
                   <strong>
                     {data.analysis?.trend ||
-                      data.timeframes["1h"]
-                        .trend}
+                      data.timeframes["1h"].trend}
                   </strong>
                 </div>
 
                 <div>
                   <span>RSI</span>
                   <strong>
-                    {number(
+                    {formatNumber(
                       data.analysis?.rsi ??
-                        data.timeframes["1h"]
-                          .rsi14,
+                        data.timeframes["1h"].rsi14,
                     )}
                   </strong>
                 </div>
@@ -387,10 +327,8 @@ export default function Page() {
                   <span>Support</span>
                   <strong>
                     {money(
-                      data.analysis
-                        ?.support ??
-                        data.timeframes["1h"]
-                          .support,
+                      data.analysis?.support ??
+                        data.timeframes["1h"].support,
                     )}
                   </strong>
                 </div>
@@ -399,10 +337,8 @@ export default function Page() {
                   <span>Resistance</span>
                   <strong>
                     {money(
-                      data.analysis
-                        ?.resistance ??
-                        data.timeframes["1h"]
-                          .resistance,
+                      data.analysis?.resistance ??
+                        data.timeframes["1h"].resistance,
                     )}
                   </strong>
                 </div>
@@ -410,10 +346,9 @@ export default function Page() {
                 <div>
                   <span>EMA 20</span>
                   <strong>
-                    {number(
+                    {formatNumber(
                       data.analysis?.ema20 ??
-                        data.timeframes["1h"]
-                          .ema20,
+                        data.timeframes["1h"].ema20,
                     )}
                   </strong>
                 </div>
@@ -421,10 +356,9 @@ export default function Page() {
                 <div>
                   <span>EMA 50</span>
                   <strong>
-                    {number(
+                    {formatNumber(
                       data.analysis?.ema50 ??
-                        data.timeframes["1h"]
-                          .ema50,
+                        data.timeframes["1h"].ema50,
                     )}
                   </strong>
                 </div>
@@ -432,11 +366,41 @@ export default function Page() {
                 <div>
                   <span>EMA 200</span>
                   <strong>
-                    {number(
+                    {formatNumber(
                       data.analysis?.ema200 ??
-                        data.timeframes["1h"]
-                          .ema200,
+                        data.timeframes["1h"].ema200,
                     )}
+                  </strong>
+                </div>
+              </div>
+            </section>
+
+            <section className="risk">
+              <h2>Risk Management</h2>
+
+              <div className="analysis-grid">
+                <div>
+                  <span>Risk Per Trade</span>
+                  <strong>
+                    {data.riskManagement?.riskPerTrade ||
+                      "Not specified"}
+                  </strong>
+                </div>
+
+                <div>
+                  <span>Stop Loss Required</span>
+                  <strong>
+                    {data.riskManagement?.stopLossRequired
+                      ? "YES"
+                      : "YES"}
+                  </strong>
+                </div>
+
+                <div>
+                  <span>Leverage</span>
+                  <strong>
+                    {data.riskManagement?.leverage ||
+                      "Not specified"}
                   </strong>
                 </div>
               </div>
@@ -447,8 +411,8 @@ export default function Page() {
                 <h2>Elliott Wave</h2>
 
                 <p>
-                  Live provider response is
-                  connected through the server.
+                  Elliott Wave analysis connected through
+                  the server.
                 </p>
 
                 <pre>
@@ -464,8 +428,8 @@ export default function Page() {
                 <h2>Liquidation Heatmap</h2>
 
                 <p>
-                  Live CoinGlass response is
-                  connected through the server.
+                  Liquidation heatmap connected through
+                  the server.
                 </p>
 
                 <pre>
@@ -498,10 +462,7 @@ export default function Page() {
           background: #0b0d10;
           color: #f5f5f5;
           padding: 24px;
-          font-family:
-            Arial,
-            Helvetica,
-            sans-serif;
+          font-family: Arial, Helvetica, sans-serif;
         }
 
         .container {
@@ -633,6 +594,7 @@ export default function Page() {
         .timeframe-card,
         .trade-plan,
         .analysis,
+        .risk,
         .live-sources > div {
           border: 1px solid #272b33;
           border-radius: 14px;
@@ -666,7 +628,8 @@ export default function Page() {
         }
 
         .trade-plan,
-        .analysis {
+        .analysis,
+        .risk {
           margin-bottom: 20px;
         }
 
@@ -693,6 +656,8 @@ export default function Page() {
           background: #08090b;
           color: #d1d5db;
           font-size: 11px;
+          white-space: pre-wrap;
+          word-break: break-word;
         }
 
         footer {
@@ -732,6 +697,10 @@ export default function Page() {
           .trade-grid,
           .analysis-grid {
             grid-template-columns: 1fr;
+          }
+
+          .hero-price {
+            font-size: 34px;
           }
         }
       `}</style>
