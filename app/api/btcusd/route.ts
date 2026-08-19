@@ -39,6 +39,10 @@ type Timeframe = {
   elliottWave: ElliottWave;
 };
 
+function round(value: number): number {
+  return Number(value.toFixed(2));
+}
+
 function ema(values: number[], period: number): number {
   if (values.length < period) return 0;
 
@@ -109,18 +113,18 @@ function atr(
     const low = Number(candles[i][3]);
     const previousClose = Number(candles[i - 1][4]);
 
-    const trueRange = Math.max(
-      high - low,
-      Math.abs(high - previousClose),
-      Math.abs(low - previousClose),
+    ranges.push(
+      Math.max(
+        high - low,
+        Math.abs(high - previousClose),
+        Math.abs(low - previousClose),
+      ),
     );
-
-    ranges.push(trueRange);
   }
 
   const recent = ranges.slice(-period);
 
-  if (recent.length === 0) return 0;
+  if (!recent.length) return 0;
 
   return (
     recent.reduce((a, b) => a + b, 0) /
@@ -130,18 +134,16 @@ function atr(
 
 function supportResistance(
   candles: Candle[],
-): {
-  support: number;
-  resistance: number;
-} {
+) {
   const recent = candles.slice(-50);
 
-  const lows = recent.map((c) => Number(c[3]));
-  const highs = recent.map((c) => Number(c[2]));
-
   return {
-    support: Math.min(...lows),
-    resistance: Math.max(...highs),
+    support: Math.min(
+      ...recent.map((c) => Number(c[3])),
+    ),
+    resistance: Math.max(
+      ...recent.map((c) => Number(c[2])),
+    ),
   };
 }
 
@@ -170,220 +172,241 @@ function detectTrend(
   return "NEUTRAL";
 }
 
-/**
- * This is a heuristic Elliott Wave interpretation.
- * It does NOT claim to mathematically prove a wave count.
- */
-function detectElliottWave(
-  closes: number[],
-): ElliottWave {
-  if (closes.length < 20) {
-    return {
-      wave: "Insufficient data",
-      bias: "NEUTRAL",
-      confidence: 0,
-    };
-  }
-
-  const recent = closes.slice(-20);
-
-  let rising = 0;
-  let falling = 0;
-
-  for (let i = 1; i < recent.length; i++) {
-    if (recent[i] > recent[i - 1]) {
-      rising++;
-    }
-
-    if (recent[i] < recent[i - 1]) {
-      falling++;
-    }
-  }
-
-  if (rising >= 14) {
-    return {
-      wave: "Possible bullish impulse",
-      bias: "BULLISH",
-      confidence: 65,
-    };
-  }
-
-  if (falling >= 14) {
-    return {
-      wave: "Possible bearish impulse",
-      bias: "BEARISH",
-      confidence: 65,
-    };
-  }
-
-  return {
-    wave: "Possible corrective / mixed structure",
-    bias: "NEUTRAL",
-    confidence: 45,
-  };
-}
-
-function round(value: number): number {
-  return Number(value.toFixed(2));
-}
-
-/**
- * Binance can reject or throttle a particular public endpoint.
- * We therefore try several public market-data endpoints.
- */
-const BINANCE_HOSTS = [
-  "https://data-api.binance.vision",
-  "https://api.binance.com",
-  "https://api1.binance.com",
-  "https://api2.binance.com",
-  "https://api3.binance.com",
-  "https://api4.binance.com",
-];
-
-async function fetchBinanceCandles(
+async function fetchBinance(
   interval: string,
 ): Promise<Candle[]> {
-  let lastError =
-    `Unable to load Binance ${interval} data.`;
+  const url =
+    `https://data-api.binance.vision/api/v3/klines` +
+    `?symbol=BTCUSDT` +
+    `&interval=${interval}` +
+    `&limit=250`;
 
-  for (const host of BINANCE_HOSTS) {
-    const controller = new AbortController();
+  const response = await fetch(url, {
+    cache: "no-store",
+  });
 
-    const timeout = setTimeout(() => {
-      controller.abort();
-    }, 10000);
-
-    try {
-      const url =
-        `${host}/api/v3/klines` +
-        `?symbol=BTCUSDT` +
-        `&interval=${encodeURIComponent(interval)}` +
-        `&limit=250`;
-
-      const response = await fetch(url, {
-        method: "GET",
-        cache: "no-store",
-        headers: {
-          Accept: "application/json",
-        },
-        signal: controller.signal,
-      });
-
-      if (!response.ok) {
-        lastError =
-          `Binance ${host} returned HTTP ${response.status} for ${interval}.`;
-
-        continue;
-      }
-
-      const json = await response.json();
-
-      if (!Array.isArray(json) || json.length < 200) {
-        lastError =
-          `Binance returned insufficient ${interval} candle data.`;
-
-        continue;
-      }
-
-      return json as Candle[];
-    } catch (error) {
-      lastError =
-        error instanceof Error
-          ? error.message
-          : `Binance ${host} request failed for ${interval}.`;
-    } finally {
-      clearTimeout(timeout);
-    }
+  if (!response.ok) {
+    throw new Error(
+      `Live Binance data failed for ${interval}: HTTP ${response.status}`,
+    );
   }
 
-  throw new Error(lastError);
+  const data = await response.json();
+
+  if (!Array.isArray(data) || data.length < 200) {
+    throw new Error(
+      `Insufficient live Binance data for ${interval}.`,
+    );
+  }
+
+  return data as Candle[];
+}
+
+/**
+ * CoinGlass LIVE liquidation heatmap.
+ *
+ * Requires:
+ * COINGLASS_API_KEY
+ *
+ * No liquidation values are generated locally.
+ */
+async function fetchCoinGlassHeatmap() {
+  const apiKey =
+    process.env.COINGLASS_API_KEY;
+
+  if (!apiKey) {
+    throw new Error(
+      "COINGLASS_API_KEY is missing in Vercel Environment Variables.",
+    );
+  }
+
+  const url =
+    "https://open-api-v4.coinglass.com/api/futures/liquidation/heatmap/model1" +
+    "?symbol=BTCUSDT" +
+    "&exchange=Binance" +
+    "&interval=1h";
+
+  const response = await fetch(url, {
+    cache: "no-store",
+    headers: {
+      accept: "application/json",
+      "CG-API-KEY": apiKey,
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(
+      `Live CoinGlass liquidation heatmap failed: HTTP ${response.status}`,
+    );
+  }
+
+  const data = await response.json();
+
+  if (!data) {
+    throw new Error(
+      "CoinGlass returned empty liquidation heatmap data.",
+    );
+  }
+
+  return data;
+}
+
+/**
+ * Signa LIVE Elliott Wave.
+ *
+ * Requires:
+ * SIGNA_API_KEY
+ *
+ * The exact response is preserved so the frontend
+ * can consume the provider's live Elliott analysis.
+ */
+async function fetchSignaElliottWave() {
+  const apiKey =
+    process.env.SIGNA_API_KEY;
+
+  if (!apiKey) {
+    throw new Error(
+      "SIGNA_API_KEY is missing in Vercel Environment Variables.",
+    );
+  }
+
+  const response = await fetch(
+    "https://api.getsigna.ai/v1/signals/BTCUSD",
+    {
+      cache: "no-store",
+      headers: {
+        accept: "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+    },
+  );
+
+  if (!response.ok) {
+    throw new Error(
+      `Live Signa Elliott Wave request failed: HTTP ${response.status}`,
+    );
+  }
+
+  const data = await response.json();
+
+  if (!data) {
+    throw new Error(
+      "Signa returned empty Elliott Wave data.",
+    );
+  }
+
+  return data;
+}
+
+function buildLocalTimeframe(
+  candles: Candle[],
+): Timeframe {
+  const closes = candles.map((c) =>
+    Number(c[4]),
+  );
+
+  const price =
+    closes[closes.length - 1];
+
+  const ema20 = ema(closes, 20);
+  const ema50 = ema(closes, 50);
+  const ema200 = ema(closes, 200);
+
+  const rsi14 = rsi(closes, 14);
+  const atr14 = atr(candles, 14);
+
+  const levels =
+    supportResistance(candles);
+
+  const trend = detectTrend(
+    price,
+    ema20,
+    ema50,
+    ema200,
+  );
+
+  return {
+    price: round(price),
+    ema20: round(ema20),
+    ema50: round(ema50),
+    ema200: round(ema200),
+    rsi14: round(rsi14),
+    atr14: round(atr14),
+    support: round(levels.support),
+    resistance: round(levels.resistance),
+    trend,
+    elliottWave: {
+      wave: "LIVE_PROVIDER_DATA",
+      bias: "NEUTRAL",
+      confidence: 0,
+    },
+  };
 }
 
 export async function GET() {
   try {
-    const intervals = ["15m", "1h", "4h"];
+    /*
+     * LIVE BINANCE MARKET DATA
+     */
+    const intervals = [
+      "15m",
+      "1h",
+      "4h",
+    ];
 
-    const timeframeResults: Record<
-      string,
-      Timeframe
-    > = {};
+    const timeframes:
+      Record<string, Timeframe> = {};
 
     for (const interval of intervals) {
       const candles =
-        await fetchBinanceCandles(interval);
+        await fetchBinance(interval);
 
-      const closes = candles.map((c) =>
-        Number(c[4]),
-      );
-
-      if (closes.length < 200) {
-        throw new Error(
-          `Insufficient BTCUSDT data for ${interval}.`,
-        );
-      }
-
-      const price =
-        closes[closes.length - 1];
-
-      const ema20 = ema(closes, 20);
-      const ema50 = ema(closes, 50);
-      const ema200 = ema(closes, 200);
-
-      const rsi14 = rsi(closes, 14);
-      const atr14 = atr(candles, 14);
-
-      const levels =
-        supportResistance(candles);
-
-      const trend = detectTrend(
-        price,
-        ema20,
-        ema50,
-        ema200,
-      );
-
-      const wave =
-        detectElliottWave(closes);
-
-      timeframeResults[interval] = {
-        price: round(price),
-        ema20: round(ema20),
-        ema50: round(ema50),
-        ema200: round(ema200),
-        rsi14: round(rsi14),
-        atr14: round(atr14),
-        support: round(levels.support),
-        resistance: round(levels.resistance),
-        trend,
-        elliottWave: wave,
-      };
+      timeframes[interval] =
+        buildLocalTimeframe(candles);
     }
 
-    const primary =
-      timeframeResults["1h"];
+    /*
+     * LIVE ELLIOTT WAVE PROVIDER
+     */
+    const elliottWave =
+      await fetchSignaElliottWave();
 
+    /*
+     * LIVE LIQUIDATION HEATMAP
+     */
+    const liquidationHeatmap =
+      await fetchCoinGlassHeatmap();
+
+    const primary =
+      timeframes["1h"];
+
+    /*
+     * Signal is intentionally conservative.
+     * It is based on live Binance indicators.
+     */
     let signal: Signal = "WAIT";
     let confidence = 50;
 
     if (
       primary.trend === "BULLISH" &&
       primary.rsi14 >= 45 &&
-      primary.rsi14 <= 70 &&
-      primary.elliottWave.bias === "BULLISH"
+      primary.rsi14 <= 70
     ) {
       signal = "LONG";
-      confidence = 72;
-    } else if (
-      primary.trend === "BEARISH" &&
-      primary.rsi14 >= 30 &&
-      primary.rsi14 <= 55 &&
-      primary.elliottWave.bias === "BEARISH"
-    ) {
-      signal = "SHORT";
-      confidence = 72;
+      confidence = 68;
     }
 
-    const entry = primary.price;
+    if (
+      primary.trend === "BEARISH" &&
+      primary.rsi14 >= 30 &&
+      primary.rsi14 <= 55
+    ) {
+      signal = "SHORT";
+      confidence = 68;
+    }
+
+    const entry =
+      primary.price;
 
     const risk =
       primary.atr14 > 0
@@ -428,26 +451,20 @@ export async function GET() {
 
       confidence,
 
-      timeframes:
-        timeframeResults,
+      timeframes,
 
       tradePlan: {
         entry: round(entry),
         stopLoss: round(stopLoss),
-        takeProfit1: round(takeProfit1),
-        takeProfit2: round(takeProfit2),
+        takeProfit1:
+          round(takeProfit1),
+        takeProfit2:
+          round(takeProfit2),
       },
 
-      elliottWave:
-        primary.elliottWave,
+      elliottWave,
 
-      liquidationHeatmap: {
-        status:
-          "provider_not_configured",
-
-        message:
-          "Liquidation heatmap data is not connected yet. No liquidation levels are being invented.",
-      },
+      liquidationHeatmap,
 
       riskManagement: {
         riskPerTrade:
@@ -484,7 +501,7 @@ export async function GET() {
     });
   } catch (error) {
     console.error(
-      "BTCUSD analysis error:",
+      "BTCUSD live analysis error:",
       error,
     );
 
@@ -495,7 +512,7 @@ export async function GET() {
         error:
           error instanceof Error
             ? error.message
-            : "BTCUSD analysis failed.",
+            : "BTCUSD live analysis failed.",
       },
       {
         status: 500,
