@@ -17,10 +17,33 @@ type Candle = [
   string
 ];
 
+type Trend = "BULLISH" | "BEARISH" | "NEUTRAL";
+type Signal = "LONG" | "SHORT" | "WAIT";
+
+type ElliottWave = {
+  wave: string;
+  bias: Trend;
+  confidence: number;
+};
+
+type Timeframe = {
+  price: number;
+  ema20: number;
+  ema50: number;
+  ema200: number;
+  rsi14: number;
+  atr14: number;
+  support: number;
+  resistance: number;
+  trend: Trend;
+  elliottWave: ElliottWave;
+};
+
 function ema(values: number[], period: number): number {
   if (values.length < period) return 0;
 
   const multiplier = 2 / (period + 1);
+
   let result =
     values
       .slice(0, period)
@@ -43,8 +66,11 @@ function rsi(values: number[], period = 14): number {
   for (let i = 1; i <= period; i++) {
     const change = values[i] - values[i - 1];
 
-    if (change >= 0) gains += change;
-    else losses += Math.abs(change);
+    if (change >= 0) {
+      gains += change;
+    } else {
+      losses += Math.abs(change);
+    }
   }
 
   let avgGain = gains / period;
@@ -94,6 +120,8 @@ function atr(
 
   const recent = ranges.slice(-period);
 
+  if (recent.length === 0) return 0;
+
   return (
     recent.reduce((a, b) => a + b, 0) /
     recent.length
@@ -122,7 +150,7 @@ function detectTrend(
   ema20: number,
   ema50: number,
   ema200: number,
-): "BULLISH" | "BEARISH" | "NEUTRAL" {
+): Trend {
   if (
     price > ema20 &&
     ema20 > ema50 &&
@@ -142,13 +170,13 @@ function detectTrend(
   return "NEUTRAL";
 }
 
+/**
+ * This is a heuristic Elliott Wave interpretation.
+ * It does NOT claim to mathematically prove a wave count.
+ */
 function detectElliottWave(
   closes: number[],
-): {
-  wave: string;
-  bias: "BULLISH" | "BEARISH" | "NEUTRAL";
-  confidence: number;
-} {
+): ElliottWave {
   if (closes.length < 20) {
     return {
       wave: "Insufficient data",
@@ -163,8 +191,13 @@ function detectElliottWave(
   let falling = 0;
 
   for (let i = 1; i < recent.length; i++) {
-    if (recent[i] > recent[i - 1]) rising++;
-    if (recent[i] < recent[i - 1]) falling++;
+    if (recent[i] > recent[i - 1]) {
+      rising++;
+    }
+
+    if (recent[i] < recent[i - 1]) {
+      falling++;
+    }
   }
 
   if (rising >= 14) {
@@ -194,35 +227,100 @@ function round(value: number): number {
   return Number(value.toFixed(2));
 }
 
+/**
+ * Binance can reject or throttle a particular public endpoint.
+ * We therefore try several public market-data endpoints.
+ */
+const BINANCE_HOSTS = [
+  "https://data-api.binance.vision",
+  "https://api.binance.com",
+  "https://api1.binance.com",
+  "https://api2.binance.com",
+  "https://api3.binance.com",
+  "https://api4.binance.com",
+];
+
+async function fetchBinanceCandles(
+  interval: string,
+): Promise<Candle[]> {
+  let lastError =
+    `Unable to load Binance ${interval} data.`;
+
+  for (const host of BINANCE_HOSTS) {
+    const controller = new AbortController();
+
+    const timeout = setTimeout(() => {
+      controller.abort();
+    }, 10000);
+
+    try {
+      const url =
+        `${host}/api/v3/klines` +
+        `?symbol=BTCUSDT` +
+        `&interval=${encodeURIComponent(interval)}` +
+        `&limit=250`;
+
+      const response = await fetch(url, {
+        method: "GET",
+        cache: "no-store",
+        headers: {
+          Accept: "application/json",
+        },
+        signal: controller.signal,
+      });
+
+      if (!response.ok) {
+        lastError =
+          `Binance ${host} returned HTTP ${response.status} for ${interval}.`;
+
+        continue;
+      }
+
+      const json = await response.json();
+
+      if (!Array.isArray(json) || json.length < 200) {
+        lastError =
+          `Binance returned insufficient ${interval} candle data.`;
+
+        continue;
+      }
+
+      return json as Candle[];
+    } catch (error) {
+      lastError =
+        error instanceof Error
+          ? error.message
+          : `Binance ${host} request failed for ${interval}.`;
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  throw new Error(lastError);
+}
+
 export async function GET() {
   try {
     const intervals = ["15m", "1h", "4h"];
 
     const timeframeResults: Record<
       string,
-      any
+      Timeframe
     > = {};
 
     for (const interval of intervals) {
-      const response = await fetch(
-        `https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=${interval}&limit=250`,
-        {
-          cache: "no-store",
-        },
-      );
-
-      if (!response.ok) {
-        throw new Error(
-          `Binance request failed for ${interval}`,
-        );
-      }
-
       const candles =
-        (await response.json()) as Candle[];
+        await fetchBinanceCandles(interval);
 
       const closes = candles.map((c) =>
         Number(c[4]),
       );
+
+      if (closes.length < 200) {
+        throw new Error(
+          `Insufficient BTCUSDT data for ${interval}.`,
+        );
+      }
 
       const price =
         closes[closes.length - 1];
@@ -264,11 +362,7 @@ export async function GET() {
     const primary =
       timeframeResults["1h"];
 
-    let signal:
-      | "LONG"
-      | "SHORT"
-      | "WAIT" = "WAIT";
-
+    let signal: Signal = "WAIT";
     let confidence = 50;
 
     if (
@@ -290,22 +384,36 @@ export async function GET() {
     }
 
     const entry = primary.price;
-    const risk = primary.atr14 || entry * 0.01;
+
+    const risk =
+      primary.atr14 > 0
+        ? primary.atr14
+        : entry * 0.01;
 
     let stopLoss = entry;
     let takeProfit1 = entry;
     let takeProfit2 = entry;
 
     if (signal === "LONG") {
-      stopLoss = entry - risk * 1.5;
-      takeProfit1 = entry + risk * 2;
-      takeProfit2 = entry + risk * 3;
+      stopLoss =
+        entry - risk * 1.5;
+
+      takeProfit1 =
+        entry + risk * 2;
+
+      takeProfit2 =
+        entry + risk * 3;
     }
 
     if (signal === "SHORT") {
-      stopLoss = entry + risk * 1.5;
-      takeProfit1 = entry - risk * 2;
-      takeProfit2 = entry - risk * 3;
+      stopLoss =
+        entry + risk * 1.5;
+
+      takeProfit1 =
+        entry - risk * 2;
+
+      takeProfit2 =
+        entry - risk * 3;
     }
 
     return NextResponse.json({
@@ -320,7 +428,8 @@ export async function GET() {
 
       confidence,
 
-      timeframes: timeframeResults,
+      timeframes:
+        timeframeResults,
 
       tradePlan: {
         entry: round(entry),
@@ -329,10 +438,13 @@ export async function GET() {
         takeProfit2: round(takeProfit2),
       },
 
-      elliottWave: primary.elliottWave,
+      elliottWave:
+        primary.elliottWave,
 
       liquidationHeatmap: {
-        status: "provider_not_configured",
+        status:
+          "provider_not_configured",
+
         message:
           "Liquidation heatmap data is not connected yet. No liquidation levels are being invented.",
       },
@@ -340,19 +452,34 @@ export async function GET() {
       riskManagement: {
         riskPerTrade:
           "Use a predefined percentage of account equity.",
+
         stopLossRequired: true,
+
         leverage:
           "Avoid excessive leverage.",
       },
 
       analysis: {
-        trend: primary.trend,
-        rsi: primary.rsi14,
-        support: primary.support,
-        resistance: primary.resistance,
-        ema20: primary.ema20,
-        ema50: primary.ema50,
-        ema200: primary.ema200,
+        trend:
+          primary.trend,
+
+        rsi:
+          primary.rsi14,
+
+        support:
+          primary.support,
+
+        resistance:
+          primary.resistance,
+
+        ema20:
+          primary.ema20,
+
+        ema50:
+          primary.ema50,
+
+        ema200:
+          primary.ema200,
       },
     });
   } catch (error) {
@@ -364,6 +491,7 @@ export async function GET() {
     return NextResponse.json(
       {
         success: false,
+
         error:
           error instanceof Error
             ? error.message
