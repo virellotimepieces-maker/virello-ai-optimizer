@@ -1,8 +1,87 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
-type Timeframe = {
+declare global {
+  interface Window {
+    shopify?: {
+      idToken?: () => Promise<string>;
+    };
+  }
+}
+
+type ShopifyImage = {
+  url: string;
+  altText: string | null;
+};
+
+type ShopifyVariant = {
+  id?: string;
+  title?: string;
+  price?: string;
+  sku?: string | null;
+  available?: boolean;
+};
+
+type ShopifyProduct = {
+  id: string;
+  title: string;
+  description: string;
+  productType: string;
+  tags: string[];
+  status: string;
+  vendor: string;
+  price: string;
+  images?: ShopifyImage[];
+  featuredImage: string | null;
+  variants?: ShopifyVariant[];
+  [key: string]: unknown;
+};
+
+type AIAnalysis = {
+  targetCustomer: string;
+  purchaseMotivation: string;
+  strongestFeatures: string[];
+  weaknesses: string[];
+  missingInformation: string[];
+  seoOpportunities: string[];
+  conversionOpportunities: string[];
+  detectedProductType?: string;
+  detectedAudience?: string;
+  detectedStyle?: string;
+};
+
+type AIScore = {
+  title: number;
+  description: number;
+  seo: number;
+  productClarity: number;
+  conversionPotential: number;
+  overall: number;
+};
+
+type AIOptimization = {
+  title: string;
+  description: string;
+  features: string[];
+  specifications: string[];
+  productType: string;
+  seoTitle: string;
+  metaDescription: string;
+  tags: string[];
+};
+
+type AIResult = {
+  analysis: AIAnalysis;
+  score: AIScore;
+  optimization: AIOptimization;
+  reasoning: string;
+};
+
+type Trend = "BULLISH" | "BEARISH" | "NEUTRAL";
+type TradeSignal = "LONG" | "SHORT" | "WAIT";
+
+type BTCTimeframe = {
   price: number;
   ema20: number;
   ema50: number;
@@ -11,817 +90,1708 @@ type Timeframe = {
   atr14: number;
   support: number;
   resistance: number;
-  trend: "BULLISH" | "BEARISH" | "NEUTRAL";
+  trend: Trend;
   elliottWave: {
     wave: string;
-    bias: "BULLISH" | "BEARISH" | "NEUTRAL";
+    bias: Trend;
     confidence: number;
   };
 };
 
-type BTCData = {
+type BTCAnalysis = {
   success: boolean;
+  live?: boolean;
   symbol: string;
   generatedAt: string;
-  signal: "LONG" | "SHORT" | "WAIT";
+  signal: TradeSignal;
   confidence: number;
-  timeframes: Record<string, Timeframe>;
+
+  timeframes: {
+    "15m": BTCTimeframe;
+    "1h": BTCTimeframe;
+    "4h": BTCTimeframe;
+  };
+
   tradePlan: {
     entry: number;
     stopLoss: number;
     takeProfit1: number;
     takeProfit2: number;
+    riskDistance?: number;
   };
-  elliottWave: {
-    wave: string;
-    bias: "BULLISH" | "BEARISH" | "NEUTRAL";
-    confidence: number;
+
+  elliottWave: unknown;
+  liquidationHeatmap: unknown;
+
+  riskManagement?: {
+    stopLossRequired?: boolean;
+    leverage?: string;
+    riskPerTrade?: string;
+    warning?: string;
   };
-  liquidationHeatmap: {
-    status: string;
-    message: string;
+
+  analysis?: {
+    trend?: string;
+    price?: number;
+    rsi14?: number;
+    atr14?: number;
+    support?: number;
+    resistance?: number;
+    ema20?: number;
+    ema50?: number;
+    ema200?: number;
   };
-  riskManagement: {
-    riskPerTrade: string;
-    stopLossRequired: boolean;
-    leverage: string;
-  };
-  analysis: {
-    trend: string;
-    rsi: number;
-    support: number;
-    resistance: number;
-    ema20: number;
-    ema50: number;
-    ema200: number;
-  };
-  error?: string;
 };
 
-function formatPrice(value: number) {
-  return new Intl.NumberFormat("en-US", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(value);
+const SEO_TITLE_MAX = 60;
+const META_DESCRIPTION_MAX = 160;
+
+function clean(value: unknown): string {
+  return String(value ?? "")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
-function trendClass(trend: string) {
-  if (trend === "BULLISH") return "bullish";
-  if (trend === "BEARISH") return "bearish";
-  return "neutral";
+function stripHtml(value: unknown): string {
+  return String(value ?? "")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/(p|div|li|h[1-6])>/gi, "\n")
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&#x27;/gi, "'")
+    .replace(/&ndash;/gi, "–")
+    .replace(/&mdash;/gi, "—")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
-export default function BTCUSDPage() {
-  const [data, setData] = useState<BTCData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+function unique(values: unknown[]): string[] {
+  const seen = new Set<string>();
 
-  async function loadBTCUSD() {
+  return values
+    .map(clean)
+    .filter((value) => {
+      const normalized = value.toLowerCase();
+
+      if (!normalized || seen.has(normalized)) {
+        return false;
+      }
+
+      seen.add(normalized);
+      return true;
+    });
+}
+
+function limitCharacters(
+  value: unknown,
+  max: number,
+): string {
+  const text = clean(value);
+
+  if (text.length <= max) {
+    return text;
+  }
+
+  let result = text.slice(0, max);
+  const lastSpace = result.lastIndexOf(" ");
+
+  if (lastSpace > Math.floor(max * 0.65)) {
+    result = result.slice(0, lastSpace);
+  }
+
+  return result
+    .trim()
+    .replace(/[.,;:!?-]+$/, "");
+}
+
+function escapeHtml(value: string): string {
+  return value.replace(
+    /[&<>'"]/g,
+    (char) =>
+      ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        "'": "&#39;",
+        '"': "&quot;",
+      })[char] || char,
+  );
+}
+
+function descriptionToHtml(
+  description: string,
+): string {
+  return description
+    .split(/\n\s*\n/)
+    .map(clean)
+    .filter(Boolean)
+    .map(
+      (paragraph) =>
+        `<p>${escapeHtml(paragraph)}</p>`,
+    )
+    .join("");
+}
+
+export default function Page() {
+  const [products, setProducts] =
+    useState<ShopifyProduct[]>([]);
+
+  const [selectedId, setSelectedId] =
+    useState("");
+
+  const [search, setSearch] =
+    useState("");
+
+  const [loading, setLoading] =
+    useState(true);
+
+  const [optimizing, setOptimizing] =
+    useState(false);
+
+  const [saving, setSaving] =
+    useState(false);
+
+  const [error, setError] =
+    useState("");
+
+  const [message, setMessage] =
+    useState("");
+
+  const [aiResult, setAiResult] =
+    useState<AIResult | null>(null);
+
+  const [title, setTitle] =
+    useState("");
+
+  const [productType, setProductType] =
+    useState("");
+
+  const [tags, setTags] =
+    useState("");
+
+  const [description, setDescription] =
+    useState("");
+
+  const [features, setFeatures] =
+    useState<string[]>([]);
+
+  const [specifications, setSpecifications] =
+    useState<string[]>([]);
+
+  const [seoTitle, setSeoTitle] =
+    useState("");
+
+  const [metaDescription, setMetaDescription] =
+    useState("");
+
+  const [btcAnalysis, setBtcAnalysis] =
+    useState<BTCAnalysis | null>(null);
+
+  const [btcLoading, setBtcLoading] =
+    useState(false);
+
+  const [btcError, setBtcError] =
+    useState("");
+
+  async function getSessionToken(): Promise<string> {
+    if (
+      typeof window === "undefined" ||
+      !window.shopify?.idToken
+    ) {
+      throw new Error(
+        "Shopify session unavailable. Open Virello AI Optimizer from Shopify Admin.",
+      );
+    }
+
+    const token =
+      await window.shopify.idToken();
+
+    if (!token) {
+      throw new Error(
+        "Shopify session token unavailable. Reopen the app from Shopify Admin.",
+      );
+    }
+
+    return token;
+  }
+
+  async function loadProducts() {
+    setLoading(true);
+    setError("");
+
     try {
-      setLoading(true);
-      setError("");
+      const token =
+        await getSessionToken();
 
-      const response = await fetch("/api/btcusd", {
-        cache: "no-store",
-      });
+      const response = await fetch(
+        "/api/shopify/products",
+        {
+          method: "GET",
+          headers: {
+            Authorization:
+              `Bearer ${token}`,
+            "x-shopify-session-token":
+              token,
+          },
+          cache: "no-store",
+        },
+      );
 
-      const result = await response.json();
+      const data =
+        (await response.json()) as {
+          success?: boolean;
+          error?: string;
+          products?: ShopifyProduct[];
+        };
 
-      if (!response.ok || !result.success) {
+      if (
+        !response.ok ||
+        !data.success
+      ) {
         throw new Error(
-          result.error || "BTCUSD analysis failed.",
+          data.error ||
+            "Unable to load Shopify products.",
         );
       }
 
-      setData(result);
+      const normalized =
+        Array.isArray(data.products)
+          ? data.products
+          : [];
+
+      setProducts(normalized);
+
+      if (normalized.length > 0) {
+        setSelectedId(
+          normalized[0].id,
+        );
+      }
     } catch (err) {
       setError(
         err instanceof Error
           ? err.message
-          : "Unable to load BTCUSD data.",
+          : "Unable to load Shopify products.",
       );
     } finally {
       setLoading(false);
     }
   }
 
+  async function loadBTCAnalysis() {
+    setBtcLoading(true);
+    setBtcError("");
+
+    try {
+      const response = await fetch(
+        "/api/btcusd",
+        {
+          method: "GET",
+          cache: "no-store",
+        },
+      );
+
+      const data =
+        (await response.json()) as
+          BTCAnalysis & {
+            error?: string;
+          };
+
+      if (
+        !response.ok ||
+        !data.success
+      ) {
+        throw new Error(
+          data.error ||
+            "BTCUSD live analysis failed.",
+        );
+      }
+
+      setBtcAnalysis(data);
+    } catch (err) {
+      setBtcError(
+        err instanceof Error
+          ? err.message
+          : "BTCUSD live analysis failed.",
+      );
+    } finally {
+      setBtcLoading(false);
+    }
+  }
+
   useEffect(() => {
-    loadBTCUSD();
-
-    const interval = setInterval(() => {
-      loadBTCUSD();
-    }, 60000);
-
-    return () => clearInterval(interval);
+    void loadProducts();
   }, []);
 
-  if (loading && !data) {
-    return (
-      <main className="btc-page">
-        <div className="btc-loading">
-          <div className="spinner" />
-          <h2>Loading live BTCUSD analysis...</h2>
-          <p>Connecting to the BTCUSD analysis API.</p>
-        </div>
+  useEffect(() => {
+    void loadBTCAnalysis();
 
-        <style jsx>{styles}</style>
-      </main>
+    const interval =
+      window.setInterval(() => {
+        void loadBTCAnalysis();
+      }, 30000);
+
+    return () =>
+      window.clearInterval(interval);
+  }, []);
+
+  const selected =
+    useMemo(
+      () =>
+        products.find(
+          (product) =>
+            product.id === selectedId,
+        ) || null,
+      [products, selectedId],
     );
+
+  const filteredProducts =
+    useMemo(() => {
+      const query =
+        search.toLowerCase().trim();
+
+      if (!query) {
+        return products;
+      }
+
+      return products.filter(
+        (product) =>
+          product.title
+            .toLowerCase()
+            .includes(query) ||
+          product.productType
+            .toLowerCase()
+            .includes(query) ||
+          product.vendor
+            .toLowerCase()
+            .includes(query) ||
+          product.tags.some((tag) =>
+            tag
+              .toLowerCase()
+              .includes(query),
+          ),
+      );
+    }, [products, search]);
+
+  useEffect(() => {
+    if (!selected) {
+      return;
+    }
+
+    setTitle(
+      stripHtml(selected.title),
+    );
+
+    setProductType(
+      stripHtml(
+        selected.productType,
+      ),
+    );
+
+    setTags(
+      selected.tags.join(", "),
+    );
+
+    setDescription(
+      stripHtml(
+        selected.description,
+      ),
+    );
+
+    setFeatures([]);
+    setSpecifications([]);
+    setSeoTitle("");
+    setMetaDescription("");
+    setAiResult(null);
+    setMessage("");
+    setError("");
+  }, [selected]);
+
+  async function handleOptimize() {
+    if (!selected) {
+      return;
+    }
+
+    setOptimizing(true);
+    setError("");
+    setMessage("");
+    setAiResult(null);
+
+    try {
+      const token =
+        await getSessionToken();
+
+      const productPayload = {
+        ...selected,
+        title:
+          stripHtml(selected.title),
+        description:
+          stripHtml(
+            selected.description,
+          ),
+        productType:
+          clean(selected.productType),
+        vendor:
+          clean(selected.vendor),
+        tags:
+          Array.isArray(selected.tags)
+            ? selected.tags
+            : [],
+        price:
+          clean(selected.price),
+        images:
+          Array.isArray(selected.images)
+            ? selected.images
+            : [],
+        featuredImage:
+          selected.featuredImage,
+        variants:
+          Array.isArray(
+            selected.variants,
+          )
+            ? selected.variants
+            : [],
+      };
+
+      const response =
+        await fetch(
+          "/api/ai/analyze",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type":
+                "application/json",
+              Authorization:
+                `Bearer ${token}`,
+              "x-shopify-session-token":
+                token,
+            },
+            body: JSON.stringify({
+              product:
+                productPayload,
+
+              instructions: {
+                sourceOfTruth:
+                  "Use the supplied Shopify product data as the source of truth.",
+
+                determineProductTypeWithAI:
+                  true,
+
+                productTypeRequired:
+                  true,
+
+                productTypeMustNotBeBlank:
+                  true,
+
+                determineAudienceWithAI:
+                  true,
+
+                doNotAssumeGender:
+                  true,
+
+                rewriteExistingInformation:
+                  true,
+
+                improveConversion:
+                  true,
+
+                improveSEO:
+                  true,
+
+                doNotInventFacts:
+                  true,
+
+                doNotInventSpecifications:
+                  true,
+
+                detectAndReportConflicts:
+                  true,
+
+                preserveAccurateProductFacts:
+                  true,
+
+                seoTitleMaximumCharacters:
+                  SEO_TITLE_MAX,
+
+                metaDescriptionMaximumCharacters:
+                  META_DESCRIPTION_MAX,
+
+                seoTitleMustFitLimit:
+                  true,
+
+                metaDescriptionMustFitLimit:
+                  true,
+
+                avoidKeywordStuffing:
+                  true,
+
+                avoidDuplicateTags:
+                  true,
+
+                writeNaturalSearchFriendlyCopy:
+                  true,
+
+                prioritizeProductRelevance:
+                  true,
+              },
+            }),
+          },
+        );
+
+      const data =
+        await response.json();
+
+      if (
+        !response.ok ||
+        !data.success
+      ) {
+        throw new Error(
+          data.error ||
+            "Virello AI analysis failed.",
+        );
+      }
+
+      const result =
+        (data.result ||
+          data.data ||
+          data.analysis) as
+          | AIResult
+          | undefined;
+
+      if (
+        !result ||
+        !result.optimization ||
+        !result.analysis ||
+        !result.score
+      ) {
+        throw new Error(
+          "Virello AI returned an incomplete result.",
+        );
+      }
+
+      const optimization =
+        result.optimization;
+
+      const normalizedProductType =
+        clean(
+          optimization.productType,
+        );
+
+      if (!normalizedProductType) {
+        throw new Error(
+          "Virello AI did not return a Product Type.",
+        );
+      }
+
+      const normalizedTitle =
+        limitCharacters(
+          optimization.title,
+          120,
+        );
+
+      const normalizedDescription =
+        clean(
+          optimization.description,
+        );
+
+      const normalizedFeatures =
+        unique(
+          Array.isArray(
+            optimization.features,
+          )
+            ? optimization.features
+            : [],
+        );
+
+      const normalizedSpecifications =
+        unique(
+          Array.isArray(
+            optimization.specifications,
+          )
+            ? optimization.specifications
+            : [],
+        );
+
+      const normalizedTags =
+        unique(
+          Array.isArray(
+            optimization.tags,
+          )
+            ? optimization.tags
+            : [],
+        );
+
+      const normalizedSeoTitle =
+        limitCharacters(
+          optimization.seoTitle,
+          SEO_TITLE_MAX,
+        );
+
+      const normalizedMetaDescription =
+        limitCharacters(
+          optimization.metaDescription,
+          META_DESCRIPTION_MAX,
+        );
+
+      const normalizedResult: AIResult = {
+        ...result,
+
+        optimization: {
+          title:
+            normalizedTitle,
+          description:
+            normalizedDescription,
+          features:
+            normalizedFeatures,
+          specifications:
+            normalizedSpecifications,
+          productType:
+            normalizedProductType,
+          seoTitle:
+            normalizedSeoTitle,
+          metaDescription:
+            normalizedMetaDescription,
+          tags:
+            normalizedTags,
+        },
+      };
+
+      setAiResult(
+        normalizedResult,
+      );
+
+      setTitle(
+        normalizedTitle,
+      );
+
+      setDescription(
+        normalizedDescription,
+      );
+
+      setProductType(
+        normalizedProductType,
+      );
+
+      setFeatures(
+        normalizedFeatures,
+      );
+
+      setSpecifications(
+        normalizedSpecifications,
+      );
+
+      setSeoTitle(
+        normalizedSeoTitle,
+      );
+
+      setMetaDescription(
+        normalizedMetaDescription,
+      );
+
+      setTags(
+        normalizedTags.join(", "),
+      );
+
+      setMessage(
+        "AI optimization completed successfully.",
+      );
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Virello AI optimization failed.",
+      );
+    } finally {
+      setOptimizing(false);
+    }
   }
 
-  if (error && !data) {
-    return (
-      <main className="btc-page">
-        <div className="btc-error">
-          <h1>BTCUSD</h1>
-          <p>{error}</p>
-          <button onClick={loadBTCUSD}>
-            Try Again
-          </button>
-        </div>
+  async function handleSave() {
+    if (!selected) {
+      return;
+    }
 
-        <style jsx>{styles}</style>
-      </main>
-    );
+    setSaving(true);
+    setError("");
+    setMessage("");
+
+    try {
+      const token =
+        await getSessionToken();
+
+      const finalDescription =
+        descriptionToHtml(
+          description,
+        );
+
+      const response =
+        await fetch(
+          "/api/shopify/products",
+          {
+            method: "PUT",
+            headers: {
+              "Content-Type":
+                "application/json",
+              Authorization:
+                `Bearer ${token}`,
+              "x-shopify-session-token":
+                token,
+            },
+            body: JSON.stringify({
+              productId:
+                selected.id,
+
+              title:
+                clean(title),
+
+              description:
+                finalDescription,
+
+              productType:
+                clean(productType),
+
+              tags:
+                unique(
+                  tags.split(","),
+                ),
+            }),
+          },
+        );
+
+      const data =
+        await response.json();
+
+      if (
+        !response.ok ||
+        !data.success
+      ) {
+        throw new Error(
+          data.error ||
+            "Unable to save product.",
+        );
+      }
+
+      setMessage(
+        "Product saved successfully.",
+      );
+
+      await loadProducts();
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Unable to save product.",
+      );
+    } finally {
+      setSaving(false);
+    }
   }
 
-  if (!data) return null;
-
-  const primary = data.timeframes["1h"];
-  const fifteen = data.timeframes["15m"];
-  const fourHour = data.timeframes["4h"];
+  const btc1h =
+    btcAnalysis?.timeframes?.["1h"];
 
   return (
-    <main className="btc-page">
-      <div className="container">
-
-        {/* HEADER */}
-        <header className="header">
-          <div>
-            <div className="live-label">
-              <span className="live-dot" />
-              LIVE MARKET ANALYSIS
-            </div>
-
-            <h1>BTCUSD</h1>
-
-            <p className="subtitle">
-              Bitcoin / US Dollar
-            </p>
-          </div>
-
-          <button
-            className="refresh"
-            onClick={loadBTCUSD}
-            disabled={loading}
+    <main
+      style={{
+        minHeight: "100vh",
+        padding: 24,
+        background: "#f7f7f8",
+        color: "#111",
+        fontFamily:
+          "Arial, Helvetica, sans-serif",
+      }}
+    >
+      <div
+        style={{
+          maxWidth: 1400,
+          margin: "0 auto",
+        }}
+      >
+        <header
+          style={{
+            marginBottom: 24,
+          }}
+        >
+          <h1
+            style={{
+              margin: 0,
+              fontSize: 30,
+            }}
           >
-            {loading ? "Updating..." : "Refresh"}
-          </button>
+            Virello AI Optimizer
+          </h1>
+
+          <p
+            style={{
+              marginTop: 8,
+              color: "#666",
+            }}
+          >
+            Shopify product optimization
+            and live BTCUSD analysis.
+          </p>
         </header>
 
-        {/* PRICE + SIGNAL */}
-        <section className="hero-grid">
-
-          <div className="card price-card">
-            <span className="label">
-              CURRENT PRICE
-            </span>
-
-            <div className="price">
-              ${formatPrice(primary.price)}
-            </div>
-
-            <div className="updated">
-              Updated{" "}
-              {new Date(
-                data.generatedAt,
-              ).toLocaleTimeString()}
-            </div>
+        {error && (
+          <div
+            style={{
+              marginBottom: 16,
+              padding: 14,
+              borderRadius: 8,
+              background: "#fee2e2",
+              color: "#991b1b",
+            }}
+          >
+            {error}
           </div>
+        )}
 
-          <div className="card signal-card">
-            <span className="label">
-              PRIMARY SIGNAL
-            </span>
-
-            <div
-              className={`signal ${data.signal.toLowerCase()}`}
-            >
-              {data.signal}
-            </div>
-
-            <div className="confidence">
-              Confidence:{" "}
-              <strong>{data.confidence}%</strong>
-            </div>
+        {message && (
+          <div
+            style={{
+              marginBottom: 16,
+              padding: 14,
+              borderRadius: 8,
+              background: "#dcfce7",
+              color: "#166534",
+            }}
+          >
+            {message}
           </div>
+        )}
 
-        </section>
-
-        {/* TIMEFRAMES */}
-        <section>
-          <h2>Multi-Timeframe Analysis</h2>
-
-          <div className="timeframe-grid">
-            {[
-              ["15m", fifteen],
-              ["1h", primary],
-              ["4h", fourHour],
-            ].map(([name, tf]) => {
-              const timeframe = tf as Timeframe;
-
-              return (
-                <div className="card" key={name as string}>
-                  <div className="tf-header">
-                    <h3>{name}</h3>
-
-                    <span
-                      className={`trend ${trendClass(
-                        timeframe.trend,
-                      )}`}
-                    >
-                      {timeframe.trend}
-                    </span>
-                  </div>
-
-                  <div className="tf-price">
-                    $
-                    {formatPrice(
-                      timeframe.price,
-                    )}
-                  </div>
-
-                  <div className="metrics">
-                    <div>
-                      <span>RSI 14</span>
-                      <strong>
-                        {timeframe.rsi14}
-                      </strong>
-                    </div>
-
-                    <div>
-                      <span>ATR 14</span>
-                      <strong>
-                        {formatPrice(
-                          timeframe.atr14,
-                        )}
-                      </strong>
-                    </div>
-
-                    <div>
-                      <span>EMA 20</span>
-                      <strong>
-                        {formatPrice(
-                          timeframe.ema20,
-                        )}
-                      </strong>
-                    </div>
-
-                    <div>
-                      <span>EMA 50</span>
-                      <strong>
-                        {formatPrice(
-                          timeframe.ema50,
-                        )}
-                      </strong>
-                    </div>
-
-                    <div>
-                      <span>EMA 200</span>
-                      <strong>
-                        {formatPrice(
-                          timeframe.ema200,
-                        )}
-                      </strong>
-                    </div>
-
-                    <div>
-                      <span>Support</span>
-                      <strong>
-                        ${formatPrice(
-                          timeframe.support,
-                        )}
-                      </strong>
-                    </div>
-
-                    <div>
-                      <span>Resistance</span>
-                      <strong>
-                        ${formatPrice(
-                          timeframe.resistance,
-                        )}
-                      </strong>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </section>
-
-        {/* ELLIOTT WAVE */}
-        <section>
-          <h2>Elliott Wave Analysis</h2>
-
-          <div className="card wave-card">
+        <section
+          style={{
+            marginBottom: 24,
+            padding: 20,
+            borderRadius: 12,
+            background: "#fff",
+            border: "1px solid #ddd",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              justifyContent:
+                "space-between",
+              alignItems: "center",
+              marginBottom: 16,
+              gap: 12,
+              flexWrap: "wrap",
+            }}
+          >
             <div>
-              <span className="label">
-                CURRENT STRUCTURE
-              </span>
+              <h2
+                style={{
+                  margin: 0,
+                  fontSize: 22,
+                }}
+              >
+                BTCUSD Live Analysis
+              </h2>
 
-              <h3>
-                {data.elliottWave.wave}
-              </h3>
-
-              <p>
-                Bias:{" "}
-                <strong>
-                  {data.elliottWave.bias}
-                </strong>
+              <p
+                style={{
+                  margin:
+                    "6px 0 0",
+                  color: "#666",
+                }}
+              >
+                Live market data from the
+                BTCUSD API.
               </p>
             </div>
 
-            <div className="wave-confidence">
-              <span>Confidence</span>
-              <strong>
-                {data.elliottWave.confidence}%
-              </strong>
-            </div>
+            <button
+              type="button"
+              onClick={() =>
+                void loadBTCAnalysis()
+              }
+              disabled={btcLoading}
+              style={{
+                padding:
+                  "10px 16px",
+                border: 0,
+                borderRadius: 8,
+                cursor:
+                  btcLoading
+                    ? "not-allowed"
+                    : "pointer",
+                background:
+                  "#111",
+                color: "#fff",
+              }}
+            >
+              {btcLoading
+                ? "Updating..."
+                : "Refresh BTC"}
+            </button>
           </div>
+
+          {btcError && (
+            <div
+              style={{
+                padding: 12,
+                marginBottom: 16,
+                borderRadius: 8,
+                background: "#fff7ed",
+                color: "#9a3412",
+              }}
+            >
+              {btcError}
+            </div>
+          )}
+
+          {btcLoading &&
+            !btcAnalysis && (
+              <p>
+                Loading live BTCUSD
+                analysis...
+              </p>
+            )}
+
+          {btcAnalysis && (
+            <>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns:
+                    "repeat(auto-fit, minmax(160px, 1fr))",
+                  gap: 12,
+                  marginBottom: 18,
+                }}
+              >
+                <Metric
+                  label="Price"
+                  value={`$${btcAnalysis.timeframes["1h"].price.toLocaleString()}`}
+                />
+
+                <Metric
+                  label="Signal"
+                  value={
+                    btcAnalysis.signal
+                  }
+                />
+
+                <Metric
+                  label="Confidence"
+                  value={`${btcAnalysis.confidence}%`}
+                />
+
+                <Metric
+                  label="Trend"
+                  value={
+                    btcAnalysis.timeframes[
+                      "1h"
+                    ].trend
+                  }
+                />
+
+                <Metric
+                  label="RSI 14"
+                  value={String(
+                    btcAnalysis.timeframes[
+                      "1h"
+                    ].rsi14,
+                  )}
+                />
+              </div>
+
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns:
+                    "repeat(auto-fit, minmax(220px, 1fr))",
+                  gap: 12,
+                }}
+              >
+                {(
+                  [
+                    ["15m", btcAnalysis.timeframes["15m"]],
+                    ["1h", btcAnalysis.timeframes["1h"]],
+                    ["4h", btcAnalysis.timeframes["4h"]],
+                  ] as const
+                ).map(
+                  ([name, timeframe]) => (
+                    <div
+                      key={name}
+                      style={{
+                        padding: 16,
+                        border:
+                          "1px solid #ddd",
+                        borderRadius: 10,
+                      }}
+                    >
+                      <h3
+                        style={{
+                          margin:
+                            "0 0 12px",
+                        }}
+                      >
+                        {name}
+                      </h3>
+
+                      <p>
+                        Price: $
+                        {timeframe.price.toLocaleString()}
+                      </p>
+
+                      <p>
+                        EMA 20:{" "}
+                        {timeframe.ema20.toLocaleString()}
+                      </p>
+
+                      <p>
+                        EMA 50:{" "}
+                        {timeframe.ema50.toLocaleString()}
+                      </p>
+
+                      <p>
+                        EMA 200:{" "}
+                        {timeframe.ema200.toLocaleString()}
+                      </p>
+
+                      <p>
+                        RSI:{" "}
+                        {timeframe.rsi14}
+                      </p>
+
+                      <p>
+                        Trend:{" "}
+                        {timeframe.trend}
+                      </p>
+
+                      <p>
+                        Support: $
+                        {timeframe.support.toLocaleString()}
+                      </p>
+
+                      <p>
+                        Resistance: $
+                        {timeframe.resistance.toLocaleString()}
+                      </p>
+
+                      <p>
+                        Elliott:{" "}
+                        {
+                          timeframe
+                            .elliottWave
+                            .wave
+                        }
+                      </p>
+                    </div>
+                  ),
+                )}
+              </div>
+
+              <div
+                style={{
+                  marginTop: 16,
+                  padding: 16,
+                  borderRadius: 10,
+                  background: "#f7f7f8",
+                }}
+              >
+                <h3
+                  style={{
+                    marginTop: 0,
+                  }}
+                >
+                  Trade Plan
+                </h3>
+
+                <p>
+                  Entry: $
+                  {btcAnalysis.tradePlan.entry.toLocaleString()}
+                </p>
+
+                <p>
+                  Stop Loss: $
+                  {btcAnalysis.tradePlan.stopLoss.toLocaleString()}
+                </p>
+
+                <p>
+                  Take Profit 1: $
+                  {btcAnalysis.tradePlan.takeProfit1.toLocaleString()}
+                </p>
+
+                <p>
+                  Take Profit 2: $
+                  {btcAnalysis.tradePlan.takeProfit2.toLocaleString()}
+                </p>
+              </div>
+
+              <p
+                style={{
+                  marginTop: 14,
+                  fontSize: 12,
+                  color: "#777",
+                }}
+              >
+                Last update:{" "}
+                {new Date(
+                  btcAnalysis.generatedAt,
+                ).toLocaleString()}
+              </p>
+            </>
+          )}
         </section>
 
-        {/* TRADE PLAN */}
-        <section>
-          <h2>Trade Plan</h2>
+        <section
+          style={{
+            display: "grid",
+            gridTemplateColumns:
+              "300px 1fr",
+            gap: 20,
+          }}
+        >
+          <aside
+            style={{
+              padding: 16,
+              borderRadius: 12,
+              background: "#fff",
+              border:
+                "1px solid #ddd",
+              minHeight: 500,
+            }}
+          >
+            <h2
+              style={{
+                marginTop: 0,
+              }}
+            >
+              Products
+            </h2>
 
-          <div className="trade-grid">
+            <input
+              value={search}
+              onChange={(event) =>
+                setSearch(
+                  event.target.value,
+                )
+              }
+              placeholder="Search products..."
+              style={{
+                width: "100%",
+                boxSizing:
+                  "border-box",
+                padding: 10,
+                borderRadius: 8,
+                border:
+                  "1px solid #ccc",
+                marginBottom: 12,
+              }}
+            />
 
-            <div className="card trade-item">
-              <span>ENTRY</span>
-              <strong>
-                ${formatPrice(
-                  data.tradePlan.entry,
+            {loading ? (
+              <p>
+                Loading products...
+              </p>
+            ) : filteredProducts.length ===
+              0 ? (
+              <p>
+                No products found.
+              </p>
+            ) : (
+              <div>
+                {filteredProducts.map(
+                  (product) => (
+                    <button
+                      key={product.id}
+                      type="button"
+                      onClick={() =>
+                        setSelectedId(
+                          product.id,
+                        )
+                      }
+                      style={{
+                        width: "100%",
+                        textAlign:
+                          "left",
+                        padding: 12,
+                        marginBottom: 8,
+                        borderRadius: 8,
+                        border:
+                          product.id ===
+                          selectedId
+                            ? "2px solid #111"
+                            : "1px solid #ddd",
+                        background:
+                          product.id ===
+                          selectedId
+                            ? "#f1f1f1"
+                            : "#fff",
+                        cursor:
+                          "pointer",
+                      }}
+                    >
+                      <strong>
+                        {product.title}
+                      </strong>
+
+                      <div
+                        style={{
+                          marginTop: 4,
+                          fontSize: 12,
+                          color: "#777",
+                        }}
+                      >
+                        {product.productType ||
+                          "No product type"}
+                      </div>
+                    </button>
+                  ),
                 )}
-              </strong>
-            </div>
+              </div>
+            )}
+          </aside>
 
-            <div className="card trade-item">
-              <span>STOP LOSS</span>
-              <strong>
-                ${formatPrice(
-                  data.tradePlan.stopLoss,
+          <section
+            style={{
+              padding: 20,
+              borderRadius: 12,
+              background: "#fff",
+              border:
+                "1px solid #ddd",
+            }}
+          >
+            {!selected ? (
+              <p>
+                Select a product.
+              </p>
+            ) : (
+              <>
+                <div
+                  style={{
+                    display:
+                      "flex",
+                    justifyContent:
+                      "space-between",
+                    alignItems:
+                      "center",
+                    gap: 12,
+                    flexWrap:
+                      "wrap",
+                  }}
+                >
+                  <div>
+                    <h2
+                      style={{
+                        marginTop: 0,
+                      }}
+                    >
+                      Product Optimizer
+                    </h2>
+
+                    <p
+                      style={{
+                        color: "#666",
+                      }}
+                    >
+                      {selected.vendor}
+                    </p>
+                  </div>
+
+                  <div
+                    style={{
+                      display:
+                        "flex",
+                      gap: 8,
+                    }}
+                  >
+                    <button
+                      type="button"
+                      onClick={() =>
+                        void handleOptimize()
+                      }
+                      disabled={
+                        optimizing ||
+                        saving
+                      }
+                      style={{
+                        padding:
+                          "10px 16px",
+                        border: 0,
+                        borderRadius:
+                          8,
+                        background:
+                          "#111",
+                        color:
+                          "#fff",
+                        cursor:
+                          "pointer",
+                      }}
+                    >
+                      {optimizing
+                        ? "Optimizing..."
+                        : "AI Optimize"}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        void handleSave()
+                      }
+                      disabled={
+                        saving ||
+                        optimizing
+                      }
+                      style={{
+                        padding:
+                          "10px 16px",
+                        border:
+                          "1px solid #111",
+                        borderRadius:
+                          8,
+                        background:
+                          "#fff",
+                        color:
+                          "#111",
+                        cursor:
+                          "pointer",
+                      }}
+                    >
+                      {saving
+                        ? "Saving..."
+                        : "Save Product"}
+                    </button>
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    display:
+                      "grid",
+                    gap: 16,
+                    marginTop: 20,
+                  }}
+                >
+                  <Field
+                    label="Title"
+                    value={title}
+                    onChange={
+                      setTitle
+                    }
+                  />
+
+                  <Field
+                    label="Product Type"
+                    value={
+                      productType
+                    }
+                    onChange={
+                      setProductType
+                    }
+                  />
+
+                  <Field
+                    label="Tags"
+                    value={tags}
+                    onChange={
+                      setTags
+                    }
+                  />
+
+                  <div>
+                    <label
+                      style={{
+                        display:
+                          "block",
+                        fontWeight:
+                          600,
+                        marginBottom:
+                          6,
+                      }}
+                    >
+                      Description
+                    </label>
+
+                    <textarea
+                      value={
+                        description
+                      }
+                      onChange={(
+                        event,
+                      ) =>
+                        setDescription(
+                          event.target
+                            .value,
+                        )
+                      }
+                      rows={12}
+                      style={{
+                        width:
+                          "100%",
+                        boxSizing:
+                          "border-box",
+                        padding: 12,
+                        borderRadius:
+                          8,
+                        border:
+                          "1px solid #ccc",
+                        resize:
+                          "vertical",
+                      }}
+                    />
+                  </div>
+
+                  <Field
+                    label="SEO Title"
+                    value={
+                      seoTitle
+                    }
+                    onChange={
+                      setSeoTitle
+                    }
+                    maxLength={
+                      SEO_TITLE_MAX
+                    }
+                  />
+
+                  <Field
+                    label="Meta Description"
+                    value={
+                      metaDescription
+                    }
+                    onChange={
+                      setMetaDescription
+                    }
+                    maxLength={
+                      META_DESCRIPTION_MAX
+                    }
+                  />
+                </div>
+
+                {features.length >
+                  0 && (
+                  <div
+                    style={{
+                      marginTop: 20,
+                    }}
+                  >
+                    <h3>
+                      Features
+                    </h3>
+
+                    <ul>
+                      {features.map(
+                        (
+                          feature,
+                          index,
+                        ) => (
+                          <li
+                            key={`${feature}-${index}`}
+                          >
+                            {feature}
+                          </li>
+                        ),
+                      )}
+                    </ul>
+                  </div>
                 )}
-              </strong>
-            </div>
 
-            <div className="card trade-item">
-              <span>TAKE PROFIT 1</span>
-              <strong>
-                ${formatPrice(
-                  data.tradePlan.takeProfit1,
+                {specifications.length >
+                  0 && (
+                  <div
+                    style={{
+                      marginTop: 20,
+                    }}
+                  >
+                    <h3>
+                      Specifications
+                    </h3>
+
+                    <ul>
+                      {specifications.map(
+                        (
+                          specification,
+                          index,
+                        ) => (
+                          <li
+                            key={`${specification}-${index}`}
+                          >
+                            {specification}
+                          </li>
+                        ),
+                      )}
+                    </ul>
+                  </div>
                 )}
-              </strong>
-            </div>
 
-            <div className="card trade-item">
-              <span>TAKE PROFIT 2</span>
-              <strong>
-                ${formatPrice(
-                  data.tradePlan.takeProfit2,
+                {aiResult && (
+                  <div
+                    style={{
+                      marginTop: 24,
+                      padding: 16,
+                      borderRadius: 10,
+                      background:
+                        "#f7f7f8",
+                    }}
+                  >
+                    <h3>
+                      AI Analysis
+                    </h3>
+
+                    <p>
+                      <strong>
+                        Target Customer:
+                      </strong>{" "}
+                      {
+                        aiResult
+                          .analysis
+                          .targetCustomer
+                      }
+                    </p>
+
+                    <p>
+                      <strong>
+                        Purchase Motivation:
+                      </strong>{" "}
+                      {
+                        aiResult
+                          .analysis
+                          .purchaseMotivation
+                      }
+                    </p>
+
+                    <p>
+                      <strong>
+                        Overall Score:
+                      </strong>{" "}
+                      {
+                        aiResult
+                          .score
+                          .overall
+                      }
+                    </p>
+
+                    <p>
+                      <strong>
+                        Reasoning:
+                      </strong>{" "}
+                      {
+                        aiResult
+                          .reasoning
+                      }
+                    </p>
+                  </div>
                 )}
-              </strong>
-            </div>
-
-          </div>
+              </>
+            )}
+          </section>
         </section>
 
-        {/* SUPPORT / RESISTANCE */}
-        <section>
-          <h2>Key Levels</h2>
-
-          <div className="levels-grid">
-
-            <div className="card level-card">
-              <span>SUPPORT</span>
-              <strong>
-                ${formatPrice(
-                  primary.support,
-                )}
-              </strong>
-            </div>
-
-            <div className="card level-card">
-              <span>RESISTANCE</span>
-              <strong>
-                ${formatPrice(
-                  primary.resistance,
-                )}
-              </strong>
-            </div>
-
-          </div>
-        </section>
-
-        {/* LIQUIDATION HEATMAP */}
-        <section>
-          <h2>Liquidation Heatmap</h2>
-
-          <div className="card heatmap-card">
-            <div className="heatmap-status">
-              <span className="status-dot" />
-
-              <strong>
-                {data.liquidationHeatmap.status}
-              </strong>
-            </div>
-
-            <p>
-              {data.liquidationHeatmap.message}
-            </p>
-
-            <small>
-              No liquidation levels are
-              invented or estimated as live
-              data.
-            </small>
-          </div>
-        </section>
-
-        {/* RISK */}
-        <section>
-          <h2>Risk Management</h2>
-
-          <div className="card risk-card">
-            <div>
-              <span>Risk per trade</span>
-              <strong>
-                {data.riskManagement.riskPerTrade}
-              </strong>
-            </div>
-
-            <div>
-              <span>Stop loss</span>
-              <strong>
-                {data.riskManagement
-                  .stopLossRequired
-                  ? "Required"
-                  : "Optional"}
-              </strong>
-            </div>
-
-            <div>
-              <span>Leverage</span>
-              <strong>
-                {data.riskManagement.leverage}
-              </strong>
-            </div>
-          </div>
-        </section>
-
-        <footer>
-          BTCUSD analysis • Live API data •
-          Educational use only
-        </footer>
-
+        <p
+          style={{
+            marginTop: 24,
+            fontSize: 12,
+            color: "#777",
+          }}
+        >
+          Virello AI Optimizer uses live
+          API responses. API keys are
+          kept server-side and must not
+          be placed in this client file.
+        </p>
       </div>
-
-      <style jsx>{styles}</style>
     </main>
   );
 }
 
-const styles = `
-  .btc-page {
-    min-height: 100vh;
-    background: #07090d;
-    color: #f5f7fa;
-    padding: 30px 16px 60px;
-    font-family: Arial, sans-serif;
-  }
+function Field({
+  label,
+  value,
+  onChange,
+  maxLength,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  maxLength?: number;
+}) {
+  return (
+    <div>
+      <label
+        style={{
+          display: "block",
+          fontWeight: 600,
+          marginBottom: 6,
+        }}
+      >
+        {label}
+      </label>
 
-  .container {
-    max-width: 1100px;
-    margin: 0 auto;
-  }
+      <input
+        value={value}
+        maxLength={maxLength}
+        onChange={(event) =>
+          onChange(
+            event.target.value,
+          )
+        }
+        style={{
+          width: "100%",
+          boxSizing: "border-box",
+          padding: 12,
+          borderRadius: 8,
+          border: "1px solid #ccc",
+        }}
+      />
 
-  .header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 20px;
-    margin-bottom: 30px;
-  }
+      {maxLength !==
+        undefined && (
+        <div
+          style={{
+            marginTop: 4,
+            fontSize: 12,
+            color:
+              value.length >
+              maxLength
+                ? "#b91c1c"
+                : "#777",
+          }}
+        >
+          {value.length}/
+          {maxLength}
+        </div>
+      )}
+    </div>
+  );
+}
 
-  h1 {
-    margin: 8px 0 4px;
-    font-size: 42px;
-    letter-spacing: -1px;
-  }
+function Metric({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <div
+      style={{
+        padding: 14,
+        borderRadius: 10,
+        border: "1px solid #ddd",
+      }}
+    >
+      <div
+        style={{
+          fontSize: 12,
+          color: "#777",
+          marginBottom: 6,
+        }}
+      >
+        {label}
+      </div>
 
-  h2 {
-    margin: 34px 0 14px;
-    font-size: 21px;
-  }
-
-  h3 {
-    margin: 8px 0;
-  }
-
-  .subtitle {
-    color: #8d96a5;
-    margin: 0;
-  }
-
-  .live-label {
-    color: #55d68a;
-    font-size: 12px;
-    font-weight: 700;
-    letter-spacing: 1px;
-  }
-
-  .live-dot,
-  .status-dot {
-    display: inline-block;
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: #55d68a;
-    margin-right: 7px;
-  }
-
-  .refresh,
-  .btc-error button {
-    border: 1px solid #303744;
-    background: #11151d;
-    color: white;
-    padding: 11px 17px;
-    border-radius: 9px;
-    cursor: pointer;
-    font-weight: 600;
-  }
-
-  .refresh:disabled {
-    opacity: .5;
-  }
-
-  .hero-grid {
-    display: grid;
-    grid-template-columns: 1.5fr 1fr;
-    gap: 16px;
-  }
-
-  .card {
-    background: #0e1219;
-    border: 1px solid #252c37;
-    border-radius: 14px;
-    padding: 20px;
-  }
-
-  .label,
-  .trade-item span,
-  .level-card span,
-  .metrics span,
-  .risk-card span {
-    color: #7f8998;
-    font-size: 11px;
-    font-weight: 700;
-    letter-spacing: .7px;
-  }
-
-  .price {
-    font-size: 40px;
-    font-weight: 800;
-    margin-top: 12px;
-  }
-
-  .updated {
-    color: #747e8d;
-    font-size: 12px;
-    margin-top: 8px;
-  }
-
-  .signal {
-    font-size: 42px;
-    font-weight: 900;
-    margin-top: 10px;
-  }
-
-  .signal.long,
-  .bullish {
-    color: #55d68a;
-  }
-
-  .signal.short,
-  .bearish {
-    color: #ff6875;
-  }
-
-  .signal.wait,
-  .neutral {
-    color: #f1c75b;
-  }
-
-  .confidence {
-    color: #929ba9;
-    margin-top: 8px;
-  }
-
-  .timeframe-grid {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 16px;
-  }
-
-  .tf-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-  }
-
-  .tf-header h3 {
-    font-size: 22px;
-  }
-
-  .trend {
-    font-size: 10px;
-    font-weight: 800;
-    letter-spacing: .5px;
-  }
-
-  .tf-price {
-    font-size: 24px;
-    font-weight: 800;
-    margin: 15px 0;
-  }
-
-  .metrics {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 12px;
-  }
-
-  .metrics div {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-  }
-
-  .metrics strong {
-    font-size: 13px;
-  }
-
-  .wave-card {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 20px;
-  }
-
-  .wave-card p {
-    color: #9ba4b2;
-  }
-
-  .wave-confidence {
-    text-align: center;
-  }
-
-  .wave-confidence span {
-    display: block;
-    color: #7f8998;
-    font-size: 11px;
-  }
-
-  .wave-confidence strong {
-    display: block;
-    font-size: 30px;
-    margin-top: 6px;
-  }
-
-  .trade-grid {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 14px;
-  }
-
-  .trade-item strong {
-    display: block;
-    font-size: 19px;
-    margin-top: 10px;
-  }
-
-  .levels-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 16px;
-  }
-
-  .level-card strong {
-    display: block;
-    font-size: 25px;
-    margin-top: 8px;
-  }
-
-  .heatmap-status {
-    display: flex;
-    align-items: center;
-    margin-bottom: 12px;
-  }
-
-  .heatmap-status .status-dot {
-    background: #f1c75b;
-  }
-
-  .heatmap-card p {
-    color: #a6afbd;
-    line-height: 1.6;
-  }
-
-  .heatmap-card small {
-    color: #6f7887;
-  }
-
-  .risk-card {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 20px;
-  }
-
-  .risk-card div {
-    display: flex;
-    flex-direction: column;
-    gap: 7px;
-  }
-
-  footer {
-    color: #606a78;
-    text-align: center;
-    margin-top: 45px;
-    font-size: 12px;
-  }
-
-  .btc-loading,
-  .btc-error {
-    max-width: 600px;
-    margin: 120px auto;
-    text-align: center;
-  }
-
-  .btc-error p {
-    color: #ff6875;
-  }
-
-  .spinner {
-    width: 32px;
-    height: 32px;
-    border: 3px solid #29313d;
-    border-top-color: #55d68a;
-    border-radius: 50%;
-    margin: 0 auto 20px;
-    animation: spin 1s linear infinite;
-  }
-
-  @keyframes spin {
-    to {
-      transform: rotate(360deg);
-    }
-  }
-
-  @media (max-width: 800px) {
-    .hero-grid,
-    .timeframe-grid {
-      grid-template-columns: 1fr;
-    }
-
-    .trade-grid {
-      grid-template-columns: 1fr 1fr;
-    }
-
-    .risk-card {
-      grid-template-columns: 1fr;
-    }
-  }
-
-  @media (max-width: 500px) {
-    .btc-page {
-      padding: 20px 12px 45px;
-    }
-
-    .header {
-      align-items: flex-start;
-    }
-
-    h1 {
-      font-size: 34px;
-    }
-
-    .price,
-    .signal {
-      font-size: 32px;
-    }
-
-    .trade-grid,
-    .levels-grid {
-      grid-template-columns: 1fr;
-    }
-  }
-`;
+      <strong
+        style={{
+          fontSize: 18,
+        }}
+      >
+        {value}
+      </strong>
+    </div>
+  );
+}
