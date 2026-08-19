@@ -112,7 +112,11 @@ function TimeframeCard({
   return (
     <div className="timeframe-card">
       <div className="timeframe-title">
-        BTCUSDT {name}
+        import { redirect } from "next/navigation";
+
+export default function Home() {
+  redirect("/btcusd");
+}
       </div>
 
       <div className="price">
