@@ -69,14 +69,7 @@ type AIOptimization = {
   description: string;
   features: string[];
   specifications: string[];
-
-  /*
-   * AI MUST return a Product Type.
-   * No hard-coded classification is performed
-   * by the frontend.
-   */
   productType: string;
-
   seoTitle: string;
   metaDescription: string;
   tags: string[];
@@ -87,6 +80,73 @@ type AIResult = {
   score: AIScore;
   optimization: AIOptimization;
   reasoning: string;
+};
+
+/* =========================================================
+   LIVE BTCUSD TYPES
+========================================================= */
+
+type BTCElliottWave = {
+  wave: string;
+  bias: "BULLISH" | "BEARISH" | "NEUTRAL";
+  confidence: number;
+};
+
+type BTCTimeframe = {
+  price: number;
+  ema20: number;
+  ema50: number;
+  ema200: number;
+  rsi14: number;
+  atr14: number;
+  support: number;
+  resistance: number;
+  trend: "BULLISH" | "BEARISH" | "NEUTRAL";
+  elliottWave: BTCElliottWave;
+};
+
+type BTCAnalysis = {
+  success: boolean;
+  symbol: string;
+  generatedAt: string;
+  signal: "LONG" | "SHORT" | "WAIT";
+  confidence: number;
+
+  timeframes: {
+    "15m": BTCTimeframe;
+    "1h": BTCTimeframe;
+    "4h": BTCTimeframe;
+  };
+
+  tradePlan: {
+    entry: number;
+    stopLoss: number;
+    takeProfit1: number;
+    takeProfit2: number;
+  };
+
+  elliottWave: BTCElliottWave;
+
+  liquidationHeatmap: {
+    status: string;
+    message: string;
+  };
+
+  riskManagement?: {
+    riskPerTrade?: string;
+    stopLossRequired?: boolean;
+    leverage?: string;
+  };
+
+  analysis?: {
+    trend?: string;
+    rsi?: number;
+    support?: number;
+    resistance?: number;
+    ema20?: number;
+    ema50?: number;
+    ema200?: number;
+  };
 };
 
 /* =========================================================
@@ -246,6 +306,19 @@ export default function Page() {
     useState("");
 
   /* =======================================================
+     LIVE BTCUSD STATE
+  ======================================================= */
+
+  const [btcAnalysis, setBtcAnalysis] =
+    useState<BTCAnalysis | null>(null);
+
+  const [btcLoading, setBtcLoading] =
+    useState(false);
+
+  const [btcError, setBtcError] =
+    useState("");
+
+  /* =======================================================
      SHOPIFY SESSION TOKEN
   ======================================================= */
 
@@ -339,6 +412,62 @@ export default function Page() {
 
   useEffect(() => {
     void loadProducts();
+  }, []);
+
+  /* =======================================================
+     LIVE BTCUSD ANALYSIS
+  ======================================================= */
+
+  async function loadBTCAnalysis() {
+    setBtcLoading(true);
+    setBtcError("");
+
+    try {
+      const response = await fetch(
+        "/api/btcusd",
+        {
+          method: "GET",
+          cache: "no-store",
+        },
+      );
+
+      const data =
+        (await response.json()) as BTCAnalysis & {
+          error?: string;
+        };
+
+      if (
+        !response.ok ||
+        !data.success
+      ) {
+        throw new Error(
+          data.error ||
+            "BTCUSD live analysis failed.",
+        );
+      }
+
+      setBtcAnalysis(data);
+    } catch (err) {
+      setBtcError(
+        err instanceof Error
+          ? err.message
+          : "BTCUSD live analysis failed.",
+      );
+    } finally {
+      setBtcLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void loadBTCAnalysis();
+
+    const interval =
+      window.setInterval(() => {
+        void loadBTCAnalysis();
+      }, 30000);
+
+    return () =>
+      window.clearInterval(interval);
   }, []);
 
   /* =======================================================
@@ -444,14 +573,6 @@ export default function Page() {
       const token =
         await getSessionToken();
 
-      /*
-       * ACTUAL SHOPIFY PRODUCT DATA
-       *
-       * No frontend classification.
-       * No gender guessing.
-       * No product-type guessing.
-       */
-
       const productPayload = {
         ...selected,
 
@@ -521,21 +642,8 @@ export default function Page() {
                 productPayload,
 
               instructions: {
-                /*
-                 * SOURCE OF TRUTH
-                 */
-
                 sourceOfTruth:
                   "Use the supplied Shopify product data as the source of truth.",
-
-                /*
-                 * PRODUCT TYPE
-                 *
-                 * AI determines it from the
-                 * actual product information.
-                 *
-                 * No hard-coded frontend rule.
-                 */
 
                 determineProductTypeWithAI:
                   true,
@@ -546,19 +654,11 @@ export default function Page() {
                 productTypeMustNotBeBlank:
                   true,
 
-                /*
-                 * AUDIENCE
-                 */
-
                 determineAudienceWithAI:
                   true,
 
                 doNotAssumeGender:
                   true,
-
-                /*
-                 * CONTENT
-                 */
 
                 rewriteExistingInformation:
                   true,
@@ -568,10 +668,6 @@ export default function Page() {
 
                 improveSEO:
                   true,
-
-                /*
-                 * FACTUAL ACCURACY
-                 */
 
                 doNotInventFacts:
                   true,
@@ -585,10 +681,6 @@ export default function Page() {
                 preserveAccurateProductFacts:
                   true,
 
-                /*
-                 * SEO LIMITS
-                 */
-
                 seoTitleMaximumCharacters:
                   SEO_TITLE_MAX,
 
@@ -600,10 +692,6 @@ export default function Page() {
 
                 metaDescriptionMustFitLimit:
                   true,
-
-                /*
-                 * OUTPUT QUALITY
-                 */
 
                 avoidKeywordStuffing:
                   true,
@@ -655,13 +743,6 @@ export default function Page() {
       const optimization =
         result.optimization;
 
-      /* ===================================================
-         PRODUCT TYPE
-         
-         AI must return this.
-         We do NOT classify it here.
-      =================================================== */
-
       const normalizedProductType =
         clean(
           optimization.productType,
@@ -672,10 +753,6 @@ export default function Page() {
           "Virello AI did not return a Product Type. The AI backend must return a valid Product Type based on the actual Shopify product data.",
         );
       }
-
-      /* ===================================================
-         NORMALIZE AI OUTPUT
-      =================================================== */
 
       const normalizedTitle =
         clean(
@@ -714,21 +791,11 @@ export default function Page() {
             : [],
         );
 
-      /*
-       * SEO TITLE
-       * Maximum 60 characters.
-       */
-
       const normalizedSeoTitle =
         limitCharacters(
           optimization.seoTitle,
           SEO_TITLE_MAX,
         );
-
-      /*
-       * META DESCRIPTION
-       * Maximum 160 characters.
-       */
 
       const normalizedMetaDescription =
         limitCharacters(
@@ -776,11 +843,6 @@ export default function Page() {
       setTitle(
         normalizedTitle,
       );
-
-      /*
-       * Product Type comes directly
-       * from AI.
-       */
 
       setProductType(
         normalizedProductType,
@@ -1437,6 +1499,47 @@ export default function Page() {
           line-height: 1.5;
         }
 
+        .btc-card {
+          grid-column: 1 / -1;
+        }
+
+        .btc-price {
+          font-size: 28px;
+          font-weight: 800;
+          margin: 0;
+        }
+
+        .btc-signal {
+          font-size: 28px;
+          font-weight: 800;
+          margin: 0 0 6px;
+        }
+
+        .btc-timeframe {
+          font-size: 18px;
+          font-weight: 800;
+          margin-bottom: 13px;
+        }
+
+        .btc-plan-value {
+          font-size: 22px;
+          font-weight: 800;
+          margin: 0;
+        }
+
+        .btc-neutral {
+          color: #555;
+        }
+
+        .btc-live-dot {
+          display: inline-block;
+          width: 8px;
+          height: 8px;
+          border-radius: 50%;
+          background: #2d9b4b;
+          margin-right: 6px;
+        }
+
         @media (max-width: 950px) {
           .container {
             grid-template-columns: 1fr;
@@ -1444,6 +1547,10 @@ export default function Page() {
 
           .products {
             max-height: 300px;
+          }
+
+          .btc-card {
+            grid-column: auto;
           }
         }
 
@@ -1522,6 +1629,373 @@ export default function Page() {
       <div className="container">
 
         {/* =================================================
+            LIVE BTCUSD DASHBOARD
+        ================================================= */}
+
+        <section className="card btc-card">
+          <div className="editor">
+
+            <div className="editor-head">
+              <div>
+                <div className="ai-badge">
+                  <span className="btc-live-dot" />
+                  LIVE BTCUSD AI
+                </div>
+
+                <h1>
+                  Bitcoin Market Analysis
+                </h1>
+
+                <div className="subtitle">
+                  Live BTCUSDT market data from
+                  the Virello AI backend.
+                  Automatically refreshed every
+                  30 seconds.
+                </div>
+              </div>
+
+              <div className="actions">
+                <button
+                  type="button"
+                  className="button primary"
+                  disabled={btcLoading}
+                  onClick={() =>
+                    void loadBTCAnalysis()
+                  }
+                >
+                  {btcLoading
+                    ? "Updating..."
+                    : "Refresh BTCUSD"}
+                </button>
+              </div>
+            </div>
+
+            {btcError && (
+              <div className="notice error">
+                {btcError}
+              </div>
+            )}
+
+            {btcLoading &&
+              !btcAnalysis && (
+                <div className="empty">
+                  Loading live BTCUSD
+                  analysis...
+                </div>
+              )}
+
+            {btcAnalysis && (
+              <>
+                <div className="analysis-grid">
+
+                  <div className="analysis-card">
+                    <h3>
+                      Current BTC Price
+                    </h3>
+
+                    <p className="btc-price">
+                      $
+                      {btcAnalysis.timeframes[
+                        "1h"
+                      ].price.toLocaleString()}
+                    </p>
+                  </div>
+
+                  <div className="analysis-card">
+                    <h3>
+                      Current Signal
+                    </h3>
+
+                    <p className="btc-signal">
+                      {btcAnalysis.signal}
+                    </p>
+
+                    <p>
+                      Confidence:{" "}
+                      {btcAnalysis.confidence}
+                      %
+                    </p>
+                  </div>
+
+                  <div className="analysis-card">
+                    <h3>
+                      Elliott Wave
+                    </h3>
+
+                    <p>
+                      {
+                        btcAnalysis
+                          .elliottWave.wave
+                      }
+                    </p>
+
+                    <p>
+                      Bias:{" "}
+                      {
+                        btcAnalysis
+                          .elliottWave.bias
+                      }{" "}
+                      · Confidence:{" "}
+                      {
+                        btcAnalysis
+                          .elliottWave
+                          .confidence
+                      }
+                      %
+                    </p>
+                  </div>
+
+                  <div className="analysis-card">
+                    <h3>
+                      Liquidation Heatmap
+                    </h3>
+
+                    <p>
+                      {
+                        btcAnalysis
+                          .liquidationHeatmap
+                          .message
+                      }
+                    </p>
+                  </div>
+
+                </div>
+
+                {/* =========================================
+                    MULTI-TIMEFRAME
+                ========================================= */}
+
+                <div className="section">
+
+                  <div className="section-title">
+                    Multi-Timeframe Analysis
+                  </div>
+
+                  <div className="details-grid">
+
+                    {(
+                      [
+                        "15m",
+                        "1h",
+                        "4h",
+                      ] as const
+                    ).map(
+                      (timeframe) => {
+                        const data =
+                          btcAnalysis
+                            .timeframes[
+                              timeframe
+                            ];
+
+                        return (
+                          <div
+                            className="detail-card"
+                            key={
+                              timeframe
+                            }
+                          >
+                            <div className="btc-timeframe">
+                              {timeframe}
+                            </div>
+
+                            <ul className="detail-list">
+
+                              <li>
+                                Price: $
+                                {data.price.toLocaleString()}
+                              </li>
+
+                              <li>
+                                Trend:{" "}
+                                {data.trend}
+                              </li>
+
+                              <li>
+                                RSI 14:{" "}
+                                {data.rsi14}
+                              </li>
+
+                              <li>
+                                EMA 20:{" "}
+                                {data.ema20.toLocaleString()}
+                              </li>
+
+                              <li>
+                                EMA 50:{" "}
+                                {data.ema50.toLocaleString()}
+                              </li>
+
+                              <li>
+                                EMA 200:{" "}
+                                {data.ema200.toLocaleString()}
+                              </li>
+
+                              <li>
+                                ATR 14:{" "}
+                                {data.atr14.toLocaleString()}
+                              </li>
+
+                              <li>
+                                Support: $
+                                {data.support.toLocaleString()}
+                              </li>
+
+                              <li>
+                                Resistance: $
+                                {data.resistance.toLocaleString()}
+                              </li>
+
+                              <li>
+                                Elliott Wave:{" "}
+                                {
+                                  data
+                                    .elliottWave
+                                    .wave
+                                }
+                              </li>
+
+                            </ul>
+                          </div>
+                        );
+                      },
+                    )}
+
+                  </div>
+                </div>
+
+                {/* =========================================
+                    TRADE PLAN
+                ========================================= */}
+
+                <div className="section">
+
+                  <div className="section-title">
+                    Trade Plan
+                  </div>
+
+                  <div className="details-grid">
+
+                    <div className="detail-card">
+                      <div className="detail-title">
+                        Entry
+                      </div>
+
+                      <p className="btc-plan-value">
+                        $
+                        {btcAnalysis.tradePlan.entry.toLocaleString()}
+                      </p>
+                    </div>
+
+                    <div className="detail-card">
+                      <div className="detail-title">
+                        Stop Loss
+                      </div>
+
+                      <p className="btc-plan-value">
+                        $
+                        {btcAnalysis.tradePlan.stopLoss.toLocaleString()}
+                      </p>
+                    </div>
+
+                    <div className="detail-card">
+                      <div className="detail-title">
+                        Take Profit 1
+                      </div>
+
+                      <p className="btc-plan-value">
+                        $
+                        {btcAnalysis.tradePlan.takeProfit1.toLocaleString()}
+                      </p>
+                    </div>
+
+                    <div className="detail-card">
+                      <div className="detail-title">
+                        Take Profit 2
+                      </div>
+
+                      <p className="btc-plan-value">
+                        $
+                        {btcAnalysis.tradePlan.takeProfit2.toLocaleString()}
+                      </p>
+                    </div>
+
+                  </div>
+                </div>
+
+                {/* =========================================
+                    RISK MANAGEMENT
+                ========================================= */}
+
+                {btcAnalysis.riskManagement && (
+                  <div className="section">
+
+                    <div className="section-title">
+                      Risk Management
+                    </div>
+
+                    <div className="analysis-grid">
+
+                      <div className="analysis-card">
+                        <h3>
+                          Risk Per Trade
+                        </h3>
+
+                        <p>
+                          {
+                            btcAnalysis
+                              .riskManagement
+                              .riskPerTrade
+                          }
+                        </p>
+                      </div>
+
+                      <div className="analysis-card">
+                        <h3>
+                          Stop Loss
+                        </h3>
+
+                        <p>
+                          {
+                            btcAnalysis
+                              .riskManagement
+                              .stopLossRequired
+                              ? "Required"
+                              : "Not specified"
+                          }
+                        </p>
+                      </div>
+
+                      <div className="analysis-card">
+                        <h3>
+                          Leverage
+                        </h3>
+
+                        <p>
+                          {
+                            btcAnalysis
+                              .riskManagement
+                              .leverage
+                          }
+                        </p>
+                      </div>
+
+                    </div>
+                  </div>
+                )}
+
+                <div className="small-note">
+                  Last updated:{" "}
+                  {new Date(
+                    btcAnalysis.generatedAt,
+                  ).toLocaleString()}
+                </div>
+              </>
+            )}
+
+          </div>
+        </section>
+
+        {/* =================================================
             PRODUCTS
         ================================================= */}
 
@@ -1589,7 +2063,7 @@ export default function Page() {
         </aside>
 
         {/* =================================================
-            EDITOR
+            SHOPIFY PRODUCT EDITOR
         ================================================= */}
 
         <section className="card">
@@ -1679,8 +2153,6 @@ export default function Page() {
                   />
                 )}
 
-                {/* AI SOURCE */}
-
                 <div className="ai-fact">
                   <strong>
                     AI Source
@@ -1699,8 +2171,6 @@ export default function Page() {
                   </span>
                 </div>
 
-                {/* TITLE */}
-
                 <div className="field">
                   <label>
                     Product Title
@@ -1716,8 +2186,6 @@ export default function Page() {
                     }
                   />
                 </div>
-
-                {/* PRODUCT TYPE */}
 
                 <div className="field">
                   <label>
@@ -1744,8 +2212,6 @@ export default function Page() {
                   </div>
                 </div>
 
-                {/* TAGS */}
-
                 <div className="field">
                   <label>
                     Tags
@@ -1762,8 +2228,6 @@ export default function Page() {
                     placeholder="AI-generated tags"
                   />
                 </div>
-
-                {/* DESCRIPTION */}
 
                 <div className="field">
                   <label>
@@ -1784,8 +2248,6 @@ export default function Page() {
                     placeholder="AI-generated conversion-focused description..."
                   />
                 </div>
-
-                {/* FEATURES / SPECIFICATIONS */}
 
                 <div className="section">
                   <div className="section-title">
@@ -1860,8 +2322,6 @@ export default function Page() {
                   </div>
                 </div>
 
-                {/* SEO */}
-
                 <div className="section">
                   <div className="section-title">
                     Google SEO
@@ -1929,8 +2389,6 @@ export default function Page() {
                     </div>
                   </div>
                 </div>
-
-                {/* AI RESULT */}
 
                 {aiResult && (
                   <div className="section">
@@ -2019,8 +2477,6 @@ export default function Page() {
                       </div>
 
                     </div>
-
-                    {/* AI CLASSIFICATION */}
 
                     <div className="analysis-grid">
 
