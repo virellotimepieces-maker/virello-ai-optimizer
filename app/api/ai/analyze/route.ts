@@ -158,17 +158,14 @@ function normalizeResult(raw: unknown): AIResult {
       specifications: cleanArray(
         optimization.specifications
       ),
-
       seoTitle: limitCharacters(
         cleanText(optimization.seoTitle),
         50
       ),
-
       metaDescription: limitCharacters(
         cleanText(optimization.metaDescription),
         150
       ),
-
       tags: cleanArray(optimization.tags),
     },
 
@@ -328,6 +325,42 @@ const AI_SCHEMA = {
   ],
 };
 
+function extractResponseText(responseData: any): string {
+  if (
+    typeof responseData?.output_text === "string" &&
+    responseData.output_text.trim()
+  ) {
+    return responseData.output_text.trim();
+  }
+
+  const output = Array.isArray(responseData?.output)
+    ? responseData.output
+    : [];
+
+  const parts: string[] = [];
+
+  for (const item of output) {
+    if (!item || typeof item !== "object") continue;
+
+    const content = Array.isArray(item.content)
+      ? item.content
+      : [];
+
+    for (const part of content) {
+      if (
+        part &&
+        typeof part === "object" &&
+        typeof part.text === "string" &&
+        part.text.trim()
+      ) {
+        parts.push(part.text.trim());
+      }
+    }
+  }
+
+  return parts.join("\n").trim();
+}
+
 export async function POST(
   request: NextRequest
 ) {
@@ -475,7 +508,7 @@ REASONING:
 Briefly explain the most important optimization
 decisions.
 
-Return the exact requested structured format.
+Return only the requested structured data.
 `.trim();
 
     const userPrompt = `
@@ -541,10 +574,6 @@ Only use information supported by the product data.
       await response.json();
 
     if (!response.ok) {
-      const apiError =
-        responseData?.error?.message ||
-        "OpenAI API request failed.";
-
       console.error(
         "OpenAI API error:",
         JSON.stringify(
@@ -556,7 +585,9 @@ Only use information supported by the product data.
 
       return NextResponse.json(
         {
-          error: apiError,
+          error:
+            responseData?.error?.message ||
+            "OpenAI API request failed.",
         },
         {
           status:
@@ -566,14 +597,11 @@ Only use information supported by the product data.
     }
 
     const outputText =
-      typeof responseData?.output_text ===
-      "string"
-        ? responseData.output_text.trim()
-        : "";
+      extractResponseText(responseData);
 
     if (!outputText) {
       console.error(
-        "OpenAI returned no output_text:",
+        "OpenAI returned no readable text:",
         JSON.stringify(
           responseData,
           null,
@@ -584,11 +612,10 @@ Only use information supported by the product data.
       return NextResponse.json(
         {
           error:
-            responseData?.error
-              ?.message ||
             responseData?.incomplete_details
               ?.reason ||
-            "The AI returned no text output.",
+            responseData?.error?.message ||
+            "The AI returned no readable text output.",
         },
         { status: 502 }
       );
