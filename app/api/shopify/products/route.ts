@@ -47,6 +47,72 @@ function getShop(request: NextRequest, token: string) {
   }
 }
 
+async function exchangeToken(
+  shop: string,
+  idToken: string
+) {
+  const apiKey = process.env.SHOPIFY_API_KEY;
+  const apiSecret = process.env.SHOPIFY_API_SECRET;
+
+  if (!apiKey || !apiSecret) {
+    throw new Error(
+      "SHOPIFY_API_KEY or SHOPIFY_API_SECRET is missing in Vercel."
+    );
+  }
+
+  const response = await fetch(
+    `https://${shop}/admin/oauth/access_token`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type":
+          "application/x-www-form-urlencoded",
+      },
+      body: new URLSearchParams({
+        client_id: apiKey,
+        client_secret: apiSecret,
+        grant_type:
+          "urn:ietf:params:oauth:grant-type:token-exchange",
+        subject_token: idToken,
+        subject_token_type:
+          "urn:ietf:params:oauth:token-type:id_token",
+        requested_token_type:
+          "urn:shopify:params:oauth:token-type:online-access-token",
+      }).toString(),
+      cache: "no-store",
+    }
+  );
+
+  const text = await response.text();
+
+  let data: any;
+
+  try {
+    data = JSON.parse(text);
+  } catch {
+    throw new Error(
+      `Shopify token exchange returned non-JSON response (${response.status}).`
+    );
+  }
+
+  if (!response.ok) {
+    throw new Error(
+      data?.error_description ||
+        data?.error ||
+        data?.errors?.[0]?.message ||
+        `Shopify token exchange failed (${response.status}).`
+    );
+  }
+
+  if (!data?.access_token) {
+    throw new Error(
+      "Shopify did not return an Admin API access token."
+    );
+  }
+
+  return data.access_token as string;
+}
+
 async function shopifyGraphQL(
   shop: string,
   accessToken: string
@@ -71,15 +137,18 @@ async function shopifyGraphQL(
                 tags
                 status
                 vendor
+
                 featuredImage {
                   url
                   altText
                 }
+
                 variants(first: 1) {
                   nodes {
                     price
                   }
                 }
+
                 images(first: 20) {
                   nodes {
                     url
@@ -133,7 +202,8 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(
         {
           success: false,
-          error: "Shopify session token is missing.",
+          error:
+            "Shopify session token is missing. Open Virello from Shopify Admin.",
         },
         { status: 401 }
       );
@@ -145,27 +215,17 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(
         {
           success: false,
-          error: "Shopify store could not be determined.",
+          error:
+            "Shopify store could not be determined.",
         },
         { status: 400 }
       );
     }
 
-    const accessToken =
-      process.env.SHOPIFY_ADMIN_ACCESS_TOKEN ||
-      process.env.SHOPIFY_ACCESS_TOKEN ||
-      "";
-
-    if (!accessToken) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "SHOPIFY_ADMIN_ACCESS_TOKEN is not configured in Vercel.",
-        },
-        { status: 500 }
-      );
-    }
+    const accessToken = await exchangeToken(
+      shop,
+      token
+    );
 
     const products = await shopifyGraphQL(
       shop,
