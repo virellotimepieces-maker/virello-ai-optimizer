@@ -1,5 +1,5 @@
 name = "virello-ai-optimizer"
-client_id = 885a477c17e533b5273f3100fdafcc93 
+client_id = "885a477c17e533b5273f3100fdafcc93"
 application_url = "https://virello-ai-optimizer.vercel.app"
 embedded = true
 
