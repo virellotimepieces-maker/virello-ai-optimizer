@@ -664,9 +664,11 @@ Only use information supported by the product data.
     const result =
       normalizeResult(parsed);
 
-    return NextResponse.json(
-      result
-    );
+    return NextResponse.json({
+      success: true,
+      result,
+    });
+
   } catch (error) {
     console.error(
       "Virello AI Optimizer error:",
