@@ -5,3 +5,14 @@ embedded = true
 
 [access_scopes]
 scopes = "read_products,write_products"
+
+[webhooks]
+api_version = "2026-07"
+
+[[webhooks.subscriptions]]
+uri = "/api/webhooks"
+compliance_topics = [
+  "customers/data_request",
+  "customers/redact",
+  "shop/redact"
+]
