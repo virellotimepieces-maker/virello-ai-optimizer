@@ -30,7 +30,6 @@ function verifyShopifyHmac(
 
 export async function POST(request: NextRequest) {
   try {
-    // Shopify sends the webhook as JSON.
     const contentType = request.headers.get("content-type") || "";
 
     if (!contentType.toLowerCase().includes("application/json")) {
@@ -40,18 +39,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // IMPORTANT: Read the raw body before parsing JSON.
-    // HMAC must be calculated from the exact raw request body.
     const body = await request.text();
 
     const hmac = request.headers.get("x-shopify-hmac-sha256");
 
-    // Verify Shopify's HMAC signature.
     if (!verifyShopifyHmac(body, hmac)) {
       console.error("Invalid Shopify webhook HMAC");
+
       return NextResponse.json(
         { success: false, error: "Invalid webhook signature" },
-        { status: 401 }
+        { status: 400 }
       );
     }
 
@@ -79,36 +76,26 @@ export async function POST(request: NextRequest) {
 
     switch (topic) {
       case "customers/data_request":
-        console.log(
-          "Customer data request received.",
-          payload
-        );
+        console.log("Customer data request received.", payload);
         break;
 
       case "customers/redact":
-        console.log(
-          "Customer redact request received.",
-          payload
-        );
+        console.log("Customer redact request received.", payload);
         break;
 
       case "shop/redact":
-        console.log(
-          "Shop redact request received.",
-          payload
-        );
+        console.log("Shop redact request received.", payload);
         break;
 
       default:
-        console.log(
-          "Unhandled Shopify webhook topic:",
-          topic
-        );
+        console.log("Unhandled Shopify webhook topic:", topic);
         break;
     }
 
-    // Shopify requires a successful 2xx response.
-    return NextResponse.json({ success: true }, { status: 200 });
+    return NextResponse.json(
+      { success: true },
+      { status: 200 }
+    );
   } catch (error) {
     console.error("SHOPIFY_WEBHOOK_ERROR:", error);
 
