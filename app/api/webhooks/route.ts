@@ -30,19 +30,10 @@ function verifyShopifyHmac(
 
 export async function POST(request: NextRequest) {
   try {
-    const contentType = request.headers.get("content-type") || "";
-
-    if (!contentType.toLowerCase().includes("application/json")) {
-      return NextResponse.json(
-        { success: false, error: "Invalid content type" },
-        { status: 400 }
-      );
-    }
-
     const body = await request.text();
-
     const hmac = request.headers.get("x-shopify-hmac-sha256");
 
+    // Dito chini-check ang HMAC verification para sa Shopify security
     if (!verifyShopifyHmac(body, hmac)) {
       console.error("Invalid Shopify webhook HMAC");
 
@@ -74,6 +65,7 @@ export async function POST(request: NextRequest) {
       shop,
     });
 
+    // Pag-handle sa tatlong mandatory compliance webhooks
     switch (topic) {
       case "customers/data_request":
         console.log("Customer data request received.", payload);
@@ -92,6 +84,7 @@ export async function POST(request: NextRequest) {
         break;
     }
 
+    // Napakahalaga: Kailangan magbalik ng 200 OK para pumasa sa Shopify
     return NextResponse.json(
       { success: true },
       { status: 200 }
