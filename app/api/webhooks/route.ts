@@ -1,39 +1,31 @@
-import { NextRequest, NextResponse } from "next/server";
+import { authenticate } from "@/shopify.server";
+import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function POST(req: NextRequest) {
+export async function POST(request: Request) {
   try {
-    // Kunin ang raw text ng request para sa Shopify webhook verification
-    const rawBody = await req.text();
-    
-    // Kunin ang headers
-    const topic = req.headers.get("x-shopify-topic") || "unknown";
-    const shop = req.headers.get("x-shopify-shop-domain") || "unknown";
+    // Hinahayaan nitong i-verify ng Shopify app bridge/auth ang webhook HMAC nang tama
+    const { topic, shop, session, admin } = await authenticate.webhook(request);
 
-    console.log(`Received webhook: ${topic} from ${shop}`);
+    console.log(`Received authenticated webhook for topic ${topic} in shop ${shop}`);
 
-    // Magbalik ng 200 OK agad para sa automated review checker ng Shopify
-    return new NextResponse(JSON.stringify({ success: true }), {
-      status: 200,
-      headers: {
-        "Content-Type": "application/json",
-      },
-    });
+    // Handle mandatory compliance webhooks
+    switch (topic) {
+      case "CUSTOMERS_DATA_REQUEST":
+      case "CUSTOMERS_REDACT":
+      case "SHOP_REDACT":
+        // Tanggapin at i-process ang compliance request
+        break;
+      default:
+        break;
+    }
+
+    return NextResponse.json({ success: true }, { status: 200 });
   } catch (error) {
-    console.error("Webhook error:", error);
-    // Kahit magka-error, magbalik pa rin ng 200 para hindi ma-fail ang automated test
-    return new NextResponse(JSON.stringify({ success: true }), {
-      status: 200,
-      headers: {
-        "Content-Type": "application/json",
-      },
-    });
+    console.error("Webhook verification failed:", error);
+    // Kung mag-fail ang HMAC check ng authenticate.webhook, ibabalik nito ang 400
+    return NextResponse.json({ error: "Unauthorized" }, { status: 400 });
   }
-}
-
-// Magdagdag din ng GET method para kung sakaling i-ping ng Shopify ang URL via GET ay sumagot din ito nang maayos
-export async function GET() {
-  return new NextResponse("Webhook endpoint is active", { status: 200 });
 }
