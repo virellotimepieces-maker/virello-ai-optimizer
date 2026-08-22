@@ -1,18 +1,23 @@
 name = "virello-ai-optimizer"
-client_id = "885a477c17e533b5273f3100fdafcc93"
+client_id = "8854477c17e533b5273f3100df4cfc93"
 application_url = "https://virello-ai-optimizer.vercel.app"
 embedded = true
 
 [access_scopes]
 scopes = "read_products,write_products"
 
+[auth]
+redirect_urls = [
+  "https://virello-ai-optimizer.vercel.app/api/auth/callback"
+]
+
 [webhooks]
 api_version = "2026-07"
 
 [[webhooks.subscriptions]]
-uri = "/api/webhooks"
 compliance_topics = [
   "customers/data_request",
   "customers/redact",
   "shop/redact"
 ]
+uri = "/api/webhooks"
