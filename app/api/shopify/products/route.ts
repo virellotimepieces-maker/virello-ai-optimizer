@@ -2,6 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 
 const SHOPIFY_API_VERSION = "2026-07";
 
+class InvalidShopifySessionError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "InvalidShopifySessionError";
+  }
+}
+
 function getToken(request: NextRequest) {
   return (
     request.headers
@@ -90,8 +97,22 @@ async function exchangeToken(
   try {
     data = JSON.parse(text);
   } catch {
+    if (response.status === 400) {
+      throw new InvalidShopifySessionError(
+        "Invalid or expired Shopify session token."
+      );
+    }
+
     throw new Error(
       `Shopify token exchange returned non-JSON response (${response.status}).`
+    );
+  }
+
+  if (response.status === 400) {
+    throw new InvalidShopifySessionError(
+      data?.error_description ||
+        data?.error ||
+        "Invalid or expired Shopify session token."
     );
   }
 
@@ -205,7 +226,12 @@ export async function GET(request: NextRequest) {
           error:
             "Shopify session token is missing. Open Virello from Shopify Admin.",
         },
-        { status: 401 }
+        {
+          status: 401,
+          headers: {
+            "X-Shopify-Retry-Invalid-Session-Request": "1",
+          },
+        }
       );
     }
 
@@ -222,10 +248,36 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const accessToken = await exchangeToken(
-      shop,
-      token
-    );
+    let accessToken: string;
+
+    try {
+      accessToken = await exchangeToken(
+        shop,
+        token
+      );
+    } catch (error) {
+      if (
+        error instanceof InvalidShopifySessionError
+      ) {
+        return NextResponse.json(
+          {
+            success: false,
+            error:
+              error.message ||
+              "Invalid or expired Shopify session token.",
+          },
+          {
+            status: 401,
+            headers: {
+              "X-Shopify-Retry-Invalid-Session-Request":
+                "1",
+            },
+          }
+        );
+      }
+
+      throw error;
+    }
 
     const products = await shopifyGraphQL(
       shop,
@@ -245,11 +297,14 @@ export async function GET(request: NextRequest) {
         vendor: product.vendor || "",
         price:
           product.variants?.nodes?.[0]?.price || "",
-        images: Array.isArray(product.images?.nodes)
+        images: Array.isArray(
+          product.images?.nodes
+        )
           ? product.images.nodes.map(
               (image: any) => ({
                 url: image.url,
-                altText: image.altText || null,
+                altText:
+                  image.altText || null,
               })
             )
           : [],
