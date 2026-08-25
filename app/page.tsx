@@ -1,6 +1,4 @@
 async function optimize() {
-  // Product title only is required.
-  // All other product information is optional.
   if (!title.trim()) {
     setError("Enter a product title first.");
     return;
