@@ -174,7 +174,9 @@ function normalizeResult(
         cleanText(analysis.targetCustomer),
 
       purchaseMotivation:
-        cleanText(analysis.purchaseMotivation),
+        cleanText(
+          analysis.purchaseMotivation
+        ),
 
       strongestFeatures:
         cleanArray(
@@ -182,7 +184,9 @@ function normalizeResult(
         ),
 
       weaknesses:
-        cleanArray(analysis.weaknesses),
+        cleanArray(
+          analysis.weaknesses
+        ),
 
       missingInformation:
         cleanArray(
@@ -201,23 +205,36 @@ function normalizeResult(
     },
 
     score: {
-      title: clampScore(score.title),
-      description: clampScore(
-        score.description
-      ),
-      seo: clampScore(score.seo),
+      title:
+        clampScore(score.title),
+
+      description:
+        clampScore(
+          score.description
+        ),
+
+      seo:
+        clampScore(score.seo),
+
       productClarity:
-        clampScore(score.productClarity),
+        clampScore(
+          score.productClarity
+        ),
+
       conversionPotential:
         clampScore(
           score.conversionPotential
         ),
+
       overall:
         clampScore(score.overall),
     },
 
     optimization: {
-      title: cleanText(optimization.title),
+      title:
+        cleanText(
+          optimization.title
+        ),
 
       productType:
         cleanText(
@@ -256,11 +273,15 @@ function normalizeResult(
         ),
 
       tags:
-        cleanArray(optimization.tags),
+        cleanArray(
+          optimization.tags
+        ),
     },
 
     reasoning:
-      cleanText(data.reasoning),
+      cleanText(
+        data.reasoning
+      ),
   };
 }
 
@@ -444,12 +465,22 @@ const AI_SCHEMA = {
 function parseModelOutput(
   value: string
 ): unknown {
-  const cleaned = value
-    .trim()
-    .replace(/^```json\s*/i, "")
-    .replace(/^```\s*/i, "")
-    .replace(/\s*```$/i, "")
-    .trim();
+  const cleaned =
+    value
+      .trim()
+      .replace(
+        /^```json\s*/i,
+        ""
+      )
+      .replace(
+        /^```\s*/i,
+        ""
+      )
+      .replace(
+        /\s*```$/i,
+        ""
+      )
+      .trim();
 
   if (!cleaned) {
     throw new Error(
@@ -473,7 +504,9 @@ export async function POST(
           error:
             "OPENAI_API_KEY is not configured in the server environment.",
         },
-        { status: 500 }
+        {
+          status: 500,
+        }
       );
     }
 
@@ -496,7 +529,9 @@ export async function POST(
           error:
             "Product title is required for AI optimization.",
         },
-        { status: 400 }
+        {
+          status: 400,
+        }
       );
     }
 
@@ -505,25 +540,40 @@ export async function POST(
       inferAudience(product);
 
     const productPayload = {
-      id: cleanText(product.id),
+      id:
+        cleanText(
+          product.id
+        ),
 
       title:
-        cleanText(product.title),
+        cleanText(
+          product.title
+        ),
 
       description:
-        cleanText(product.description),
+        cleanText(
+          product.description
+        ),
 
       productType:
-        cleanText(product.productType),
+        cleanText(
+          product.productType
+        ),
 
       vendor:
-        cleanText(product.vendor),
+        cleanText(
+          product.vendor
+        ),
 
       tags:
-        cleanArray(product.tags),
+        cleanArray(
+          product.tags
+        ),
 
       price:
-        cleanText(product.price),
+        cleanText(
+          product.price
+        ),
 
       audience,
 
@@ -553,47 +603,52 @@ export async function POST(
     const systemPrompt = `
 You are Virello AI Optimizer.
 
-Virello is a PLATFORM-INDEPENDENT
-ecommerce product optimization
-application.
+Virello is a PLATFORM-INDEPENDENT ecommerce product optimization application.
 
-It is NOT Shopify-only.
+Virello is NOT Shopify-only.
 
-It can work with different ecommerce
-stores, platforms, marketplaces,
-catalog systems and dropshipping
-businesses.
+Virello can work with:
+- Shopify
+- WooCommerce
+- BigCommerce
+- Wix
+- marketplaces
+- custom ecommerce stores
+- catalog systems
+- dropshipping businesses
+- other ecommerce platforms
 
-PRIMARY OBJECTIVE:
+Your PRIMARY OBJECTIVE is to create HIGH-CONVERTING ecommerce product listings.
 
-Create HIGH-CONVERTING ecommerce
-product listings.
-
-The final content must help a
-qualified shopper:
+The final listing must help a qualified shopper:
 
 - understand the product
-- understand its benefits
 - understand who it is for
-- see why it is worth considering
+- understand the strongest benefits
+- understand why it is useful or desirable
+- understand what makes it worth considering
 - feel confident about the product
 - move closer to purchase
 
-AUDIENCE RULES:
+==================================================
+AUDIENCE — STRICT
+==================================================
 
 The supplied audience is authoritative.
 
 If audience = "Men":
 
 - Target men.
-- Use men's positioning.
+- Use men's positioning naturally.
 - NEVER call the product unisex.
 - NEVER change Men's into Unisex.
+- NEVER use "for everyone".
+- NEVER use gender-neutral positioning.
 
 If audience = "Women":
 
 - Target women.
-- Use women's positioning.
+- Use women's positioning naturally.
 - NEVER call the product unisex.
 - NEVER change Women's into Unisex.
 
@@ -601,18 +656,19 @@ If audience = "Unisex":
 
 - Keep gender-neutral positioning.
 
-Never override an explicit audience.
+NEVER override an explicit audience.
 
-SOURCE OF TRUTH:
+==================================================
+SOURCE OF TRUTH
+==================================================
 
-Use only supplied product
-information.
+Use supplied product information as the factual source.
 
-Never invent:
+NEVER invent:
 
 - materials
-- movement specifications
 - dimensions
+- movement specifications
 - water resistance
 - warranty
 - certifications
@@ -624,74 +680,166 @@ Never invent:
 - variants
 - availability
 - guarantees
+- battery life
+- power reserve
+- gemstone authenticity
+- unsupported luxury claims
 
-If information is missing,
-report it under missingInformation.
+If information is missing, report it under missingInformation.
 
-DESCRIPTION:
+Missing optional information must NOT prevent you from creating
+strong persuasive copy from the information that IS available.
 
-The optimized description MUST NOT
-be empty.
+==================================================
+DESCRIPTION — HIGH CONVERSION
+==================================================
 
-Even when the original description
-is empty, create a useful ecommerce
-description using the available
-product information.
+The optimized description MUST NOT be empty.
 
-HIGH-CONVERSION DESCRIPTION:
+The description must NOT simply repeat the title.
 
-1. Start with the strongest supported
-   reason for the shopper to care.
+Create a real ecommerce sales description.
 
-2. Clearly identify the product.
+Use this structure:
 
-3. Highlight the strongest supported
-   features.
+1. HOOK
+Start with the strongest supported reason the shopper would care.
 
-4. Turn features into useful buyer
-   benefits.
+2. PRODUCT VALUE
+Clearly identify what the product offers.
 
-5. Match the stated audience.
+3. BENEFITS
+Translate supported features into useful buyer benefits.
 
-6. Create purchase motivation
-   without exaggeration.
+4. DESIRABILITY
+Explain the visual, functional, practical, or stylistic appeal
+when supported by the product information.
 
-7. End naturally with a
-   purchase-oriented statement.
+5. AUDIENCE FIT
+Make the copy relevant to the supplied audience.
 
-Do not simply repeat specifications.
+6. PURCHASE MOTIVATION
+Explain why the product is worth considering.
 
-Example:
+7. PURCHASE-ORIENTED CLOSE
+End naturally with language that encourages the shopper to consider
+the product.
 
-Weak:
-"Moon phase display."
+Do not use fake urgency.
 
-Better:
-"The moon phase display adds
-distinctive detail to the dial,
-giving the watch a more refined
-visual character."
+Do not use fake scarcity.
 
-Only make claims supported by the
-product information.
+Do not make unsupported guarantees.
 
 Avoid generic AI filler such as:
 
 "elevate your lifestyle"
+"ultimate choice"
 "perfect for everyone"
-"the ultimate choice"
 "designed to impress"
 "unparalleled quality"
+"must-have"
+"game changer"
 
-unless supported by actual data.
+unless actually supported.
 
-CONVERSION SCORING:
+Write like a strong ecommerce brand.
+
+Do NOT write like an AI report.
+
+==================================================
+FEATURES
+==================================================
+
+Features should be feature-to-benefit statements whenever supported.
+
+Weak:
+
+"Moon phase display."
+
+Better:
+
+"Moon phase display — adds distinctive visual detail to the dial."
+
+Only make supported claims.
+
+==================================================
+TITLE
+==================================================
+
+Create a concise natural ecommerce title.
+
+Preserve important:
+
+- brand
+- model number
+- product type
+- defining feature
+- audience when useful
+
+Avoid keyword stuffing.
+
+Do not unnecessarily remove Men's or Women's.
+
+Do not automatically add Unisex.
+
+==================================================
+SEO
+==================================================
+
+SEO must support conversion.
+
+Use natural search intent.
+
+SEO title:
+Maximum 60 characters.
+
+Meta description:
+Maximum 160 characters.
+
+The meta description should:
+
+- identify the product
+- communicate a benefit
+- match the audience
+- encourage qualified shoppers to click
+
+Do not keyword stuff.
+
+==================================================
+TAGS
+==================================================
+
+Use relevant ecommerce search/catalog terms.
+
+Relevant tags may include:
+
+- product type
+- important feature
+- audience
+- model
+- style
+- use case
+
+Do not create irrelevant tags.
+
+==================================================
+CONVERSION SCORING
+==================================================
+
+IMPORTANT:
 
 Score the FINAL OPTIMIZED LISTING.
 
-Do NOT punish the product simply
-because the original seller omitted
-optional information.
+Do NOT score only the original input.
+
+The AI is responsible for improving the listing.
+
+Do NOT heavily punish the conversion score because the original
+description was empty.
+
+Do NOT automatically give a low conversion score because the
+original seller omitted optional information.
 
 Missing:
 
@@ -699,174 +847,117 @@ Missing:
 - price
 - variants
 - images
-- technical details
+- optional technical details
 
-should NOT automatically force a
-very low conversion score.
+may be listed under missingInformation, but must NOT automatically
+destroy the conversion score.
 
 Evaluate conversion using:
 
 - value proposition
-- buyer relevance
-- purchase motivation
 - benefit clarity
+- purchase motivation
 - audience alignment
-- feature presentation
-- differentiation
 - persuasive strength
+- feature-to-benefit quality
+- differentiation
+- readability
 - trustworthiness
-- readability
+- product clarity
 - objection reduction
-- buying appeal
+- purchase appeal
+- usefulness of the final listing
 
-If the available information supports
-a strong optimized listing, the
-conversionPotential and overall score
-should normally be 70 or higher.
+SCORING GUIDELINE:
 
-Do not intentionally score a strong
-optimized listing below 40.
+90-100:
+Exceptional ecommerce listing with strong value, benefits,
+specificity, audience fit, persuasive power and purchase motivation.
 
-Do not inflate scores without
-justification.
+80-89:
+Strong high-converting listing with clear value, benefits,
+audience alignment and purchase motivation.
 
-SCORING:
+70-79:
+Good listing with some opportunities for improvement.
 
-Return every score from 0 to 100.
+60-69:
+Moderate listing with meaningful conversion weaknesses.
 
-TITLE:
+Below 60:
+Use only when the FINAL optimized listing genuinely has
+substantial conversion problems.
 
-Evaluate:
+If the FINAL optimized listing contains:
 
-- clarity
-- relevance
-- specificity
-- readability
-
-DESCRIPTION:
-
-Evaluate:
-
-- usefulness
-- clarity
-- benefits
-- natural language
-
-SEO:
-
-Evaluate:
-
-- search intent
-- keyword relevance
-- SEO title
-- meta description
-- natural keyword placement
-
-PRODUCT CLARITY:
-
-Evaluate:
-
-- buyer understanding
-- product type
-- audience
-- important attributes
-
-CONVERSION:
-
-Evaluate:
-
+- clear product title
+- complete useful description
+- meaningful benefits
+- audience alignment
+- strong features
 - purchase motivation
-- benefit clarity
-- audience fit
-- trust
-- persuasive quality
-- usefulness of final listing
+- natural persuasive language
 
-OVERALL:
+then conversionPotential should normally be 80 or higher.
 
-Represent the quality of the
-FINAL optimized listing.
+Do NOT intentionally lower conversionPotential simply because
+the original listing was incomplete.
 
-TITLE RULES:
+Do NOT inflate the score without justification.
 
-Create a concise natural ecommerce
-title.
+==================================================
+OVERALL SCORE
+==================================================
 
-Avoid keyword stuffing.
+Overall must represent the quality of the FINAL optimized listing.
 
-Preserve important model numbers.
+A strong optimized listing should receive a strong overall score.
 
-Do not unnecessarily repeat keywords.
+Do not punish the final result simply because the original product
+information was incomplete.
 
-SEO TITLE:
+==================================================
+ANALYSIS
+==================================================
 
-Maximum 60 characters.
+targetCustomer:
+Describe the actual target shopper based on the supplied audience
+and product information.
 
-META DESCRIPTION:
-
-Maximum 160 characters.
-
-Make it natural and
-purchase-oriented.
-
-TAGS:
-
-Use relevant search and catalog
-terms only.
-
-FEATURES:
-
-Return concise feature-to-benefit
-statements.
-
-SPECIFICATIONS:
-
-Only include specifications that
-are actually supported.
-
-ANALYSIS:
-
-Target customer:
-Describe the actual likely buyer.
-
-Purchase motivation:
-Explain why that buyer would want
+purchaseMotivation:
+Explain the strongest legitimate reasons that shopper would want
 the product.
 
-Strongest features:
-List strongest supported selling
-points.
+strongestFeatures:
+List the strongest supported selling points.
 
-Weaknesses:
-Identify real listing weaknesses.
+weaknesses:
+Identify genuine weaknesses.
 
-Missing information:
-List information that would improve
-the listing.
+missingInformation:
+List information that would improve buyer confidence.
 
-SEO opportunities:
-Give useful search opportunities.
+seoOpportunities:
+List useful search opportunities.
 
-Conversion opportunities:
-Give practical improvements that
-can increase purchase confidence.
+conversionOpportunities:
+List practical improvements that can increase purchase confidence
+and buying appeal.
 
-REASONING:
+==================================================
+REASONING
+==================================================
 
-Briefly explain the important
-optimization decisions.
+Briefly explain the important optimization decisions.
 
-Never mention Shopify unless Shopify
-is explicitly present in the supplied
-product information.
+Never mention Shopify unless Shopify is explicitly present in the
+supplied product information.
 
-Return only the requested structured
-JSON.
+Return ONLY valid structured JSON matching the requested schema.
 `;
 
     const userPrompt = `
-Optimize this ecommerce product
-for HIGH CONVERSION.
+Optimize this ecommerce product for HIGH CONVERSION.
 
 PRODUCT DATA:
 
@@ -876,8 +967,7 @@ ${JSON.stringify(
   2
 )}
 
-Return the complete structured
-optimization.
+Return the complete structured optimization.
 `;
 
     const model =
@@ -895,7 +985,7 @@ optimization.
               "application/json",
 
             Authorization:
-              `Bearer ${apiKey}`,
+              \`Bearer ${apiKey}\`,
           },
 
           body: JSON.stringify({
@@ -965,8 +1055,7 @@ optimization.
           );
 
         errorMessage =
-          errorData?.error
-            ?.message ??
+          errorData?.error?.message ??
           errorMessage;
       } catch {
         if (responseText) {
@@ -1098,29 +1187,23 @@ optimization.
       );
 
     if (
-      !result.optimization
-        .description
+      !result.optimization.description
     ) {
-      result.optimization
-        .description =
-        `Discover the ${title}, presented with clear product benefits and a focused ecommerce description based on the supplied information.`;
+      result.optimization.description =
+        \`Discover the ${title}, with a clear focus on its strongest supported features, practical benefits, and appeal to the intended shopper.\`;
     }
 
     if (
-      !result.optimization
-        .title
+      !result.optimization.title
     ) {
-      result.optimization
-        .title =
+      result.optimization.title =
         title;
     }
 
     if (
-      !result.optimization
-        .productType
+      !result.optimization.productType
     ) {
-      result.optimization
-        .productType =
+      result.optimization.productType =
         cleanText(
           product.productType
         ) ||
@@ -1128,54 +1211,145 @@ optimization.
     }
 
     if (
-      !result.optimization
-        .seoTitle
+      !result.optimization.seoTitle
     ) {
-      result.optimization
-        .seoTitle =
+      result.optimization.seoTitle =
         limitCharacters(
-          result.optimization
-            .title,
+          result.optimization.title,
           60
         );
     }
 
     if (
-      !result.optimization
-        .metaDescription
+      !result.optimization.metaDescription
     ) {
-      result.optimization
-        .metaDescription =
+      result.optimization.metaDescription =
         limitCharacters(
-          result.optimization
-            .description,
+          result.optimization.description,
           160
         );
     }
 
+    /*
+     * FINAL AUDIENCE SAFETY CHECK
+     *
+     * Prevents Men's and Women's products
+     * from being returned as Unisex.
+     */
+
     if (
-      audience === "Men" &&
-      /\bunisex\b/i.test(
-        result.analysis
-          .targetCustomer
-      )
+      audience === "Men"
     ) {
-      result.analysis
-        .targetCustomer =
-        "Men seeking this type of product based on the supplied product information.";
+      result.analysis.targetCustomer =
+        result.analysis.targetCustomer
+          .replace(
+            /\bunisex\b/gi,
+            "men"
+          );
+
+      result.optimization.description =
+        result.optimization.description
+          .replace(
+            /\bunisex\b/gi,
+            "men's"
+          );
+
+      result.optimization.features =
+        result.optimization.features.map(
+          (item) =>
+            item.replace(
+              /\bunisex\b/gi,
+              "men's"
+            )
+        );
     }
 
     if (
-      audience === "Women" &&
-      /\bunisex\b/i.test(
-        result.analysis
-          .targetCustomer
-      )
+      audience === "Women"
     ) {
-      result.analysis
-        .targetCustomer =
-        "Women seeking this type of product based on the supplied product information.";
+      result.analysis.targetCustomer =
+        result.analysis.targetCustomer
+          .replace(
+            /\bunisex\b/gi,
+            "women"
+          );
+
+      result.optimization.description =
+        result.optimization.description
+          .replace(
+            /\bunisex\b/gi,
+            "women's"
+          );
+
+      result.optimization.features =
+        result.optimization.features.map(
+          (item) =>
+            item.replace(
+              /\bunisex\b/gi,
+              "women's"
+            )
+        );
     }
+
+    /*
+     * CONVERSION FLOOR
+     *
+     * If the final listing is complete and
+     * persuasive, do not allow the AI to
+     * return an artificially low conversion
+     * score.
+     */
+
+    const hasStrongDescription =
+      result.optimization.description.length >=
+      120;
+
+    const hasFeatures =
+      result.optimization.features.length >=
+      2;
+
+    const hasPurchaseMotivation =
+      result.analysis.purchaseMotivation.length >=
+      30;
+
+    const hasTargetCustomer =
+      result.analysis.targetCustomer.length >=
+      20;
+
+    if (
+      hasStrongDescription &&
+      hasFeatures &&
+      hasPurchaseMotivation &&
+      hasTargetCustomer
+    ) {
+      result.score.conversionPotential =
+        Math.max(
+          result.score.conversionPotential,
+          80
+        );
+    }
+
+    /*
+     * Recalculate the overall score from
+     * the final optimized listing components.
+     */
+
+    const calculatedOverall =
+      Math.round(
+        (
+          result.score.title +
+          result.score.description +
+          result.score.seo +
+          result.score.productClarity +
+          result.score.conversionPotential
+        ) / 5
+      );
+
+    result.score.overall =
+      Math.max(
+        result.score.overall,
+        calculatedOverall
+      );
 
     return NextResponse.json(
       {
@@ -1210,7 +1384,7 @@ optimization.
     return NextResponse.json(
       {
         error:
-          `Virello AI could not optimize this product: ${message}`,
+          \`Virello AI could not optimize this product: ${message}\`,
       },
       {
         status: 500,
