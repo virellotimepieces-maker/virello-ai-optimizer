@@ -1,29 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-
-type ShopifyProduct = {
-  id: string;
-  title: string;
-  description?: string;
-  productType?: string;
-  tags?: string[];
-  status?: string;
-  vendor?: string;
-  price?: string;
-  featuredImage?: string | null;
-};
+import { useState } from "react";
 
 type AIResult = {
-  analysis?: {
-    targetCustomer?: string;
-    purchaseMotivation?: string;
-    strongestFeatures?: string[];
-    weaknesses?: string[];
-    missingInformation?: string[];
-    seoOpportunities?: string[];
-    conversionOpportunities?: string[];
-  };
   score?: {
     title?: number;
     description?: number;
@@ -34,10 +13,7 @@ type AIResult = {
   };
   optimization?: {
     title?: string;
-    productType?: string;
     description?: string;
-    features?: string[];
-    specifications?: string[];
     seoTitle?: string;
     metaDescription?: string;
     tags?: string[];
@@ -45,314 +21,53 @@ type AIResult = {
   reasoning?: string;
 };
 
-type ShopifyResponse = {
-  success?: boolean;
-  products?: ShopifyProduct[];
-  shop?: string;
-  error?: string;
-};
-
-type AIResponse = {
-  success?: boolean;
-  result?: AIResult;
-  error?: string;
-};
-
-declare global {
-  interface Window {
-    shopify?: {
-      idToken?: () => Promise<string>;
-    };
-  }
-}
-
-function ScoreBar({
-  label,
-  value,
-}: {
-  label: string;
-  value?: number;
-}) {
-  const score =
-    typeof value === "number"
-      ? Math.max(0, Math.min(100, Math.round(value)))
-      : 0;
-
-  return (
-    <div className="score-card">
-      <div className="score-header">
-        <span>{label}</span>
-        <strong>{score}/100</strong>
-      </div>
-
-      <div className="score-track">
-        <div
-          className="score-fill"
-          style={{ width: `${score}%` }}
-        />
-      </div>
-    </div>
-  );
-}
-
-function CopyButton({ value }: { value?: string }) {
-  const [copied, setCopied] = useState(false);
-
-  async function copy() {
-    if (!value) return;
-
-    try {
-      await navigator.clipboard.writeText(value);
-      setCopied(true);
-
-      window.setTimeout(() => {
-        setCopied(false);
-      }, 1200);
-    } catch {
-      setCopied(false);
-    }
-  }
-
-  return (
-    <button
-      type="button"
-      className="small-button"
-      disabled={!value}
-      onClick={copy}
-    >
-      {copied ? "Copied" : "Copy"}
-    </button>
-  );
-}
-
-function ResultField({
-  label,
-  value,
-  multiline = false,
-  limit,
-}: {
-  label: string;
-  value?: string;
-  multiline?: boolean;
-  limit?: number;
-}) {
-  const text = value || "";
-
-  return (
-    <div className="result-field">
-      <div className="field-header">
-        <label>{label}</label>
-
-        <div className="field-actions">
-          {limit !== undefined && (
-            <span
-              className={
-                text.length > limit
-                  ? "character-count danger"
-                  : "character-count"
-              }
-            >
-              {text.length}/{limit}
-            </span>
-          )}
-
-          <CopyButton value={text} />
-        </div>
-      </div>
-
-      <div
-        className={
-          multiline
-            ? "field-value multiline"
-            : "field-value"
-        }
-      >
-        {text || "No AI output yet."}
-      </div>
-    </div>
-  );
-}
-
 export default function Home() {
-  const [products, setProducts] = useState<ShopifyProduct[]>([]);
-  const [selectedId, setSelectedId] = useState("");
-  const [search, setSearch] = useState("");
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [productType, setProductType] = useState("");
+  const [vendor, setVendor] = useState("");
+  const [price, setPrice] = useState("");
 
   const [result, setResult] = useState<AIResult | null>(null);
-
-  const [loadingProducts, setLoadingProducts] =
-    useState(true);
-
-  const [generating, setGenerating] =
-    useState(false);
-
-  const [saving, setSaving] = useState(false);
-
-  const [message, setMessage] = useState("");
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  const [shop, setShop] = useState("");
-
-  const selectedProduct = useMemo(() => {
-    return products.find(
-      (product) => product.id === selectedId
-    );
-  }, [products, selectedId]);
-
-  const filteredProducts = useMemo(() => {
-    const query = search.trim().toLowerCase();
-
-    if (!query) return products;
-
-    return products.filter((product) => {
-      return (
-        product.title.toLowerCase().includes(query) ||
-        product.productType
-          ?.toLowerCase()
-          .includes(query) ||
-        product.vendor
-          ?.toLowerCase()
-          .includes(query)
-      );
-    });
-  }, [products, search]);
-
-  async function getShopifyToken() {
-    if (
-      typeof window === "undefined" ||
-      !window.shopify?.idToken
-    ) {
-      throw new Error(
-        "Open Virello AI Optimizer from Shopify Admin."
-      );
-    }
-
-    const token = await window.shopify.idToken();
-
-    if (!token) {
-      throw new Error(
-        "Shopify session token could not be created."
-      );
-    }
-
-    return token;
-  }
-
-  async function loadProducts() {
-    setLoadingProducts(true);
-    setError("");
-
-    try {
-      const token = await getShopifyToken();
-
-      const response = await fetch(
-        "/api/shopify/products",
-        {
-          method: "GET",
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-          cache: "no-store",
-        }
-      );
-
-      const data: ShopifyResponse =
-        await response.json();
-
-      if (!response.ok || !data.success) {
-        throw new Error(
-          data.error ||
-            "Unable to load Shopify products."
-        );
-      }
-
-      const loadedProducts = data.products || [];
-
-      setProducts(loadedProducts);
-      setShop(data.shop || "");
-
-      if (loadedProducts.length > 0) {
-        setSelectedId(loadedProducts[0].id);
-      }
-    } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Unable to load Shopify products."
-      );
-    } finally {
-      setLoadingProducts(false);
-    }
-  }
-
-  useEffect(() => {
-    loadProducts();
-  }, []);
-
-  function selectProduct(product: ShopifyProduct) {
-    setSelectedId(product.id);
-    setResult(null);
-    setMessage("");
-    setError("");
-  }
-
-  async function generateWithAI() {
-    if (!selectedProduct) {
-      setError("Select a Shopify product first.");
+  async function optimize() {
+    if (!title.trim()) {
+      setError("Enter a product title first.");
       return;
     }
 
-    setGenerating(true);
+    setLoading(true);
     setError("");
-    setMessage("");
     setResult(null);
 
     try {
-      const response = await fetch(
-        "/api/ai/analyze",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
+      const response = await fetch("/api/ai/analyze", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          product: {
+            title,
+            description,
+            productType,
+            vendor,
+            price,
           },
-          body: JSON.stringify({
-            product: {
-              id: selectedProduct.id,
-              title: selectedProduct.title,
-              description:
-                selectedProduct.description || "",
-              productType:
-                selectedProduct.productType || "",
-              vendor:
-                selectedProduct.vendor || "",
-              tags:
-                selectedProduct.tags || [],
-              price:
-                selectedProduct.price || "",
-              featuredImage:
-                selectedProduct.featuredImage ||
-                null,
-            },
-          }),
-        }
-      );
+        }),
+      });
 
-      const data: AIResponse =
-        await response.json();
+      const data = await response.json();
 
       if (!response.ok || !data.success) {
         throw new Error(
-          data.error ||
-            "AI optimization failed."
+          data.error || "AI optimization failed."
         );
       }
 
-      setResult(data.result || null);
-
-      window.scrollTo({
-        top: document.body.scrollHeight,
-        behavior: "smooth",
-      });
+      setResult(data.result);
     } catch (err) {
       setError(
         err instanceof Error
@@ -360,129 +75,19 @@ export default function Home() {
           : "AI optimization failed."
       );
     } finally {
-      setGenerating(false);
+      setLoading(false);
     }
   }
 
-  async function saveToShopify() {
-    if (!selectedProduct) {
-      setError("Select a Shopify product first.");
-      return;
-    }
-
-    if (!result?.optimization) {
-      setError(
-        "Generate the product with AI first."
-      );
-      return;
-    }
-
-    setSaving(true);
-    setError("");
-    setMessage("");
+  async function copyText(value?: string) {
+    if (!value) return;
 
     try {
-      const token = await getShopifyToken();
-
-      const optimization =
-        result.optimization;
-
-      const seoTitle =
-        (optimization.seoTitle || "").slice(
-          0,
-          50
-        );
-
-      const metaDescription =
-        (optimization.metaDescription || "").slice(
-          0,
-          150
-        );
-
-      const response = await fetch(
-        "/api/shopify/save-product",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            productId: selectedProduct.id,
-            title:
-              optimization.title ||
-              selectedProduct.title,
-            description:
-              optimization.description ||
-              selectedProduct.description ||
-              "",
-            productType:
-              optimization.productType ||
-              selectedProduct.productType ||
-              "",
-            tags:
-              optimization.tags ||
-              selectedProduct.tags ||
-              [],
-            seoTitle,
-            metaDescription,
-          }),
-        }
-      );
-
-      const data = await response.json();
-
-      if (!response.ok || !data.success) {
-        throw new Error(
-          data.error ||
-            "Unable to save product to Shopify."
-        );
-      }
-
-      setMessage(
-        "Product successfully saved to Shopify."
-      );
-
-      setProducts((current) =>
-        current.map((product) =>
-          product.id === selectedProduct.id
-            ? {
-                ...product,
-                title:
-                  optimization.title ||
-                  product.title,
-                description:
-                  optimization.description ||
-                  product.description,
-                productType:
-                  optimization.productType ||
-                  product.productType,
-                tags:
-                  optimization.tags ||
-                  product.tags,
-              }
-            : product
-        )
-      );
-    } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Unable to save product to Shopify."
-      );
-    } finally {
-      setSaving(false);
+      await navigator.clipboard.writeText(value);
+    } catch {
+      setError("Unable to copy text.");
     }
   }
-
-  function clearResult() {
-    setResult(null);
-    setError("");
-    setMessage("");
-  }
-
-  const overall =
-    result?.score?.overall ?? 0;
 
   return (
     <main className="app-shell">
@@ -498,7 +103,7 @@ export default function Home() {
         </div>
 
         <div className="shop-pill">
-          {shop || "Shopify Store"}
+          Ecommerce & Dropshipping
         </div>
       </header>
 
@@ -509,500 +114,263 @@ export default function Home() {
           </div>
 
           <h1>
-            Optimize your Shopify products
-            <span> with AI.</span>
+            Optimize any ecommerce product{" "}
+            <span>with AI.</span>
           </h1>
 
           <p>
-            Select any product from your Shopify
-            store, generate conversion-focused
-            content, review the AI score and save
-            the optimized listing directly back to
-            Shopify.
+            Create stronger product listings, SEO
+            copy and conversion-focused content for
+            ecommerce and dropshipping businesses.
           </p>
         </div>
       </section>
 
       <section className="workspace">
         <div className="workspace-grid">
-          <aside className="products-panel">
-            <div className="panel-heading">
-              <div>
-                <div className="step-label">
-                  STORE PRODUCTS
-                </div>
-
-                <h2>Products</h2>
-              </div>
-
-              <button
-                type="button"
-                className="refresh-button"
-                onClick={loadProducts}
-                disabled={loadingProducts}
-              >
-                Refresh
-              </button>
-            </div>
-
-            <input
-              value={search}
-              onChange={(event) =>
-                setSearch(event.target.value)
-              }
-              placeholder="Search products..."
-              className="search-input"
-            />
-
-            {loadingProducts ? (
-              <div className="empty-panel">
-                <div className="spinner" />
-                <strong>
-                  Loading Shopify products...
-                </strong>
-              </div>
-            ) : filteredProducts.length === 0 ? (
-              <div className="empty-panel">
-                <strong>
-                  No products found.
-                </strong>
-
-                <p>
-                  Make sure the app is opened from
-                  your Shopify Admin.
-                </p>
-              </div>
-            ) : (
-              <div className="product-list">
-                {filteredProducts.map(
-                  (product) => {
-                    const active =
-                      product.id === selectedId;
-
-                    return (
-                      <button
-                        type="button"
-                        key={product.id}
-                        className={
-                          active
-                            ? "product-row active"
-                            : "product-row"
-                        }
-                        onClick={() =>
-                          selectProduct(product)
-                        }
-                      >
-                        <div className="product-image">
-                          {product.featuredImage ? (
-                            <img
-                              src={
-                                product.featuredImage
-                              }
-                              alt=""
-                            />
-                          ) : (
-                            <span>
-                              {product.title
-                                .charAt(0)
-                                .toUpperCase()}
-                            </span>
-                          )}
-                        </div>
-
-                        <div className="product-row-info">
-                          <strong>
-                            {product.title}
-                          </strong>
-
-                          <small>
-                            {product.productType ||
-                              product.vendor ||
-                              "Product"}
-                          </small>
-                        </div>
-                      </button>
-                    );
-                  }
-                )}
-              </div>
-            )}
-          </aside>
-
           <section className="optimizer-panel">
             <div className="selected-product">
               <div>
                 <div className="step-label">
-                  SELECTED PRODUCT
+                  PRODUCT INFORMATION
                 </div>
 
                 <h2>
-                  {selectedProduct?.title ||
-                    "Select a product"}
+                  Tell Virello about your product
                 </h2>
-
-                {selectedProduct && (
-                  <p>
-                    {selectedProduct.productType ||
-                      "Shopify product"}
-                    {selectedProduct.vendor
-                      ? ` · ${selectedProduct.vendor}`
-                      : ""}
-                  </p>
-                )}
               </div>
 
-              {selectedProduct && (
-                <button
-                  type="button"
-                  className="generate-button"
-                  onClick={generateWithAI}
-                  disabled={generating}
-                >
-                  {generating
-                    ? "Generating..."
-                    : "Generate with AI"}
-                </button>
-              )}
+              <button
+                type="button"
+                className="generate-button"
+                onClick={optimize}
+                disabled={loading}
+              >
+                {loading
+                  ? "Optimizing..."
+                  : "Optimize with AI"}
+              </button>
             </div>
 
-            {error && (
-              <div className="alert error">
-                {error}
-              </div>
-            )}
+            <div className="results">
+              {error && (
+                <div className="alert error">
+                  {error}
+                </div>
+              )}
 
-            {message && (
-              <div className="alert success">
-                {message}
-              </div>
-            )}
+              <div className="content-card">
+                <div className="result-field">
+                  <div className="field-header">
+                    <label>Product title</label>
+                  </div>
 
-            {!result && !generating && (
-              <div className="empty-result">
-                <div className="ai-icon">
-                  AI
+                  <input
+                    className="search-input"
+                    value={title}
+                    onChange={(e) =>
+                      setTitle(e.target.value)
+                    }
+                    placeholder="Example: Portable Mini Blender"
+                  />
                 </div>
 
-                <h2>
-                  Ready to optimize
-                </h2>
-
-                <p>
-                  Select a Shopify product and tap
-                  <strong>
-                    {" "}
-                    Generate with AI
-                  </strong>
-                  . Virello will analyze the actual
-                  product information and generate
-                  the optimized listing.
-                </p>
-              </div>
-            )}
-
-            {generating && (
-              <div className="empty-result">
-                <div className="spinner large" />
-
-                <h2>
-                  Virello AI is working
-                </h2>
-
-                <p>
-                  Analyzing product data and
-                  generating the optimized listing...
-                </p>
-              </div>
-            )}
-
-            {result && !generating && (
-              <div className="results">
-                <div className="score-overview">
-                  <div>
-                    <div className="step-label light">
-                      AI SCORE
-                    </div>
-
-                    <h2>
-                      Conversion readiness
-                    </h2>
-
-                    <p>
-                      AI evaluation of the product
-                      listing and its optimization
-                      potential.
-                    </p>
+                <div className="result-field">
+                  <div className="field-header">
+                    <label>Description</label>
                   </div>
 
-                  <div className="overall-score">
-                    <strong>{overall}</strong>
-                    <span>/100</span>
-                  </div>
+                  <textarea
+                    className="search-input"
+                    value={description}
+                    onChange={(e) =>
+                      setDescription(e.target.value)
+                    }
+                    placeholder="Paste your current product description..."
+                  />
                 </div>
 
                 <div className="score-grid">
-                  <ScoreBar
-                    label="Title"
-                    value={
-                      result.score?.title
+                  <input
+                    className="search-input"
+                    value={productType}
+                    onChange={(e) =>
+                      setProductType(e.target.value)
                     }
+                    placeholder="Product type"
                   />
 
-                  <ScoreBar
-                    label="Description"
-                    value={
-                      result.score?.description
+                  <input
+                    className="search-input"
+                    value={vendor}
+                    onChange={(e) =>
+                      setVendor(e.target.value)
                     }
+                    placeholder="Brand / supplier"
                   />
 
-                  <ScoreBar
-                    label="SEO"
-                    value={
-                      result.score?.seo
+                  <input
+                    className="search-input"
+                    value={price}
+                    onChange={(e) =>
+                      setPrice(e.target.value)
                     }
-                  />
-
-                  <ScoreBar
-                    label="Product clarity"
-                    value={
-                      result.score
-                        ?.productClarity
-                    }
-                  />
-
-                  <ScoreBar
-                    label="Conversion potential"
-                    value={
-                      result.score
-                        ?.conversionPotential
-                    }
+                    placeholder="Price"
                   />
                 </div>
+              </div>
 
-                <div className="content-card">
-                  <div className="card-title">
+              {result && (
+                <>
+                  <div className="score-overview">
                     <div>
-                      <div className="step-label">
-                        GENERATED CONTENT
+                      <div className="step-label light">
+                        VIRELLO SCORE
                       </div>
 
                       <h2>
-                        Shopify-ready listing
+                        Product optimization score
                       </h2>
+
+                      <p>
+                        Based on listing quality, SEO,
+                        clarity and conversion potential.
+                      </p>
                     </div>
 
-                    <button
-                      type="button"
-                      className="save-button"
-                      onClick={saveToShopify}
-                      disabled={saving}
-                    >
-                      {saving
-                        ? "Saving..."
-                        : "Save to Shopify"}
-                    </button>
-                  </div>
+                    <div className="overall-score">
+                      <strong>
+                        {result.score?.overall ?? 0}
+                      </strong>
 
-                  <ResultField
-                    label="Product title"
-                    value={
-                      result.optimization
-                        ?.title
-                    }
-                  />
-
-                  <ResultField
-                    label="Product type"
-                    value={
-                      result.optimization
-                        ?.productType
-                    }
-                  />
-
-                  <ResultField
-                    label="Tags"
-                    value={
-                      result.optimization
-                        ?.tags?.join(", ")
-                    }
-                  />
-
-                  <ResultField
-                    label="Description"
-                    value={
-                      result.optimization
-                        ?.description
-                    }
-                    multiline
-                  />
-
-                  <ResultField
-                    label="SEO title"
-                    value={
-                      result.optimization
-                        ?.seoTitle
-                    }
-                    limit={50}
-                  />
-
-                  <ResultField
-                    label="Meta description"
-                    value={
-                      result.optimization
-                        ?.metaDescription
-                    }
-                    limit={150}
-                  />
-
-                  <div className="two-column">
-                    <div className="mini-card">
-                      <h3>
-                        Features
-                      </h3>
-
-                      <ul>
-                        {(
-                          result.optimization
-                            ?.features || []
-                        ).map(
-                          (item, index) => (
-                            <li
-                              key={`${item}-${index}`}
-                            >
-                              {item}
-                            </li>
-                          )
-                        )}
-                      </ul>
-                    </div>
-
-                    <div className="mini-card">
-                      <h3>
-                        Specifications
-                      </h3>
-
-                      <ul>
-                        {(
-                          result.optimization
-                            ?.specifications ||
-                          []
-                        ).map(
-                          (item, index) => (
-                            <li
-                              key={`${item}-${index}`}
-                            >
-                              {item}
-                            </li>
-                          )
-                        )}
-                      </ul>
+                      <span>/100</span>
                     </div>
                   </div>
-                </div>
 
-                <div className="analysis-grid">
-                  <div className="analysis-card">
-                    <h3>
-                      Target customer
-                    </h3>
+                  <div className="score-grid">
+                    {[
+                      [
+                        "Title",
+                        result.score?.title,
+                      ],
+                      [
+                        "Description",
+                        result.score?.description,
+                      ],
+                      [
+                        "SEO",
+                        result.score?.seo,
+                      ],
+                      [
+                        "Clarity",
+                        result.score?.productClarity,
+                      ],
+                      [
+                        "Conversion",
+                        result.score?.conversionPotential,
+                      ],
+                    ].map(([label, value]) => (
+                      <div
+                        className="score-card"
+                        key={String(label)}
+                      >
+                        <div className="score-header">
+                          <span>{label}</span>
 
-                    <p>
-                      {result.analysis
-                        ?.targetCustomer ||
-                        "Not available."}
-                    </p>
+                          <strong>
+                            {value ?? 0}/100
+                          </strong>
+                        </div>
+
+                        <div className="score-track">
+                          <div
+                            className="score-fill"
+                            style={{
+                              width: `${value ?? 0}%`,
+                            }}
+                          />
+                        </div>
+                      </div>
+                    ))}
                   </div>
 
-                  <div className="analysis-card">
-                    <h3>
-                      Purchase motivation
-                    </h3>
+                  <div className="content-card">
+                    <div className="card-title">
+                      <div>
+                        <div className="step-label">
+                          OPTIMIZED LISTING
+                        </div>
 
-                    <p>
-                      {result.analysis
-                        ?.purchaseMotivation ||
-                        "Not available."}
-                    </p>
-                  </div>
+                        <h2>
+                          Ready-to-use content
+                        </h2>
+                      </div>
+                    </div>
 
-                  <div className="analysis-card">
-                    <h3>
-                      SEO opportunities
-                    </h3>
+                    {[
+                      [
+                        "Product title",
+                        result.optimization?.title,
+                      ],
+                      [
+                        "Product description",
+                        result.optimization?.description,
+                      ],
+                      [
+                        "SEO title",
+                        result.optimization?.seoTitle,
+                      ],
+                      [
+                        "Meta description",
+                        result.optimization
+                          ?.metaDescription,
+                      ],
+                      [
+                        "Tags",
+                        result.optimization?.tags?.join(
+                          ", "
+                        ),
+                      ],
+                    ].map(([label, value]) => (
+                      <div
+                        className="result-field"
+                        key={String(label)}
+                      >
+                        <div className="field-header">
+                          <label>{label}</label>
 
-                    <ul>
-                      {(
-                        result.analysis
-                          ?.seoOpportunities ||
-                        []
-                      ).map(
-                        (item, index) => (
-                          <li
-                            key={`${item}-${index}`}
+                          <button
+                            type="button"
+                            className="small-button"
+                            onClick={() =>
+                              copyText(value)
+                            }
                           >
-                            {item}
-                          </li>
-                        )
-                      )}
-                    </ul>
+                            Copy
+                          </button>
+                        </div>
+
+                        <div className="field-value multiline">
+                          {value || "No output"}
+                        </div>
+                      </div>
+                    ))}
                   </div>
 
-                  <div className="analysis-card">
-                    <h3>
-                      Conversion opportunities
-                    </h3>
+                  {result.reasoning && (
+                    <div className="content-card">
+                      <div className="step-label">
+                        AI REASONING
+                      </div>
 
-                    <ul>
-                      {(
-                        result.analysis
-                          ?.conversionOpportunities ||
-                        []
-                      ).map(
-                        (item, index) => (
-                          <li
-                            key={`${item}-${index}`}
-                          >
-                            {item}
-                          </li>
-                        )
-                      )}
-                    </ul>
-                  </div>
-                </div>
-
-                <div className="reasoning-card">
-                  <h3>
-                    AI reasoning
-                  </h3>
-
-                  <p>
-                    {result.reasoning ||
-                      "No additional reasoning returned."}
-                  </p>
-                </div>
-
-                <div className="bottom-actions">
-                  <button
-                    type="button"
-                    className="secondary-button"
-                    onClick={clearResult}
-                  >
-                    Clear generated result
-                  </button>
-
-                  <button
-                    type="button"
-                    className="save-button"
-                    onClick={saveToShopify}
-                    disabled={saving}
-                  >
-                    {saving
-                      ? "Saving..."
-                      : "Save optimized product"}
-                  </button>
-                </div>
-              </div>
-            )}
+                      <p>
+                        {result.reasoning}
+                      </p>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
           </section>
         </div>
       </section>
