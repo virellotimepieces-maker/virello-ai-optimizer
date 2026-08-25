@@ -14,7 +14,11 @@ body {
   padding: 0;
   min-height: 100%;
   background:
-    radial-gradient(circle at top left, rgba(255,255,255,.95), transparent 38%),
+    radial-gradient(
+      circle at top left,
+      rgba(255, 255, 255, 0.95),
+      transparent 38%
+    ),
     #f4f5f7;
   color: #17181c;
   font-family:
@@ -55,12 +59,13 @@ textarea {
 .topbar {
   min-height: 72px;
   padding: 0 32px;
+
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 20px;
 
-  background: rgba(255, 255, 255, 0.94);
+  background: rgba(255, 255, 255, 0.96);
   border-bottom: 1px solid #e5e7eb;
 
   position: sticky;
@@ -75,7 +80,7 @@ textarea {
   color: #8a8f98;
   font-size: 9px;
   font-weight: 900;
-  letter-spacing: .18em;
+  letter-spacing: 0.18em;
 }
 
 .brand-name {
@@ -84,7 +89,7 @@ textarea {
   font-size: 18px;
   line-height: 1.1;
   font-weight: 850;
-  letter-spacing: -.45px;
+  letter-spacing: -0.45px;
 }
 
 .shop-pill {
@@ -113,7 +118,7 @@ textarea {
   background:
     radial-gradient(
       circle at 82% 15%,
-      rgba(17, 19, 24, .055),
+      rgba(17, 19, 24, 0.055),
       transparent 30%
     ),
     #ffffff;
@@ -124,7 +129,7 @@ textarea {
 .hero-inner {
   width: min(1180px, calc(100% - 48px));
   margin: 0 auto;
-  padding: 64px 0 58px;
+  padding: 52px 0 46px;
 }
 
 .eyebrow,
@@ -133,17 +138,17 @@ textarea {
   font-size: 10px;
   line-height: 1;
   font-weight: 900;
-  letter-spacing: .14em;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
 }
 
 .hero h1 {
-  max-width: 850px;
+  max-width: 900px;
   margin: 16px 0 16px;
 
   color: #101217;
   font-size: clamp(40px, 5vw, 66px);
-  line-height: .98;
+  line-height: 0.98;
   letter-spacing: -3.5px;
   font-weight: 850;
 }
@@ -168,7 +173,7 @@ textarea {
 .workspace {
   width: min(1180px, calc(100% - 48px));
   margin: 0 auto;
-  padding: 28px 0 70px;
+  padding: 24px 0 70px;
 }
 
 .workspace-grid {
@@ -184,19 +189,19 @@ textarea {
 .optimizer-panel {
   min-width: 0;
 
-  background: rgba(255,255,255,.97);
+  background: rgba(255, 255, 255, 0.97);
   border: 1px solid #e0e3e7;
   border-radius: 20px;
 
   box-shadow:
-    0 16px 45px rgba(15, 23, 42, .055),
-    0 2px 8px rgba(15, 23, 42, .025);
+    0 16px 45px rgba(15, 23, 42, 0.055),
+    0 2px 8px rgba(15, 23, 42, 0.025);
 
   overflow: hidden;
 }
 
 /* =========================
-   SELECTED PRODUCT HEADER
+   PRODUCT HEADER
 ========================= */
 
 .selected-product {
@@ -224,7 +229,7 @@ textarea {
   color: #15171b;
   font-size: 21px;
   line-height: 1.25;
-  letter-spacing: -.55px;
+  letter-spacing: -0.55px;
 }
 
 .selected-product p {
@@ -255,12 +260,12 @@ textarea {
   cursor: pointer;
 
   box-shadow:
-    0 7px 16px rgba(17, 19, 24, .15);
+    0 7px 16px rgba(17, 19, 24, 0.15);
 
   transition:
-    transform .15s ease,
-    background .15s ease,
-    box-shadow .15s ease;
+    transform 0.15s ease,
+    background 0.15s ease,
+    box-shadow 0.15s ease;
 }
 
 .generate-button:hover,
@@ -277,13 +282,13 @@ textarea {
 .generate-button:disabled,
 .save-button:disabled,
 .small-button:disabled {
-  opacity: .5;
+  opacity: 0.5;
   cursor: not-allowed;
   transform: none;
 }
 
 /* =========================
-   RESULTS AREA
+   RESULTS
 ========================= */
 
 .results {
@@ -291,7 +296,7 @@ textarea {
 }
 
 /* =========================
-   ERROR
+   ALERTS
 ========================= */
 
 .alert {
@@ -329,7 +334,7 @@ textarea {
   background: #ffffff;
 
   box-shadow:
-    0 5px 18px rgba(15, 23, 42, .025);
+    0 5px 18px rgba(15, 23, 42, 0.025);
 }
 
 .card-title {
@@ -346,11 +351,11 @@ textarea {
 
   color: #202329;
   font-size: 19px;
-  letter-spacing: -.45px;
+  letter-spacing: -0.45px;
 }
 
 /* =========================
-   INPUT FIELDS
+   FORM FIELDS
 ========================= */
 
 .result-field {
@@ -364,15 +369,19 @@ textarea {
   background: #fbfcfd;
 
   transition:
-    border-color .15s ease,
-    box-shadow .15s ease;
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.result-field:first-child {
+  margin-top: 0;
 }
 
 .result-field:focus-within {
   border-color: #b7bcc4;
 
   box-shadow:
-    0 0 0 4px rgba(17, 19, 24, .045);
+    0 0 0 4px rgba(17, 19, 24, 0.045);
 }
 
 .field-header {
@@ -393,8 +402,14 @@ textarea {
   color: #59606a;
   font-size: 10px;
   font-weight: 850;
-  letter-spacing: .07em;
+  letter-spacing: 0.07em;
   text-transform: uppercase;
+}
+
+.field-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .field-value {
@@ -411,11 +426,88 @@ textarea {
   white-space: pre-wrap;
 }
 
-.field-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+/* =========================
+   INPUTS
+========================= */
+
+.search-input {
+  width: 100%;
+  min-width: 0;
+
+  border: 0;
+  background: transparent;
+  color: #17191d;
+
+  font-size: 14px;
 }
+
+.search-input::placeholder {
+  color: #9aa0a8;
+}
+
+.content-card .result-field input.search-input {
+  min-height: 52px;
+  padding: 14px;
+}
+
+.content-card .result-field textarea.search-input {
+  min-height: 145px;
+  padding: 14px;
+
+  resize: vertical;
+  line-height: 1.55;
+}
+
+.content-card .result-field input.search-input:focus,
+.content-card .result-field textarea.search-input:focus {
+  background: #ffffff;
+}
+
+/* =========================
+   PRODUCT TYPE / BRAND / PRICE
+========================= */
+
+.score-grid {
+  display: grid;
+  grid-template-columns:
+    repeat(3, minmax(0, 1fr));
+
+  gap: 12px;
+  margin-top: 13px;
+}
+
+.score-grid > .search-input {
+  width: 100%;
+  min-width: 0;
+  height: 52px;
+
+  padding: 0 14px;
+
+  border: 1px solid #dfe3e7;
+  border-radius: 12px;
+
+  background: #fbfcfd;
+  color: #17191d;
+
+  font-size: 13px;
+
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.score-grid > .search-input:focus {
+  border-color: #b7bcc4;
+  background: #ffffff;
+
+  box-shadow:
+    0 0 0 4px rgba(17, 19, 24, 0.045);
+}
+
+/* =========================
+   CHARACTER COUNT
+========================= */
 
 .character-count {
   color: #858b94;
@@ -426,6 +518,10 @@ textarea {
   color: #b42318;
   font-weight: 800;
 }
+
+/* =========================
+   COPY BUTTON
+========================= */
 
 .small-button {
   min-height: 29px;
@@ -448,100 +544,6 @@ textarea {
 }
 
 /* =========================
-   IMPORTANT FORM INPUTS
-========================= */
-
-.content-card > .result-field:first-child {
-  margin-top: 0;
-}
-
-.content-card .result-field input.search-input,
-.content-card .result-field textarea.search-input {
-  width: 100%;
-  height: auto;
-  margin: 0;
-  padding: 14px;
-
-  border: 0;
-  border-radius: 0;
-
-  background: #fbfcfd;
-  color: #17191d;
-
-  font-size: 14px;
-  line-height: 1.5;
-
-  box-shadow: none;
-}
-
-.content-card .result-field input.search-input {
-  min-height: 52px;
-}
-
-.content-card .result-field textarea.search-input {
-  min-height: 145px;
-  resize: vertical;
-}
-
-.content-card .result-field input.search-input:focus,
-.content-card .result-field textarea.search-input:focus {
-  background: #ffffff;
-  box-shadow: none;
-}
-
-.content-card > .score-grid {
-  margin-top: 13px;
-}
-
-/* =========================
-   THREE INPUTS
-========================= */
-
-.score-grid {
-  display: grid;
-  grid-template-columns:
-    repeat(3, minmax(0, 1fr));
-
-  gap: 12px;
-  margin: 0;
-}
-
-.score-grid > .search-input {
-  width: 100%;
-  min-width: 0;
-  height: 52px;
-  margin: 0;
-
-  padding: 0 14px;
-
-  border: 1px solid #dfe3e7;
-  border-radius: 12px;
-
-  background: #fbfcfd;
-  color: #17191d;
-
-  font-size: 13px;
-
-  transition:
-    border-color .15s ease,
-    background .15s ease,
-    box-shadow .15s ease;
-}
-
-.score-grid > .search-input::placeholder,
-.search-input::placeholder {
-  color: #9aa0a8;
-}
-
-.score-grid > .search-input:focus {
-  border-color: #b7bcc4;
-  background: #ffffff;
-
-  box-shadow:
-    0 0 0 4px rgba(17, 19, 24, .045);
-}
-
-/* =========================
    SCORE OVERVIEW
 ========================= */
 
@@ -559,7 +561,7 @@ textarea {
   background:
     radial-gradient(
       circle at 90% 15%,
-      rgba(255,255,255,.12),
+      rgba(255, 255, 255, 0.12),
       transparent 28%
     ),
     #15171b;
@@ -573,9 +575,10 @@ textarea {
 
 .score-overview h2 {
   margin: 6px 0 0;
+
   color: #ffffff;
   font-size: 19px;
-  letter-spacing: -.4px;
+  letter-spacing: -0.4px;
 }
 
 .score-overview p {
@@ -612,6 +615,7 @@ textarea {
 ========================= */
 
 .results > .score-grid {
+  margin-top: 0;
   margin-bottom: 14px;
 }
 
@@ -646,17 +650,22 @@ textarea {
 
 .score-track {
   height: 6px;
+
   overflow: hidden;
+
   border-radius: 999px;
+
   background: #e7e9ec;
 }
 
 .score-fill {
   height: 100%;
+
   border-radius: inherit;
+
   background: #15171b;
 
-  transition: width .45s ease;
+  transition: width 0.45s ease;
 }
 
 /* =========================
@@ -691,7 +700,7 @@ textarea {
   font-weight: 900;
 
   box-shadow:
-    0 10px 25px rgba(17,19,24,.14);
+    0 10px 25px rgba(17, 19, 24, 0.14);
 }
 
 .empty-result h2 {
@@ -699,7 +708,7 @@ textarea {
 
   color: #202329;
   font-size: 20px;
-  letter-spacing: -.45px;
+  letter-spacing: -0.45px;
 }
 
 .empty-result p {
@@ -712,7 +721,7 @@ textarea {
 }
 
 /* =========================
-   MINI CONTENT
+   FEATURES / SPECIFICATIONS
 ========================= */
 
 .two-column {
@@ -759,6 +768,10 @@ textarea {
   font-size: 11px;
   line-height: 1.5;
 }
+
+/* =========================
+   ANALYSIS
+========================= */
 
 .analysis-grid {
   display: grid;
@@ -828,7 +841,7 @@ textarea {
 
   border-radius: 50%;
 
-  animation: spin .8s linear infinite;
+  animation: spin 0.8s linear infinite;
 }
 
 .spinner.large {
@@ -858,7 +871,7 @@ textarea {
   }
 
   .hero-inner {
-    padding: 50px 0 44px;
+    padding: 42px 0 38px;
   }
 
   .hero h1 {
@@ -866,7 +879,7 @@ textarea {
   }
 
   .workspace {
-    padding-top: 20px;
+    padding-top: 18px;
   }
 
   .score-grid {
@@ -885,88 +898,115 @@ textarea {
 
 @media (max-width: 640px) {
   .topbar {
-    min-height: 64px;
-    padding: 0 16px;
+    min-height: 60px;
+    padding: 0 14px;
     gap: 10px;
   }
 
   .brand-small {
-    font-size: 8px;
+    font-size: 7px;
   }
 
   .brand-name {
-    font-size: 15px;
+    font-size: 14px;
+    letter-spacing: -0.3px;
   }
 
   .shop-pill {
-    max-width: 48%;
-    padding: 7px 9px;
-    font-size: 9px;
+    max-width: 52%;
+    padding: 7px 10px;
+    font-size: 8px;
   }
 
+  /* HERO */
+
   .hero-inner {
-    width: calc(100% - 32px);
-    padding: 40px 0 34px;
+    width: calc(100% - 28px);
+    padding: 27px 0 25px;
   }
 
   .eyebrow,
   .step-label {
     font-size: 8px;
+    letter-spacing: 0.12em;
   }
 
   .hero h1 {
-    margin: 12px 0 13px;
+    max-width: 100%;
 
-    font-size: clamp(35px, 11vw, 46px);
-    line-height: 1;
-    letter-spacing: -2.1px;
+    margin: 10px 0 11px;
+
+    font-size: clamp(31px, 9.5vw, 39px);
+    line-height: 1.02;
+    letter-spacing: -1.8px;
   }
 
   .hero p {
-    font-size: 13px;
-    line-height: 1.6;
+    max-width: 100%;
+
+    font-size: 12px;
+    line-height: 1.55;
   }
 
+  /* WORKSPACE */
+
   .workspace {
-    width: calc(100% - 20px);
-    padding: 12px 0 40px;
+    width: calc(100% - 16px);
+    padding: 9px 0 32px;
   }
 
   .optimizer-panel {
-    border-radius: 15px;
+    border-radius: 14px;
   }
+
+  /* HEADER */
 
   .selected-product {
     min-height: auto;
-    padding: 18px 15px;
+
+    padding: 16px 14px;
 
     align-items: stretch;
     flex-direction: column;
-    gap: 15px;
+
+    gap: 12px;
   }
 
   .selected-product h2 {
+    margin-top: 5px;
+
     font-size: 17px;
+    line-height: 1.2;
   }
 
   .generate-button,
   .save-button {
     width: 100%;
     min-height: 48px;
+
+    border-radius: 10px;
+
     font-size: 12px;
   }
 
+  /* RESULTS */
+
   .results {
-    padding: 14px;
+    padding: 12px;
   }
 
   .content-card {
-    padding: 13px;
+    padding: 11px;
     border-radius: 12px;
   }
 
+  .result-field {
+    margin-top: 10px;
+    border-radius: 11px;
+  }
+
   .field-header {
-    min-height: 38px;
+    min-height: 37px;
     padding: 7px 9px;
   }
 
@@ -975,38 +1015,53 @@ textarea {
   }
 
   .content-card .result-field input.search-input {
-    min-height: 52px;
-    padding: 13px;
+    min-height: 50px;
+    padding: 12px;
     font-size: 13px;
   }
 
   .content-card .result-field textarea.search-input {
-    min-height: 135px;
-    padding: 13px;
+    min-height: 120px;
+    padding: 12px;
     font-size: 13px;
   }
 
+  /* PRODUCT TYPE / BRAND / PRICE */
+
   .score-grid {
     grid-template-columns: 1fr;
-    gap: 10px;
+    gap: 9px;
+    margin-top: 10px;
   }
 
   .score-grid > .search-input {
     width: 100%;
-    height: 52px;
-    min-height: 52px;
-    margin: 0;
+    height: 50px;
+    min-height: 50px;
+
+    padding: 0 12px;
+
+    border-radius: 11px;
+
+    font-size: 13px;
   }
 
   .score-grid > .search-input:last-child {
     grid-column: auto;
   }
 
+  /* SCORE */
+
   .score-overview {
-    padding: 17px;
+    margin-bottom: 10px;
+    padding: 15px;
+
     align-items: flex-start;
     flex-direction: column;
-    gap: 15px;
+
+    gap: 11px;
+
+    border-radius: 12px;
   }
 
   .score-overview h2 {
@@ -1015,10 +1070,11 @@ textarea {
 
   .score-overview p {
     font-size: 10px;
+    line-height: 1.5;
   }
 
   .overall-score strong {
-    font-size: 42px;
+    font-size: 40px;
   }
 
   .results > .score-grid {
@@ -1026,12 +1082,16 @@ textarea {
   }
 
   .score-card {
-    padding: 12px;
+    padding: 11px;
+    border-radius: 10px;
   }
+
+  /* CONTENT */
 
   .two-column,
   .analysis-grid {
     grid-template-columns: 1fr;
+    gap: 9px;
   }
 
   .card-title {
@@ -1054,8 +1114,8 @@ textarea {
   }
 
   .empty-result {
-    min-height: 300px;
-    padding: 30px 18px;
+    min-height: 260px;
+    padding: 25px 15px;
   }
 
   .empty-result h2 {
@@ -1072,6 +1132,10 @@ textarea {
 
   .field-value.multiline {
     min-height: 85px;
+  }
+
+  .small-button {
+    min-height: 34px;
   }
 }
 
@@ -1095,14 +1159,25 @@ textarea {
 
   .hero-inner {
     width: calc(100% - 24px);
+    padding: 24px 0 22px;
   }
 
   .hero h1 {
-    font-size: 34px;
+    font-size: 30px;
+    letter-spacing: -1.6px;
+  }
+
+  .hero p {
+    font-size: 11.5px;
   }
 
   .workspace {
-    width: calc(100% - 12px);
+    width: calc(100% - 10px);
+    padding-top: 7px;
+  }
+
+  .selected-product {
+    padding: 14px 12px;
   }
 
   .results {
@@ -1110,7 +1185,7 @@ textarea {
   }
 
   .content-card {
-    padding: 10px;
+    padding: 9px;
   }
 }
 
