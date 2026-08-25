@@ -48,7 +48,7 @@ export default function Home() {
   const [error, setError] = useState("");
 
   async function optimize() {
-    // ONLY PRODUCT TITLE IS REQUIRED
+    // PRODUCT TITLE ONLY IS REQUIRED
     if (!title.trim()) {
       setError("Enter a product title first.");
       return;
@@ -105,8 +105,15 @@ export default function Home() {
     }
   }
 
+  function listToText(items?: string[]) {
+    return items?.length
+      ? items.map((item) => `• ${item}`).join("\n")
+      : "";
+  }
+
   return (
     <main className="app-shell">
+
       {/* TOP BAR */}
       <header className="topbar">
         <div>
@@ -147,6 +154,7 @@ export default function Home() {
       {/* WORKSPACE */}
       <section className="workspace">
         <div className="workspace-grid">
+
           <section className="optimizer-panel">
 
             {/* PRODUCT HEADER */}
@@ -177,7 +185,6 @@ export default function Home() {
               </button>
             </div>
 
-            {/* FORM + RESULTS */}
             <div className="results">
 
               {/* ERROR */}
@@ -190,7 +197,7 @@ export default function Home() {
               {/* PRODUCT FORM */}
               <div className="content-card">
 
-                {/* TITLE */}
+                {/* PRODUCT TITLE */}
                 <div className="result-field">
                   <div className="field-header">
                     <label>
@@ -208,11 +215,11 @@ export default function Home() {
                   />
                 </div>
 
-                {/* DESCRIPTION */}
+                {/* DESCRIPTION OPTIONAL */}
                 <div className="result-field">
                   <div className="field-header">
                     <label>
-                      Description
+                      Description (optional)
                     </label>
                   </div>
 
@@ -262,6 +269,7 @@ export default function Home() {
               {/* AI RESULTS */}
               {result && (
                 <>
+
                   {/* OVERALL SCORE */}
                   <div className="score-overview">
 
@@ -314,31 +322,41 @@ export default function Home() {
                         "Conversion",
                         result.score?.conversionPotential,
                       ],
-                    ].map(([label, value]) => (
-                      <div
-                        className="score-card"
-                        key={String(label)}
-                      >
-                        <div className="score-header">
-                          <span>
-                            {label}
-                          </span>
+                    ].map(([label, value]) => {
 
-                          <strong>
-                            {value ?? 0}/100
-                          </strong>
-                        </div>
+                      const score =
+                        typeof value === "number"
+                          ? value
+                          : 0;
 
-                        <div className="score-track">
-                          <div
-                            className="score-fill"
-                            style={{
-                              width: `${value ?? 0}%`,
-                            }}
-                          />
+                      return (
+                        <div
+                          className="score-card"
+                          key={String(label)}
+                        >
+                          <div className="score-header">
+
+                            <span>
+                              {label}
+                            </span>
+
+                            <strong>
+                              {score}/100
+                            </strong>
+
+                          </div>
+
+                          <div className="score-track">
+                            <div
+                              className="score-fill"
+                              style={{
+                                width: `${score}%`,
+                              }}
+                            />
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
 
                   </div>
 
@@ -357,8 +375,9 @@ export default function Home() {
                       </div>
                     </div>
 
-                    {/* OPTIMIZED TITLE */}
+                    {/* TITLE */}
                     <div className="result-field">
+
                       <div className="field-header">
                         <label>
                           Product title
@@ -381,10 +400,12 @@ export default function Home() {
                         {result.optimization?.title ||
                           "No output"}
                       </div>
+
                     </div>
 
                     {/* PRODUCT TYPE */}
                     <div className="result-field">
+
                       <div className="field-header">
                         <label>
                           Product type
@@ -407,10 +428,12 @@ export default function Home() {
                         {result.optimization?.productType ||
                           "No output"}
                       </div>
+
                     </div>
 
                     {/* DESCRIPTION */}
                     <div className="result-field">
+
                       <div className="field-header">
                         <label>
                           Product description
@@ -433,10 +456,12 @@ export default function Home() {
                         {result.optimization?.description ||
                           "No output"}
                       </div>
+
                     </div>
 
                     {/* FEATURES */}
                     <div className="result-field">
+
                       <div className="field-header">
                         <label>
                           Features
@@ -447,8 +472,8 @@ export default function Home() {
                           className="small-button"
                           onClick={() =>
                             copyText(
-                              result.optimization?.features?.join(
-                                "\n"
+                              listToText(
+                                result.optimization?.features
                               )
                             )
                           }
@@ -458,18 +483,16 @@ export default function Home() {
                       </div>
 
                       <div className="field-value multiline">
-                        {result.optimization?.features?.length
-                          ? result.optimization.features
-                              .map(
-                                (item) => `• ${item}`
-                              )
-                              .join("\n")
-                          : "No output"}
+                        {listToText(
+                          result.optimization?.features
+                        ) || "No output"}
                       </div>
+
                     </div>
 
                     {/* SPECIFICATIONS */}
                     <div className="result-field">
+
                       <div className="field-header">
                         <label>
                           Specifications
@@ -480,8 +503,9 @@ export default function Home() {
                           className="small-button"
                           onClick={() =>
                             copyText(
-                              result.optimization?.specifications?.join(
-                                "\n"
+                              listToText(
+                                result.optimization
+                                  ?.specifications
                               )
                             )
                           }
@@ -491,29 +515,28 @@ export default function Home() {
                       </div>
 
                       <div className="field-value multiline">
-                        {result.optimization?.specifications?.length
-                          ? result.optimization.specifications
-                              .map(
-                                (item) => `• ${item}`
-                              )
-                              .join("\n")
-                          : "No output"}
+                        {listToText(
+                          result.optimization
+                            ?.specifications
+                        ) || "No output"}
                       </div>
+
                     </div>
 
                     {/* SEO TITLE */}
                     <div className="result-field">
+
                       <div className="field-header">
+
                         <label>
                           SEO title
                         </label>
 
                         <div className="field-actions">
+
                           <span className="character-count">
-                            {
-                              result.optimization?.seoTitle
-                                ?.length ?? 0
-                            }
+                            {result.optimization
+                              ?.seoTitle?.length ?? 0}
                             /50
                           </span>
 
@@ -522,12 +545,14 @@ export default function Home() {
                             className="small-button"
                             onClick={() =>
                               copyText(
-                                result.optimization?.seoTitle
+                                result.optimization
+                                  ?.seoTitle
                               )
                             }
                           >
                             Copy
                           </button>
+
                         </div>
                       </div>
 
@@ -535,22 +560,23 @@ export default function Home() {
                         {result.optimization?.seoTitle ||
                           "No output"}
                       </div>
+
                     </div>
 
                     {/* META DESCRIPTION */}
                     <div className="result-field">
+
                       <div className="field-header">
+
                         <label>
                           Meta description
                         </label>
 
                         <div className="field-actions">
+
                           <span className="character-count">
-                            {
-                              result.optimization
-                                ?.metaDescription
-                                ?.length ?? 0
-                            }
+                            {result.optimization
+                              ?.metaDescription?.length ?? 0}
                             /150
                           </span>
 
@@ -566,6 +592,7 @@ export default function Home() {
                           >
                             Copy
                           </button>
+
                         </div>
                       </div>
 
@@ -574,11 +601,14 @@ export default function Home() {
                           ?.metaDescription ||
                           "No output"}
                       </div>
+
                     </div>
 
                     {/* TAGS */}
                     <div className="result-field">
+
                       <div className="field-header">
+
                         <label>
                           Tags
                         </label>
@@ -596,6 +626,7 @@ export default function Home() {
                         >
                           Copy
                         </button>
+
                       </div>
 
                       <div className="field-value multiline">
@@ -605,11 +636,12 @@ export default function Home() {
                             )
                           : "No output"}
                       </div>
+
                     </div>
 
                   </div>
 
-                  {/* ANALYSIS */}
+                  {/* AI ANALYSIS */}
                   {result.analysis && (
                     <div className="content-card">
 
@@ -621,25 +653,23 @@ export default function Home() {
                         What Virello found
                       </h2>
 
-                      {result.analysis
-                        .targetCustomer && (
+                      {result.analysis.targetCustomer && (
                         <div className="analysis-block">
+
                           <strong>
                             Target customer
                           </strong>
 
                           <p>
-                            {
-                              result.analysis
-                                .targetCustomer
-                            }
+                            {result.analysis.targetCustomer}
                           </p>
+
                         </div>
                       )}
 
-                      {result.analysis
-                        .purchaseMotivation && (
+                      {result.analysis.purchaseMotivation && (
                         <div className="analysis-block">
+
                           <strong>
                             Purchase motivation
                           </strong>
@@ -650,31 +680,37 @@ export default function Home() {
                                 .purchaseMotivation
                             }
                           </p>
+
                         </div>
                       )}
 
                       {result.analysis
                         .strongestFeatures?.length ? (
                         <div className="analysis-block">
+
                           <strong>
                             Strongest features
                           </strong>
 
                           <ul>
-                            {result.analysis.strongestFeatures.map(
-                              (item, index) => (
-                                <li key={index}>
-                                  {item}
-                                </li>
-                              )
-                            )}
+                            {result.analysis
+                              .strongestFeatures
+                              .map(
+                                (item, index) => (
+                                  <li key={index}>
+                                    {item}
+                                  </li>
+                                )
+                              )}
                           </ul>
+
                         </div>
                       ) : null}
 
                       {result.analysis
                         .weaknesses?.length ? (
                         <div className="analysis-block">
+
                           <strong>
                             Weaknesses
                           </strong>
@@ -688,70 +724,83 @@ export default function Home() {
                               )
                             )}
                           </ul>
+
                         </div>
                       ) : null}
 
                       {result.analysis
                         .missingInformation?.length ? (
                         <div className="analysis-block">
+
                           <strong>
                             Missing information
                           </strong>
 
                           <ul>
-                            {result.analysis.missingInformation.map(
-                              (item, index) => (
-                                <li key={index}>
-                                  {item}
-                                </li>
-                              )
-                            )}
+                            {result.analysis
+                              .missingInformation
+                              .map(
+                                (item, index) => (
+                                  <li key={index}>
+                                    {item}
+                                  </li>
+                                )
+                              )}
                           </ul>
+
                         </div>
                       ) : null}
 
                       {result.analysis
                         .seoOpportunities?.length ? (
                         <div className="analysis-block">
+
                           <strong>
                             SEO opportunities
                           </strong>
 
                           <ul>
-                            {result.analysis.seoOpportunities.map(
-                              (item, index) => (
-                                <li key={index}>
-                                  {item}
-                                </li>
-                              )
-                            )}
+                            {result.analysis
+                              .seoOpportunities
+                              .map(
+                                (item, index) => (
+                                  <li key={index}>
+                                    {item}
+                                  </li>
+                                )
+                              )}
                           </ul>
+
                         </div>
                       ) : null}
 
                       {result.analysis
                         .conversionOpportunities?.length ? (
                         <div className="analysis-block">
+
                           <strong>
                             Conversion opportunities
                           </strong>
 
                           <ul>
-                            {result.analysis.conversionOpportunities.map(
-                              (item, index) => (
-                                <li key={index}>
-                                  {item}
-                                </li>
-                              )
-                            )}
+                            {result.analysis
+                              .conversionOpportunities
+                              .map(
+                                (item, index) => (
+                                  <li key={index}>
+                                    {item}
+                                  </li>
+                                )
+                              )}
                           </ul>
+
                         </div>
                       ) : null}
 
                     </div>
                   )}
 
-                  {/* REASONING */}
+                  {/* AI REASONING */}
                   {result.reasoning && (
                     <div className="content-card">
 
@@ -759,14 +808,16 @@ export default function Home() {
                         AI REASONING
                       </div>
 
-                      <p className="reasoning">
+                      <p className="reasoning-text">
                         {result.reasoning}
                       </p>
 
                     </div>
                   )}
+
                 </>
               )}
+
             </div>
           </section>
         </div>
