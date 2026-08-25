@@ -78,7 +78,9 @@ function cleanText(value: unknown): string {
 }
 
 function cleanArray(value: unknown): string[] {
-  if (!Array.isArray(value)) return [];
+  if (!Array.isArray(value)) {
+    return [];
+  }
 
   return value
     .filter((item): item is string => typeof item === "string")
@@ -171,7 +173,9 @@ function normalizeResult(
   return {
     analysis: {
       targetCustomer:
-        cleanText(analysis.targetCustomer),
+        cleanText(
+          analysis.targetCustomer
+        ),
 
       purchaseMotivation:
         cleanText(
@@ -462,35 +466,6 @@ const AI_SCHEMA = {
   ],
 };
 
-function parseModelOutput(
-  value: string
-): unknown {
-  const cleaned =
-    value
-      .trim()
-      .replace(
-        /^```json\s*/i,
-        ""
-      )
-      .replace(
-        /^```\s*/i,
-        ""
-      )
-      .replace(
-        /\s*```$/i,
-        ""
-      )
-      .trim();
-
-  if (!cleaned) {
-    throw new Error(
-      "The AI returned an empty response."
-    );
-  }
-
-  return JSON.parse(cleaned);
-}
-
 export async function POST(
   request: NextRequest
 ) {
@@ -502,7 +477,7 @@ export async function POST(
       return NextResponse.json(
         {
           error:
-            "OPENAI_API_KEY is not configured in the server environment.",
+            "OPENAI_API_KEY is not configured in Vercel.",
         },
         {
           status: 500,
@@ -608,6 +583,7 @@ Virello is a PLATFORM-INDEPENDENT ecommerce product optimization application.
 Virello is NOT Shopify-only.
 
 Virello can work with:
+
 - Shopify
 - WooCommerce
 - BigCommerce
@@ -618,9 +594,11 @@ Virello can work with:
 - dropshipping businesses
 - other ecommerce platforms
 
-Your PRIMARY OBJECTIVE is to create HIGH-CONVERTING ecommerce product listings.
+PRIMARY OBJECTIVE:
 
-The final listing must help a qualified shopper:
+Create genuinely HIGH-CONVERTING ecommerce product listings.
+
+The final listing should help a qualified shopper:
 
 - understand the product
 - understand who it is for
@@ -654,7 +632,7 @@ If audience = "Women":
 
 If audience = "Unisex":
 
-- Keep gender-neutral positioning.
+- Use gender-neutral positioning.
 
 NEVER override an explicit audience.
 
@@ -687,8 +665,8 @@ NEVER invent:
 
 If information is missing, report it under missingInformation.
 
-Missing optional information must NOT prevent you from creating
-strong persuasive copy from the information that IS available.
+Missing optional information must NOT prevent creation of strong
+persuasive copy from the information that IS available.
 
 ==================================================
 DESCRIPTION — HIGH CONVERSION
@@ -696,40 +674,47 @@ DESCRIPTION — HIGH CONVERSION
 
 The optimized description MUST NOT be empty.
 
-The description must NOT simply repeat the title.
+Write a REAL ecommerce sales description.
 
-Create a real ecommerce sales description.
+Do not simply repeat the title.
 
 Use this structure:
 
 1. HOOK
-Start with the strongest supported reason the shopper would care.
+
+Start with the strongest supported reason the shopper should care.
 
 2. PRODUCT VALUE
-Clearly identify what the product offers.
+
+Clearly explain what the product offers.
 
 3. BENEFITS
+
 Translate supported features into useful buyer benefits.
 
 4. DESIRABILITY
-Explain the visual, functional, practical, or stylistic appeal
-when supported by the product information.
+
+Explain visual, functional, practical or stylistic appeal when
+supported by the supplied information.
 
 5. AUDIENCE FIT
+
 Make the copy relevant to the supplied audience.
 
 6. PURCHASE MOTIVATION
-Explain why the product is worth considering.
+
+Explain legitimate reasons the shopper would consider buying it.
 
 7. PURCHASE-ORIENTED CLOSE
-End naturally with language that encourages the shopper to consider
-the product.
 
-Do not use fake urgency.
+Finish naturally with language that encourages consideration.
 
-Do not use fake scarcity.
+Do NOT use:
 
-Do not make unsupported guarantees.
+- fake urgency
+- fake scarcity
+- fake guarantees
+- unsupported claims
 
 Avoid generic AI filler such as:
 
@@ -741,17 +726,17 @@ Avoid generic AI filler such as:
 "must-have"
 "game changer"
 
-unless actually supported.
+unless the supplied facts genuinely support the statement.
 
 Write like a strong ecommerce brand.
 
 Do NOT write like an AI report.
 
 ==================================================
-FEATURES
+FEATURES — BENEFIT FOCUSED
 ==================================================
 
-Features should be feature-to-benefit statements whenever supported.
+Features should communicate buyer value.
 
 Weak:
 
@@ -787,17 +772,17 @@ Do not automatically add Unisex.
 SEO
 ==================================================
 
-SEO must support conversion.
-
-Use natural search intent.
+SEO must support both search visibility and conversion.
 
 SEO title:
+
 Maximum 60 characters.
 
 Meta description:
+
 Maximum 160 characters.
 
-The meta description should:
+Meta description should:
 
 - identify the product
 - communicate a benefit
@@ -812,7 +797,7 @@ TAGS
 
 Use relevant ecommerce search/catalog terms.
 
-Relevant tags may include:
+Tags may include:
 
 - product type
 - important feature
@@ -835,22 +820,11 @@ Do NOT score only the original input.
 
 The AI is responsible for improving the listing.
 
-Do NOT heavily punish the conversion score because the original
-description was empty.
+Do NOT heavily punish conversion because the original description
+was empty.
 
-Do NOT automatically give a low conversion score because the
-original seller omitted optional information.
-
-Missing:
-
-- original description
-- price
-- variants
-- images
-- optional technical details
-
-may be listed under missingInformation, but must NOT automatically
-destroy the conversion score.
+Do NOT automatically give a low conversion score because optional
+information was missing.
 
 Evaluate conversion using:
 
@@ -868,7 +842,7 @@ Evaluate conversion using:
 - purchase appeal
 - usefulness of the final listing
 
-SCORING GUIDELINE:
+SCORING:
 
 90-100:
 Exceptional ecommerce listing with strong value, benefits,
@@ -909,51 +883,53 @@ Do NOT inflate the score without justification.
 OVERALL SCORE
 ==================================================
 
-Overall must represent the quality of the FINAL optimized listing.
+Overall represents the quality of the FINAL optimized listing.
 
 A strong optimized listing should receive a strong overall score.
-
-Do not punish the final result simply because the original product
-information was incomplete.
 
 ==================================================
 ANALYSIS
 ==================================================
 
 targetCustomer:
-Describe the actual target shopper based on the supplied audience
-and product information.
+
+Describe the actual target shopper based on audience and product.
 
 purchaseMotivation:
-Explain the strongest legitimate reasons that shopper would want
-the product.
+
+Explain the strongest legitimate reasons the shopper would want it.
 
 strongestFeatures:
+
 List the strongest supported selling points.
 
 weaknesses:
+
 Identify genuine weaknesses.
 
 missingInformation:
-List information that would improve buyer confidence.
+
+List information that could improve buyer confidence.
 
 seoOpportunities:
+
 List useful search opportunities.
 
 conversionOpportunities:
-List practical improvements that can increase purchase confidence
+
+List practical improvements that could increase purchase confidence
 and buying appeal.
 
 ==================================================
 REASONING
 ==================================================
 
-Briefly explain the important optimization decisions.
+Briefly explain important optimization decisions.
 
 Never mention Shopify unless Shopify is explicitly present in the
 supplied product information.
 
-Return ONLY valid structured JSON matching the requested schema.
+Return ONLY valid JSON matching the schema.
 `;
 
     const userPrompt = `
@@ -970,9 +946,17 @@ ${JSON.stringify(
 Return the complete structured optimization.
 `;
 
+    /*
+     * Use an environment variable when supplied.
+     * Otherwise use a currently supported OpenAI model.
+     *
+     * IMPORTANT:
+     * If you already have OPENAI_MODEL in Vercel,
+     * that value will be used.
+     */
     const model =
       process.env.OPENAI_MODEL ||
-      "gpt-5.6-luna";
+      "gpt-5.4";
 
     const openAIResponse =
       await fetch(
@@ -985,7 +969,7 @@ Return the complete structured optimization.
               "application/json",
 
             Authorization:
-              \`Bearer ${apiKey}\`,
+              `Bearer ${apiKey}`,
           },
 
           body: JSON.stringify({
@@ -1067,6 +1051,11 @@ Return the complete structured optimization.
         }
       }
 
+      console.error(
+        "OpenAI API error:",
+        errorMessage
+      );
+
       return NextResponse.json(
         {
           error:
@@ -1102,51 +1091,38 @@ Return the complete structured optimization.
     }
 
     let outputText =
-      typeof responseData?.output_text ===
-      "string"
-        ? responseData.output_text.trim()
-        : "";
+      cleanText(
+        responseData?.output_text
+      );
 
-    if (!outputText) {
-      const output =
-        Array.isArray(
-          responseData?.output
-        )
-          ? responseData.output
-          : [];
-
+    if (
+      !outputText &&
+      Array.isArray(
+        responseData?.output
+      )
+    ) {
       const parts: string[] = [];
 
       for (
-        const item of output
+        const item of responseData.output
       ) {
         if (
-          !item ||
-          typeof item !==
-            "object"
+          !Array.isArray(
+            item?.content
+          )
         ) {
           continue;
         }
 
-        const content =
-          Array.isArray(
-            item.content
-          )
-            ? item.content
-            : [];
-
         for (
-          const part of content
+          const part of item.content
         ) {
           if (
-            part &&
-            typeof part ===
-              "object" &&
-            typeof part.text ===
-              "string"
+            typeof part?.text ===
+            "string"
           ) {
             parts.push(
-              part.text.trim()
+              part.text
             );
           }
         }
@@ -1154,7 +1130,6 @@ Return the complete structured optimization.
 
       outputText =
         parts
-          .filter(Boolean)
           .join("\n")
           .trim();
     }
@@ -1171,33 +1146,40 @@ Return the complete structured optimization.
       );
     }
 
-    const rawResult =
-      parseModelOutput(
-        outputText
+    let parsedResult: unknown;
+
+    try {
+      parsedResult =
+        JSON.parse(
+          outputText
+        );
+    } catch {
+      return NextResponse.json(
+        {
+          error:
+            "The AI returned invalid JSON.",
+        },
+        {
+          status: 502,
+        }
       );
+    }
 
     const result =
       normalizeResult(
-        rawResult
+        parsedResult
       );
 
-    const title =
-      cleanText(
-        product.title
-      );
-
-    if (
-      !result.optimization.description
-    ) {
-      result.optimization.description =
-        \`Discover the ${title}, with a clear focus on its strongest supported features, practical benefits, and appeal to the intended shopper.\`;
-    }
+    /*
+     * Safety fallbacks.
+     * The UI should never receive an empty optimized listing.
+     */
 
     if (
       !result.optimization.title
     ) {
       result.optimization.title =
-        title;
+        product.title;
     }
 
     if (
@@ -1208,6 +1190,13 @@ Return the complete structured optimization.
           product.productType
         ) ||
         "Product";
+    }
+
+    if (
+      !result.optimization.description
+    ) {
+      result.optimization.description =
+        `Discover the ${product.title}, with a clear focus on its strongest supported features, practical benefits and appeal to the intended shopper.`;
     }
 
     if (
@@ -1231,10 +1220,10 @@ Return the complete structured optimization.
     }
 
     /*
-     * FINAL AUDIENCE SAFETY CHECK
+     * STRICT AUDIENCE PROTECTION
      *
-     * Prevents Men's and Women's products
-     * from being returned as Unisex.
+     * This prevents the exact problem you had:
+     * Men's product becoming Unisex.
      */
 
     if (
@@ -1247,6 +1236,13 @@ Return the complete structured optimization.
             "men"
           );
 
+      result.analysis.purchaseMotivation =
+        result.analysis.purchaseMotivation
+          .replace(
+            /\bunisex\b/gi,
+            "men's"
+          );
+
       result.optimization.description =
         result.optimization.description
           .replace(
@@ -1256,12 +1252,19 @@ Return the complete structured optimization.
 
       result.optimization.features =
         result.optimization.features.map(
-          (item) =>
-            item.replace(
+          (feature) =>
+            feature.replace(
               /\bunisex\b/gi,
               "men's"
             )
         );
+
+      result.optimization.title =
+        result.optimization.title
+          .replace(
+            /\bunisex\b/gi,
+            "Men's"
+          );
     }
 
     if (
@@ -1274,6 +1277,13 @@ Return the complete structured optimization.
             "women"
           );
 
+      result.analysis.purchaseMotivation =
+        result.analysis.purchaseMotivation
+          .replace(
+            /\bunisex\b/gi,
+            "women's"
+          );
+
       result.optimization.description =
         result.optimization.description
           .replace(
@@ -1283,58 +1293,64 @@ Return the complete structured optimization.
 
       result.optimization.features =
         result.optimization.features.map(
-          (item) =>
-            item.replace(
+          (feature) =>
+            feature.replace(
               /\bunisex\b/gi,
               "women's"
             )
         );
+
+      result.optimization.title =
+        result.optimization.title
+          .replace(
+            /\bunisex\b/gi,
+            "Women's"
+          );
     }
 
     /*
-     * CONVERSION FLOOR
+     * HIGH-CONVERSION SCORE FLOOR
      *
-     * If the final listing is complete and
-     * persuasive, do not allow the AI to
-     * return an artificially low conversion
-     * score.
+     * The score reflects the FINAL optimized
+     * listing rather than punishing the user
+     * for an empty original description.
      */
 
-    const hasStrongDescription =
+    const strongDescription =
       result.optimization.description.length >=
       120;
 
-    const hasFeatures =
+    const strongFeatures =
       result.optimization.features.length >=
       2;
 
-    const hasPurchaseMotivation =
+    const strongMotivation =
       result.analysis.purchaseMotivation.length >=
       30;
 
-    const hasTargetCustomer =
+    const strongAudience =
       result.analysis.targetCustomer.length >=
-      20;
+      15;
 
     if (
-      hasStrongDescription &&
-      hasFeatures &&
-      hasPurchaseMotivation &&
-      hasTargetCustomer
+      strongDescription &&
+      strongFeatures &&
+      strongMotivation &&
+      strongAudience
     ) {
       result.score.conversionPotential =
         Math.max(
           result.score.conversionPotential,
-          80
+          85
         );
     }
 
     /*
-     * Recalculate the overall score from
-     * the final optimized listing components.
+     * Recalculate overall score from the
+     * FINAL optimized listing.
      */
 
-    const calculatedOverall =
+    result.score.overall =
       Math.round(
         (
           result.score.title +
@@ -1345,18 +1361,10 @@ Return the complete structured optimization.
         ) / 5
       );
 
-    result.score.overall =
-      Math.max(
-        result.score.overall,
-        calculatedOverall
-      );
-
     return NextResponse.json(
       {
         success: true,
-
         audience,
-
         result,
       },
       {
@@ -1368,23 +1376,18 @@ Return the complete structured optimization.
         },
       }
     );
-  } catch (
-    error
-  ) {
+  } catch (error) {
     console.error(
       "Virello AI analysis error:",
       error
     );
 
-    const message =
-      error instanceof Error
-        ? error.message
-        : "Unexpected server error.";
-
     return NextResponse.json(
       {
         error:
-          \`Virello AI could not optimize this product: ${message}\`,
+          error instanceof Error
+            ? error.message
+            : "Unexpected server error.",
       },
       {
         status: 500,
