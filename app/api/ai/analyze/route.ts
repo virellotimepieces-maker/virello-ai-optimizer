@@ -78,36 +78,33 @@ function cleanText(value: unknown): string {
 }
 
 function cleanArray(value: unknown): string[] {
-  if (!Array.isArray(value)) {
-    return [];
-  }
+  if (!Array.isArray(value)) return [];
 
   return value
-    .filter(
-      (item): item is string =>
-        typeof item === "string"
-    )
+    .filter((item): item is string => typeof item === "string")
     .map((item) => item.trim())
     .filter(Boolean);
 }
 
-function limitCharacters(
-  value: string,
-  max: number
-): string {
+function clampScore(value: unknown, fallback = 0): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return fallback;
+  }
+
+  return Math.max(0, Math.min(100, Math.round(value)));
+}
+
+function limitCharacters(value: string, max: number): string {
   return value.trim().slice(0, max);
 }
 
 /**
- * Determines the intended audience from the supplied
- * product information when Connect does not explicitly
- * provide an audience.
+ * Detect audience from the actual product information.
  *
- * Explicit gender words are checked before Unisex.
+ * Explicit audience from Connect is always preferred.
+ * This fallback is used only when audience was not supplied.
  */
-function inferAudience(
-  product: ProductInput
-): Audience {
+function inferAudience(product: ProductInput): Audience {
   const text = [
     product.title,
     product.description,
@@ -120,84 +117,8 @@ function inferAudience(
     .toLowerCase();
 
   /*
-   * Explicit unisex wording takes priority.
+   * Check explicit men's wording first.
    */
-  if (
-    /\b(unisex|gender[- ]?neutral)\b/.test(
-      text
-    )
-  ) {
-    return "Unisex";
-  }
-
-  /*
-   * Men's products.
-   */
-  if (
-    /\b(
-      men's|
-      mens|
-      men|
-      man's|
-      mans|
-      man|
-      male|
-      gentlemen|
-      gentleman
-    )\b/x.test(text)
-  ) {
-    return "Men";
-  }
-
-  /*
-   * Women's products.
-   */
-  if (
-    /\b(
-      women's|
-      womens|
-      women|
-      woman's|
-      womans|
-      woman|
-      female|
-      ladies|
-      lady
-    )\b/x.test(text)
-  ) {
-    return "Women";
-  }
-
-  return "Unisex";
-}
-
-/**
- * JavaScript does not support the /x flag used in some
- * regex engines. This helper performs the same matching
- * using normal JavaScript regex.
- */
-function inferAudienceSafe(
-  product: ProductInput
-): Audience {
-  const text = [
-    product.title,
-    product.description,
-    product.productType,
-    product.vendor,
-    ...(product.tags ?? []),
-  ]
-    .filter(Boolean)
-    .join(" ")
-    .toLowerCase();
-
-  if (
-    /\b(unisex|gender[- ]?neutral)\b/.test(
-      text
-    )
-  ) {
-    return "Unisex";
-  }
-
   if (
     /\b(men's|mens|men|man's|mans|man|male|gentlemen|gentleman)\b/.test(
       text
@@ -206,6 +127,9 @@ function inferAudienceSafe(
     return "Men";
   }
 
+  /*
+   * Check explicit women's wording.
+   */
   if (
     /\b(women's|womens|women|woman's|womans|woman|female|ladies|lady)\b/.test(
       text
@@ -214,164 +138,81 @@ function inferAudienceSafe(
     return "Women";
   }
 
+  /*
+   * Only use Unisex when the product actually says
+   * unisex / gender-neutral or no gender can be determined.
+   */
+  if (/\b(unisex|gender[- ]?neutral)\b/.test(text)) {
+    return "Unisex";
+  }
+
   return "Unisex";
 }
 
-function normalizeResult(
-  raw: unknown
-): AIResult {
+function normalizeResult(raw: unknown): AIResult {
   const data =
-    raw &&
-    typeof raw === "object"
+    raw && typeof raw === "object"
       ? (raw as Record<string, unknown>)
       : {};
 
   const analysis =
-    data.analysis &&
-    typeof data.analysis === "object"
-      ? (data.analysis as Record<
-          string,
-          unknown
-        >)
+    data.analysis && typeof data.analysis === "object"
+      ? (data.analysis as Record<string, unknown>)
       : {};
 
   const score =
-    data.score &&
-    typeof data.score === "object"
-      ? (data.score as Record<
-          string,
-          unknown
-        >)
+    data.score && typeof data.score === "object"
+      ? (data.score as Record<string, unknown>)
       : {};
 
   const optimization =
-    data.optimization &&
-    typeof data.optimization === "object"
-      ? (data.optimization as Record<
-          string,
-          unknown
-        >)
+    data.optimization && typeof data.optimization === "object"
+      ? (data.optimization as Record<string, unknown>)
       : {};
-
-  const numberValue = (
-    value: unknown,
-    fallback = 0
-  ): number => {
-    return typeof value === "number" &&
-      Number.isFinite(value)
-      ? Math.max(
-          0,
-          Math.min(
-            100,
-            Math.round(value)
-          )
-        )
-      : fallback;
-  };
 
   return {
     analysis: {
-      targetCustomer: cleanText(
-        analysis.targetCustomer
+      targetCustomer: cleanText(analysis.targetCustomer),
+      purchaseMotivation: cleanText(analysis.purchaseMotivation),
+      strongestFeatures: cleanArray(analysis.strongestFeatures),
+      weaknesses: cleanArray(analysis.weaknesses),
+      missingInformation: cleanArray(analysis.missingInformation),
+      seoOpportunities: cleanArray(analysis.seoOpportunities),
+      conversionOpportunities: cleanArray(
+        analysis.conversionOpportunities
       ),
-
-      purchaseMotivation: cleanText(
-        analysis.purchaseMotivation
-      ),
-
-      strongestFeatures: cleanArray(
-        analysis.strongestFeatures
-      ),
-
-      weaknesses: cleanArray(
-        analysis.weaknesses
-      ),
-
-      missingInformation: cleanArray(
-        analysis.missingInformation
-      ),
-
-      seoOpportunities: cleanArray(
-        analysis.seoOpportunities
-      ),
-
-      conversionOpportunities:
-        cleanArray(
-          analysis.conversionOpportunities
-        ),
     },
 
     score: {
-      title: numberValue(
-        score.title
-      ),
-
-      description: numberValue(
-        score.description
-      ),
-
-      seo: numberValue(
-        score.seo
-      ),
-
-      productClarity: numberValue(
-        score.productClarity
-      ),
-
-      conversionPotential:
-        numberValue(
-          score.conversionPotential
-        ),
-
-      overall: numberValue(
-        score.overall
-      ),
+      title: clampScore(score.title),
+      description: clampScore(score.description),
+      seo: clampScore(score.seo),
+      productClarity: clampScore(score.productClarity),
+      conversionPotential: clampScore(score.conversionPotential),
+      overall: clampScore(score.overall),
     },
 
     optimization: {
-      title: cleanText(
-        optimization.title
-      ),
-
-      productType: cleanText(
-        optimization.productType
-      ),
-
-      description: cleanText(
-        optimization.description
-      ),
-
-      features: cleanArray(
-        optimization.features
-      ),
-
-      specifications: cleanArray(
-        optimization.specifications
-      ),
+      title: cleanText(optimization.title),
+      productType: cleanText(optimization.productType),
+      description: cleanText(optimization.description),
+      features: cleanArray(optimization.features),
+      specifications: cleanArray(optimization.specifications),
 
       seoTitle: limitCharacters(
-        cleanText(
-          optimization.seoTitle
-        ),
-        50
+        cleanText(optimization.seoTitle),
+        60
       ),
 
-      metaDescription:
-        limitCharacters(
-          cleanText(
-            optimization.metaDescription
-          ),
-          150
-        ),
-
-      tags: cleanArray(
-        optimization.tags
+      metaDescription: limitCharacters(
+        cleanText(optimization.metaDescription),
+        160
       ),
+
+      tags: cleanArray(optimization.tags),
     },
 
-    reasoning: cleanText(
-      data.reasoning
-    ),
+    reasoning: cleanText(data.reasoning),
   };
 }
 
@@ -552,180 +393,133 @@ const AI_SCHEMA = {
   ],
 };
 
-function extractResponseText(
-  responseData: any
-): string {
-  if (
-    typeof responseData?.output_text ===
-      "string" &&
-    responseData.output_text.trim()
-  ) {
-    return responseData.output_text.trim();
+function parseModelOutput(text: string): unknown {
+  const cleaned = text.trim();
+
+  if (!cleaned) {
+    throw new Error("The AI returned an empty response.");
   }
 
-  const output = Array.isArray(
-    responseData?.output
-  )
-    ? responseData.output
-    : [];
+  try {
+    return JSON.parse(cleaned);
+  } catch {
+    /*
+     * Fallback if the model wraps JSON in markdown.
+     */
+    const withoutFence = cleaned
+      .replace(/^```json\s*/i, "")
+      .replace(/^```\s*/i, "")
+      .replace(/\s*```$/i, "")
+      .trim();
 
-  const parts: string[] = [];
-
-  for (const item of output) {
-    if (
-      !item ||
-      typeof item !== "object"
-    ) {
-      continue;
-    }
-
-    const content = Array.isArray(
-      item.content
-    )
-      ? item.content
-      : [];
-
-    for (const part of content) {
-      if (
-        part &&
-        typeof part === "object" &&
-        typeof part.text ===
-          "string" &&
-        part.text.trim()
-      ) {
-        parts.push(
-          part.text.trim()
-        );
-      }
+    try {
+      return JSON.parse(withoutFence);
+    } catch {
+      throw new Error(
+        "The AI returned invalid structured data."
+      );
     }
   }
-
-  return parts.join("\n").trim();
 }
 
-export async function POST(
-  request: NextRequest
-) {
+export async function POST(request: NextRequest) {
   try {
-    const apiKey =
-      process.env.OPENAI_API_KEY;
+    const apiKey = process.env.OPENAI_API_KEY;
 
     if (!apiKey) {
       return NextResponse.json(
         {
           error:
-            "OPENAI_API_KEY is not configured. Add it to the server environment variables.",
+            "OPENAI_API_KEY is not configured in the server environment.",
         },
-        {
-          status: 500,
-        }
+        { status: 500 }
       );
     }
 
-    const body =
-      await request.json();
+    const body = await request.json();
 
     const product: ProductInput =
       body?.product &&
-      typeof body.product ===
-        "object"
+      typeof body.product === "object"
         ? body.product
         : body;
 
-    if (
-      !product ||
-      typeof product !==
-        "object"
-    ) {
+    if (!product || typeof product !== "object") {
       return NextResponse.json(
         {
-          error:
-            "Product information is required.",
+          error: "Product information is required.",
         },
-        {
-          status: 400,
-        }
+        { status: 400 }
       );
     }
 
-    const title =
-      cleanText(
-        product.title
-      );
+    const title = cleanText(product.title);
 
     if (!title) {
       return NextResponse.json(
         {
           error:
-            "Product title is required for AI analysis.",
+            "Product title is required for AI optimization.",
         },
-        {
-          status: 400,
-        }
+        { status: 400 }
       );
     }
 
     /*
      * IMPORTANT:
      *
-     * If Connect explicitly supplies Men or Women,
-     * use that value.
+     * If the connected ecommerce platform sends an
+     * explicit audience, that value wins.
      *
-     * If Connect does not supply audience,
-     * determine it from the product information.
+     * Otherwise Virello determines it from the
+     * product title/details.
      */
-    const detectedAudience: Audience =
+    const audience: Audience =
       product.audience ??
-      inferAudienceSafe(product);
+      inferAudience(product);
 
     const productPayload = {
+      id: cleanText(product.id),
+
       title,
 
-      description:
-        cleanText(
-          product.description
-        ),
+      description: cleanText(
+        product.description
+      ),
 
-      productType:
-        cleanText(
-          product.productType
-        ),
+      productType: cleanText(
+        product.productType
+      ),
 
-      vendor:
-        cleanText(
-          product.vendor
-        ),
+      vendor: cleanText(
+        product.vendor
+      ),
 
-      tags:
-        cleanArray(
-          product.tags
-        ),
+      tags: cleanArray(
+        product.tags
+      ),
 
-      price:
-        cleanText(
-          product.price
-        ),
+      price: cleanText(
+        product.price
+      ),
 
-      audience:
-        detectedAudience,
+      audience,
 
       style:
         product.style ??
         "Everyday",
 
-      variants:
-        Array.isArray(
-          product.variants
-        )
-          ? product.variants
-          : [],
+      variants: Array.isArray(
+        product.variants
+      )
+        ? product.variants
+        : [],
 
-      images:
-        Array.isArray(
-          product.images
-        )
-          ? product.images
-          : [],
+      images: Array.isArray(
+        product.images
+      )
+        ? product.images
+        : [],
 
       featuredImage:
         product.featuredImage ??
@@ -735,154 +529,224 @@ export async function POST(
     const systemPrompt = `
 You are Virello AI Optimizer.
 
-You are an expert ecommerce conversion,
-SEO and product merchandising AI.
+Virello is a PLATFORM-INDEPENDENT ecommerce
+product optimization application.
 
-Your job is to improve ecommerce product
-listings for real online stores.
+It can be used with different ecommerce
+stores, ecommerce platforms, marketplaces,
+catalog systems and dropshipping businesses.
 
-The application is designed to work with
-different ecommerce platforms, stores,
-products and niches.
+Do NOT assume the product is from Shopify.
 
-IMPORTANT RULES:
+Your job is to transform raw product information
+into high-quality ecommerce listing content.
 
-- Use the supplied product information
-  as the source of truth.
-- Do not invent technical specifications.
-- Do not invent materials.
-- Do not invent certifications.
-- Do not invent dimensions.
-- Do not invent guarantees.
-- Do not invent warranties.
-- Do not invent shipping promises.
-- Do not invent performance claims.
-- Do not make unsupported claims.
-- Write naturally and professionally.
-- Optimize for search intent.
-- Optimize for purchase conversion.
-- Avoid keyword stuffing.
-- Avoid repetitive wording.
-- Make the product sound trustworthy.
-- Never hard-code a particular store.
-- Never hard-code a particular brand.
-- Never hard-code a particular product category.
+PRIMARY GOALS:
+
+1. Increase product clarity.
+2. Improve search relevance.
+3. Improve buyer confidence.
+4. Improve purchase motivation.
+5. Improve conversion potential.
+6. Produce ready-to-use ecommerce copy.
 
 AUDIENCE RULES:
 
 The supplied audience is authoritative.
 
-If audience is "Men":
-- Write the product specifically for men.
-- Treat the product as a men's product.
-- Do NOT describe it as unisex.
-- Do NOT say "unisex styling".
-- Do NOT say "unisex design".
-- Do NOT say "for both men and women".
-- Do NOT change Men to Unisex.
+If audience = "Men":
+- The target customer must be men.
+- The optimized listing must be men's positioning.
+- Do NOT describe the product as unisex.
+- Do NOT output "unisex" as the target audience.
 
-If audience is "Women":
-- Write the product specifically for women.
-- Treat the product as a women's product.
-- Do NOT describe it as unisex.
-- Do NOT say "unisex styling".
-- Do NOT say "unisex design".
-- Do NOT say "for both men and women".
-- Do NOT change Women to Unisex.
+If audience = "Women":
+- The target customer must be women.
+- The optimized listing must be women's positioning.
+- Do NOT describe the product as unisex.
 
-If audience is "Unisex":
-- Keep the product positioned as unisex.
-- Do not force a men's or women's audience.
+If audience = "Unisex":
+- Keep the product gender-neutral.
 
-If audience was inferred from the title,
-follow that audience consistently.
+IMPORTANT:
+Never change Men's into Unisex.
+Never change Women's into Unisex.
+Never ignore an explicit audience.
 
-SEO LIMITS:
+PRODUCT INFORMATION RULES:
 
-- seoTitle MUST be 50 characters or fewer.
-- metaDescription MUST be 150 characters or fewer.
-- These limits are strict.
+Use supplied information as the source of truth.
 
-TITLE:
+Do not invent:
+- materials
+- movement specifications
+- dimensions
+- water resistance
+- warranty
+- certifications
+- technical performance
+- shipping times
+- manufacturing claims
+- care instructions
+- prices
+- variants
+- availability
 
-Create a concise, high-converting product title.
+If technical information is missing,
+say that it is missing instead of inventing it.
 
-Prioritize:
-1. Product identity
-2. Important differentiator
-3. Commercial search intent
-4. Audience when relevant
+DESCRIPTION RULES:
 
-Do not unnecessarily repeat words.
+The optimized description must NOT be empty.
 
-DESCRIPTION:
+Write a useful ecommerce description even
+when the original description is empty.
 
-Write a conversion-focused ecommerce
-product description.
+Use only facts supported by the product title,
+product information and safe general positioning.
 
-Use:
-- Strong opening
-- Product benefits
-- Important features
-- Natural persuasion
-- Clear customer value
+Do not use exaggerated claims such as:
+"best in the world"
+"guaranteed"
+"number one"
+"premium quality"
+unless the supplied information actually supports them.
 
-Do not make unsupported claims.
+CONVERSION RULES:
 
-FEATURES:
+The conversion score must evaluate the QUALITY
+OF THE OPTIMIZED LISTING, not simply punish the
+product because the original seller forgot to
+provide optional fields.
 
-Return useful customer-facing features
-based only on supplied information.
+A missing original description should NOT
+automatically force conversion to a very low score.
 
-SPECIFICATIONS:
+Judge conversion using:
+- clarity
+- relevance
+- purchase motivation
+- benefit communication
+- audience fit
+- feature communication
+- trustworthiness
+- search intent
+- usefulness of the final description
 
-Return only specifications actually
-supported by the supplied information.
+If the optimized listing is strong based on
+the available information, its conversion score
+can be strong.
 
-Do not invent missing specifications.
-
-TAGS:
-
-Generate relevant ecommerce search tags.
-
-Avoid:
-- Spammy tags
-- Duplicate tags
-- Irrelevant tags
-- Unsupported claims
-
-AI ANALYSIS:
-
-Explain:
-- Target customer
-- Purchase motivation
-- Strongest features
-- Weaknesses
-- Missing information
-- SEO opportunities
-- Conversion opportunities
+Do not artificially give a low conversion score
+just because price, variants or images were not
+provided.
 
 SCORING:
 
-Score each category from 0 to 100:
+Return scores from 0 to 100.
 
-title
-description
-seo
-productClarity
-conversionPotential
-overall
+Title:
+- clarity
+- keyword relevance
+- specificity
+- readability
+
+Description:
+- usefulness
+- clarity
+- benefits
+- natural language
+
+SEO:
+- search intent
+- keyword relevance
+- natural placement
+- title/meta quality
+
+Product clarity:
+- buyer understanding
+- product type
+- audience
+- key attributes
+
+Conversion:
+- purchase motivation
+- benefit clarity
+- audience fit
+- trust
+- persuasive quality
+- usefulness of the final listing
+
+Overall should represent the quality of the
+optimized listing, not simply the quality of the
+original input.
+
+TITLE RULES:
+
+Create a natural ecommerce product title.
+
+Avoid keyword stuffing.
+
+Keep titles concise.
+
+Do not unnecessarily repeat the same keyword.
+
+Preserve important model numbers when supplied.
+
+SEO TITLE:
+Create a concise search-friendly title.
+Maximum 60 characters.
+
+META DESCRIPTION:
+Create a natural search-friendly meta description.
+Maximum 160 characters.
+
+TAGS:
+Return useful search/catalog tags.
+Do not stuff irrelevant keywords.
+
+FEATURES:
+Return concise bullet-style feature statements.
+
+SPECIFICATIONS:
+Only include specifications that are actually
+supported by supplied information.
+
+ANALYSIS:
+
+Target customer:
+Describe the actual likely buyer.
+
+Purchase motivation:
+Explain why that buyer would want the product.
+
+Strongest features:
+List the strongest supported selling points.
+
+Weaknesses:
+Identify real listing weaknesses.
+
+Missing information:
+List information that would improve the listing.
+
+SEO opportunities:
+Give useful search opportunities.
+
+Conversion opportunities:
+Give practical improvements that can increase
+purchase confidence.
 
 REASONING:
+Briefly explain the main optimization decisions.
 
-Briefly explain the most important
-optimization decisions.
-
-Return only the requested structured data.
-`.trim();
+Remember:
+Virello is not Shopify-only.
+Do not mention Shopify unless Shopify was explicitly
+included in the supplied product information.
+`;
 
     const userPrompt = `
-Analyze and optimize this ecommerce product.
+Optimize this ecommerce product.
 
 PRODUCT DATA:
 
@@ -892,145 +756,119 @@ ${JSON.stringify(
   2
 )}
 
-IMPORTANT:
+Return the complete structured optimization.
+`;
 
-The audience is:
+    const model =
+      process.env.OPENAI_MODEL ||
+      "gpt-5.6-luna";
 
-${detectedAudience}
+    const openAIResponse = await fetch(
+      "https://api.openai.com/v1/responses",
+      {
+        method: "POST",
 
-Follow this audience exactly.
+        headers: {
+          "Content-Type":
+            "application/json",
 
-If the audience is Men,
-the resulting content must remain men's
-content and must not call the product
-unisex.
+          Authorization:
+            `Bearer ${apiKey}`,
+        },
 
-If the audience is Women,
-the resulting content must remain women's
-content and must not call the product
-unisex.
+        body: JSON.stringify({
+          model,
 
-If the audience is Unisex,
-keep the product unisex.
-
-Remember:
-
-seoTitle <= 50 characters
-
-metaDescription <= 150 characters
-
-Only use information supported by
-the supplied product data.
-`.trim();
-
-    const response =
-      await fetch(
-        "https://api.openai.com/v1/responses",
-        {
-          method: "POST",
-
-          headers: {
-            "Content-Type":
-              "application/json",
-
-            Authorization:
-              `Bearer ${apiKey}`,
-          },
-
-          body: JSON.stringify({
-            model:
-              "gpt-5.6-luna",
-
-            input: [
-              {
-                role: "system",
-                content:
-                  systemPrompt,
-              },
-
-              {
-                role: "user",
-                content:
-                  userPrompt,
-              },
-            ],
-
-            text: {
-              format: {
-                type:
-                  "json_schema",
-
-                name:
-                  "virello_ai_optimization",
-
-                description:
-                  "Structured ecommerce product optimization result.",
-
-                strict: true,
-
-                schema:
-                  AI_SCHEMA,
-              },
+          input: [
+            {
+              role: "system",
+              content: [
+                {
+                  type: "input_text",
+                  text: systemPrompt,
+                },
+              ],
             },
 
-            max_output_tokens:
-              5000,
-          }),
+            {
+              role: "user",
+              content: [
+                {
+                  type: "input_text",
+                  text: userPrompt,
+                },
+              ],
+            },
+          ],
+
+          text: {
+            format: {
+              type: "json_schema",
+
+              name:
+                "virello_product_optimization",
+
+              strict: true,
+
+              schema:
+                AI_SCHEMA,
+            },
+          },
+        }),
+      }
+    );
+
+    const responseText =
+      await openAIResponse.text();
+
+    if (!openAIResponse.ok) {
+      let errorMessage =
+        "OpenAI request failed.";
+
+      try {
+        const errorData =
+          JSON.parse(
+            responseText
+          );
+
+        errorMessage =
+          errorData?.error?.message ??
+          errorMessage;
+      } catch {
+        if (responseText) {
+          errorMessage =
+            responseText.slice(
+              0,
+              500
+            );
         }
-      );
-
-    const responseData =
-      await response.json();
-
-    if (!response.ok) {
-      console.error(
-        "OpenAI API error:",
-        JSON.stringify(
-          responseData,
-          null,
-          2
-        )
-      );
+      }
 
       return NextResponse.json(
         {
-          error:
-            responseData?.error
-              ?.message ||
-            "OpenAI API request failed.",
+          error: errorMessage,
         },
         {
           status:
-            response.status ||
-            500,
+            openAIResponse.status >= 400
+              ? openAIResponse.status
+              : 500,
         }
       );
     }
 
-    const outputText =
-      extractResponseText(
-        responseData
-      );
+    let responseData: any;
 
-    if (!outputText) {
-      console.error(
-        "OpenAI returned no readable text:",
-        JSON.stringify(
-          responseData,
-          null,
-          2
-        )
-      );
-
+    try {
+      responseData =
+        JSON.parse(
+          responseText
+        );
+    } catch {
       return NextResponse.json(
         {
           error:
-            responseData
-              ?.incomplete_details
-              ?.reason ||
-            responseData?.error
-              ?.message ||
-            "The AI returned no readable text output.",
+            "OpenAI returned an invalid response.",
         },
         {
           status: 502,
@@ -1038,142 +876,204 @@ the supplied product data.
       );
     }
 
-    let parsed: unknown;
+    /*
+     * Responses API normally exposes the
+     * generated text as output_text.
+     */
+    let outputText =
+      typeof responseData?.output_text ===
+      "string"
+        ? responseData.output_text.trim()
+        : "";
 
-    try {
-      parsed =
-        JSON.parse(
-          outputText
-        );
-    } catch {
-      const cleaned =
-        outputText
-          .replace(
-            /^```json\s*/i,
-            ""
-          )
-          .replace(
-            /^```\s*/i,
-            ""
-          )
-          .replace(
-            /\s*```$/i,
-            ""
-          )
-          .trim();
+    /*
+     * Fallback parser for response objects.
+     */
+    if (!outputText) {
+      const output =
+        Array.isArray(
+          responseData?.output
+        )
+          ? responseData.output
+          : [];
 
-      try {
-        parsed =
-          JSON.parse(
-            cleaned
-          );
-      } catch (parseError) {
-        console.error(
-          "Invalid AI JSON:",
-          parseError,
-          outputText
-        );
+      const parts: string[] = [];
 
-        return NextResponse.json(
-          {
-            error:
-              "The AI returned an invalid JSON response.",
-          },
-          {
-            status: 502,
+      for (const item of output) {
+        if (
+          !item ||
+          typeof item !== "object"
+        ) {
+          continue;
+        }
+
+        const content =
+          Array.isArray(
+            item.content
+          )
+            ? item.content
+            : [];
+
+        for (const part of content) {
+          if (
+            part &&
+            typeof part === "object" &&
+            typeof part.text ===
+              "string"
+          ) {
+            parts.push(
+              part.text.trim()
+            );
           }
-        );
+        }
       }
+
+      outputText =
+        parts
+          .filter(Boolean)
+          .join("\n")
+          .trim();
     }
+
+    if (!outputText) {
+      return NextResponse.json(
+        {
+          error:
+            "The AI returned no optimization result.",
+        },
+        {
+          status: 502,
+        }
+      );
+    }
+
+    const rawResult =
+      parseModelOutput(
+        outputText
+      );
 
     const result =
       normalizeResult(
-        parsed
+        rawResult
       );
 
     /*
-     * Final safety correction.
-     *
-     * This prevents the AI from accidentally
-     * returning unisex wording for an explicitly
-     * identified men's or women's product.
+     * Safety fallback:
+     * Never allow the UI to display an empty
+     * optimized description.
      */
     if (
-      detectedAudience ===
-      "Men"
+      !result.optimization.description
+    ) {
+      result.optimization.description =
+        `Discover the ${title}, designed with a clear focus on its key features and everyday use.`;
+    }
+
+    /*
+     * Safety fallback for product type.
+     */
+    if (
+      !result.optimization.productType
+    ) {
+      result.optimization.productType =
+        cleanText(
+          product.productType
+        ) ||
+        "Product";
+    }
+
+    /*
+     * Safety fallback for title.
+     */
+    if (
+      !result.optimization.title
+    ) {
+      result.optimization.title =
+        title;
+    }
+
+    /*
+     * Safety fallback for SEO title.
+     */
+    if (
+      !result.optimization.seoTitle
+    ) {
+      result.optimization.seoTitle =
+        limitCharacters(
+          result.optimization.title,
+          60
+        );
+    }
+
+    /*
+     * Safety fallback for meta description.
+     */
+    if (
+      !result.optimization.metaDescription
+    ) {
+      result.optimization.metaDescription =
+        limitCharacters(
+          result.optimization.description,
+          160
+        );
+    }
+
+    /*
+     * Make sure the final audience analysis
+     * follows the actual supplied audience.
+     */
+    if (
+      audience === "Men" &&
+      result.analysis.targetCustomer
+        .toLowerCase()
+        .includes("unisex")
     ) {
       result.analysis.targetCustomer =
-        result.analysis.targetCustomer
-          .replace(
-            /\bunisex\b/gi,
-            "men"
-          );
-
-      result.optimization.description =
-        result.optimization.description
-          .replace(
-            /\bunisex\b/gi,
-            "men's"
-          );
-
-      result.optimization.features =
-        result.optimization.features.map(
-          (item) =>
-            item.replace(
-              /\bunisex\b/gi,
-              "men's"
-            )
-        );
+        "Men seeking this type of product based on the supplied product information.";
     }
 
     if (
-      detectedAudience ===
-      "Women"
+      audience === "Women" &&
+      result.analysis.targetCustomer
+        .toLowerCase()
+        .includes("unisex")
     ) {
       result.analysis.targetCustomer =
-        result.analysis.targetCustomer
-          .replace(
-            /\bunisex\b/gi,
-            "women"
-          );
-
-      result.optimization.description =
-        result.optimization.description
-          .replace(
-            /\bunisex\b/gi,
-            "women's"
-          );
-
-      result.optimization.features =
-        result.optimization.features.map(
-          (item) =>
-            item.replace(
-              /\bunisex\b/gi,
-              "women's"
-            )
-        );
+        "Women seeking this type of product based on the supplied product information.";
     }
 
-    return NextResponse.json({
-      success: true,
+    return NextResponse.json(
+      {
+        success: true,
 
-      audience:
-        detectedAudience,
+        audience,
 
-      result,
-    });
+        result,
+      },
+      {
+        status: 200,
+
+        headers: {
+          "Cache-Control":
+            "no-store",
+        },
+      }
+    );
   } catch (error) {
     console.error(
-      "Virello AI Optimizer error:",
+      "Virello AI analysis error:",
       error
     );
+
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Unexpected server error.";
 
     return NextResponse.json(
       {
         error:
-          error instanceof Error
-            ? error.message
-            : "Something went wrong while optimizing the product.",
+          `Virello AI could not optimize this product: ${message}`,
       },
       {
         status: 500,
