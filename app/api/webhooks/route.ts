@@ -17,27 +17,32 @@ function verifyShopifyHmac(
   const calculatedHmac = crypto
     .createHmac("sha256", secret)
     .update(body, "utf8")
-    .digest("base64");
+    .digest();
 
-  const received = Buffer.from(hmacHeader, "utf8");
-  const calculated = Buffer.from(calculatedHmac, "utf8");
+  const receivedHmac = Buffer.from(hmacHeader, "base64");
 
-  if (received.length !== calculated.length) {
+  if (receivedHmac.length !== calculatedHmac.length) {
     return false;
   }
 
-  return crypto.timingSafeEqual(received, calculated);
+  return crypto.timingSafeEqual(
+    receivedHmac,
+    calculatedHmac
+  );
 }
 
 export async function POST(request: Request) {
   try {
     const body = await request.text();
+
     const hmacHeader = request.headers.get(
       "x-shopify-hmac-sha256"
     );
 
     if (!verifyShopifyHmac(body, hmacHeader)) {
-      console.error("Shopify webhook HMAC verification failed");
+      console.error(
+        "Shopify webhook HMAC verification failed"
+      );
 
       return NextResponse.json(
         { error: "Unauthorized" },
@@ -45,7 +50,10 @@ export async function POST(request: Request) {
       );
     }
 
-    const topic = request.headers.get("x-shopify-topic");
+    const topic = request.headers.get(
+      "x-shopify-topic"
+    );
+
     const shop = request.headers.get(
       "x-shopify-shop-domain"
     );
@@ -71,7 +79,10 @@ export async function POST(request: Request) {
       { status: 200 }
     );
   } catch (error) {
-    console.error("Webhook processing failed:", error);
+    console.error(
+      "Webhook processing failed:",
+      error
+    );
 
     return NextResponse.json(
       { error: "Webhook processing failed" },
