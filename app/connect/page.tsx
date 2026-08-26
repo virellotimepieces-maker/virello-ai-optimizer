@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { FormEvent, useState } from "react";
 
 type Platform =
   | "shopify"
@@ -47,6 +47,9 @@ export default function ConnectPage() {
 
   const [message, setMessage] = useState("");
 
+  const [checkoutLoading, setCheckoutLoading] =
+    useState(false);
+
   function cleanShopDomain(value: string) {
     return value
       .trim()
@@ -70,85 +73,144 @@ export default function ConnectPage() {
     }
   }
 
-  function handleContinue() {
+  async function startCheckout() {
+    setCheckoutLoading(true);
     setMessage("");
 
+    try {
+      const response = await fetch(
+        "/api/stripe/checkout",
+        {
+          method: "POST",
+        }
+      );
+
+      const data = await response.json();
+
+      if (
+        !response.ok ||
+        !data.success ||
+        !data.url
+      ) {
+        throw new Error(
+          data.error ||
+            "Unable to start subscription checkout."
+        );
+      }
+
+      /*
+       * Open Stripe checkout in the
+       * top-level browser window.
+       */
+      window.location.href = data.url;
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Unable to start subscription checkout."
+      );
+
+      setCheckoutLoading(false);
+    }
+  }
+
+  function handleContinue(
+    event: FormEvent<HTMLFormElement>
+  ) {
+    /*
+     * The Shopify form below handles the
+     * actual OAuth navigation.
+     *
+     * This function is only used for
+     * non-Shopify platforms and validation.
+     */
+
     if (!selected) {
+      event.preventDefault();
+
       setMessage(
         "Please choose a platform first."
       );
+
       return;
     }
 
     if (selected === "manual") {
+      event.preventDefault();
+
       window.location.href = "/";
+
       return;
     }
 
-    if (selected === "shopify") {
-      const cleanShop =
-        cleanShopDomain(shop);
+    if (selected !== "shopify") {
+      event.preventDefault();
 
-      if (!cleanShop) {
-        setMessage(
-          "Enter your Shopify store domain first."
-        );
-        return;
-      }
+      const platformName =
+        platforms.find(
+          (platform) =>
+            platform.id === selected
+        )?.name;
 
-      if (
-        !cleanShop.endsWith(
-          ".myshopify.com"
-        )
-      ) {
-        setMessage(
-          "Enter your Shopify domain like mystore.myshopify.com."
-        );
-        return;
-      }
-
-      /*
-       * SHOPIFY OAUTH
-       *
-       * IMPORTANT:
-       * Virello can be opened inside Shopify Admin.
-       * We must force the OAuth URL to the
-       * top-level browser context.
-       *
-       * Do NOT change the callback URL here.
-       */
-      const oauthUrl =
-        `/api/auth/shopify?shop=${encodeURIComponent(
-          cleanShop
-        )}`;
-
-      /*
-       * FIX:
-       * Open Shopify OAuth in the top-level
-       * browser window instead of the embedded
-       * Shopify frame.
-       */
-      window.open(
-        oauthUrl,
-        "_top"
+      setMessage(
+        `${platformName} connection is coming next.`
       );
 
       return;
     }
 
-    const platformName =
-      platforms.find(
-        (platform) =>
-          platform.id === selected
-      )?.name;
+    const cleanShop =
+      cleanShopDomain(shop);
 
-    setMessage(
-      `${platformName} connection is coming next.`
-    );
+    if (!cleanShop) {
+      event.preventDefault();
+
+      setMessage(
+        "Enter your Shopify store domain first."
+      );
+
+      return;
+    }
+
+    if (
+      !cleanShop.endsWith(
+        ".myshopify.com"
+      )
+    ) {
+      event.preventDefault();
+
+      setMessage(
+        "Enter your Shopify domain like mystore.myshopify.com."
+      );
+
+      return;
+    }
+
+    /*
+     * IMPORTANT:
+     *
+     * DO NOT preventDefault here.
+     *
+     * The browser will submit the form directly
+     * to /api/auth/shopify.
+     *
+     * target="_top" forces the OAuth request
+     * into the top-level browser context.
+     */
   }
+
+  const cleanShop =
+    cleanShopDomain(shop);
+
+  const shopifyDomainIsValid =
+    cleanShop.endsWith(
+      ".myshopify.com"
+    );
 
   return (
     <main className="app-shell">
+
+      {/* TOP BAR */}
 
       <header className="topbar">
 
@@ -164,11 +226,28 @@ export default function ConnectPage() {
 
         </div>
 
-        <div className="shop-pill">
-          Multi-Platform Ecommerce
+        <div className="topbar-actions">
+
+          <div className="shop-pill">
+            Multi-Platform Ecommerce
+          </div>
+
+          <button
+            type="button"
+            className="subscribe-button"
+            onClick={startCheckout}
+            disabled={checkoutLoading}
+          >
+            {checkoutLoading
+              ? "Opening checkout..."
+              : "Subscribe to Virello"}
+          </button>
+
         </div>
 
       </header>
+
+      {/* HERO */}
 
       <section className="hero">
 
@@ -194,11 +273,15 @@ export default function ConnectPage() {
 
       </section>
 
+      {/* WORKSPACE */}
+
       <section className="workspace">
 
         <div className="workspace-grid">
 
           <section className="optimizer-panel">
+
+            {/* STEP 1 */}
 
             <div className="selected-product">
 
@@ -221,11 +304,15 @@ export default function ConnectPage() {
 
             </div>
 
+            {/* ERROR / MESSAGE */}
+
             {message && (
               <div className="alert error">
                 {message}
               </div>
             )}
+
+            {/* PLATFORM CARD */}
 
             <div className="content-card">
 
@@ -255,11 +342,9 @@ export default function ConnectPage() {
                       >
 
                         <div className="platform-icon">
-
                           {platform.name.charAt(
                             0
                           )}
-
                         </div>
 
                         <div className="platform-info">
@@ -277,11 +362,9 @@ export default function ConnectPage() {
                         </div>
 
                         <div className="platform-check">
-
                           {active
                             ? "✓"
                             : ""}
-
                         </div>
 
                       </button>
@@ -291,7 +374,10 @@ export default function ConnectPage() {
 
               </div>
 
+              {/* SHOPIFY */}
+
               {selected === "shopify" && (
+
                 <div className="shopify-connect-box">
 
                   <div className="step-label">
@@ -308,51 +394,125 @@ export default function ConnectPage() {
                     mystore.myshopify.com
                   </p>
 
-                  <div className="shop-domain-input">
+                  {/*
 
-                    <input
-                      type="text"
-                      value={shop}
-                      onChange={(event) =>
-                        setShop(
-                          event.target.value
-                        )
-                      }
-                      placeholder="mystore.myshopify.com"
-                      autoCapitalize="none"
-                      autoCorrect="off"
-                      spellCheck={false}
-                      onKeyDown={(event) => {
+                    IMPORTANT FIX
 
-                        if (
-                          event.key === "Enter"
-                        ) {
-                          handleContinue();
+                    This is now a real HTML form.
+
+                    The browser performs the navigation
+                    directly after the user presses
+                    Continue.
+
+                    This avoids window.open()
+                    and avoids relying on JavaScript
+                    frame navigation.
+
+                  */}
+
+                  <form
+                    action="/api/auth/shopify"
+                    method="GET"
+                    target="_top"
+                    onSubmit={
+                      handleContinue
+                    }
+                  >
+
+                    <div className="shop-domain-input">
+
+                      <input
+                        type="text"
+                        name="shop"
+                        value={shop}
+                        onChange={(event) =>
+                          setShop(
+                            event.target.value
+                          )
                         }
+                        placeholder="mystore.myshopify.com"
+                        autoCapitalize="none"
+                        autoCorrect="off"
+                        spellCheck={false}
+                      />
 
+                    </div>
+
+                    <div className="connect-actions">
+
+                      <button
+                        type="submit"
+                        className="generate-button"
+                        disabled={
+                          !shopifyDomainIsValid
+                        }
+                      >
+                        Continue
+                      </button>
+
+                    </div>
+
+                  </form>
+
+                </div>
+
+              )}
+
+              {/* NON-SHOPIFY CONTINUE */}
+
+              {selected &&
+                selected !== "shopify" &&
+                selected !== "manual" && (
+
+                  <div className="connect-actions">
+
+                    <button
+                      type="button"
+                      className="generate-button"
+                      onClick={() => {
+                        const platformName =
+                          platforms.find(
+                            (platform) =>
+                              platform.id ===
+                              selected
+                          )?.name;
+
+                        setMessage(
+                          `${platformName} connection is coming next.`
+                        );
                       }}
-                    />
+                    >
+                      Continue
+                    </button>
 
                   </div>
 
+                )}
+
+              {/* MANUAL */}
+
+              {selected === "manual" && (
+
+                <div className="connect-actions">
+
+                  <button
+                    type="button"
+                    className="generate-button"
+                    onClick={() => {
+                      window.location.href =
+                        "/";
+                    }}
+                  >
+                    Continue
+                  </button>
+
                 </div>
+
               )}
 
-              <div className="connect-actions">
-
-                <button
-                  type="button"
-                  className="generate-button"
-                  onClick={
-                    handleContinue
-                  }
-                >
-                  Continue
-                </button>
-
-              </div>
-
             </div>
+
+            {/* WORKFLOW */}
 
             <div className="content-card">
 
