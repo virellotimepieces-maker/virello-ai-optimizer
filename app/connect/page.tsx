@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { useState } from "react";
 
 type Platform =
   | "shopify"
@@ -41,7 +41,7 @@ const platforms = [
 
 export default function ConnectPage() {
   const [selected, setSelected] =
-    useState<Platform>(null);
+    useState<Platform>("shopify");
 
   const [shop, setShop] = useState("");
 
@@ -98,10 +98,6 @@ export default function ConnectPage() {
         );
       }
 
-      /*
-       * Open Stripe checkout in the
-       * top-level browser window.
-       */
       window.location.href = data.url;
     } catch (error) {
       setMessage(
@@ -114,91 +110,6 @@ export default function ConnectPage() {
     }
   }
 
-  function handleContinue(
-    event: FormEvent<HTMLFormElement>
-  ) {
-    /*
-     * The Shopify form below handles the
-     * actual OAuth navigation.
-     *
-     * This function is only used for
-     * non-Shopify platforms and validation.
-     */
-
-    if (!selected) {
-      event.preventDefault();
-
-      setMessage(
-        "Please choose a platform first."
-      );
-
-      return;
-    }
-
-    if (selected === "manual") {
-      event.preventDefault();
-
-      window.location.href = "/";
-
-      return;
-    }
-
-    if (selected !== "shopify") {
-      event.preventDefault();
-
-      const platformName =
-        platforms.find(
-          (platform) =>
-            platform.id === selected
-        )?.name;
-
-      setMessage(
-        `${platformName} connection is coming next.`
-      );
-
-      return;
-    }
-
-    const cleanShop =
-      cleanShopDomain(shop);
-
-    if (!cleanShop) {
-      event.preventDefault();
-
-      setMessage(
-        "Enter your Shopify store domain first."
-      );
-
-      return;
-    }
-
-    if (
-      !cleanShop.endsWith(
-        ".myshopify.com"
-      )
-    ) {
-      event.preventDefault();
-
-      setMessage(
-        "Enter your Shopify domain like mystore.myshopify.com."
-      );
-
-      return;
-    }
-
-    /*
-     * IMPORTANT:
-     *
-     * DO NOT preventDefault here.
-     *
-     * The browser will submit the form directly
-     * to /api/auth/shopify.
-     *
-     * target="_top" forces the OAuth request
-     * into the top-level browser context.
-     */
-  }
-
   const cleanShop =
     cleanShopDomain(shop);
 
@@ -207,10 +118,32 @@ export default function ConnectPage() {
       ".myshopify.com"
     );
 
+  /*
+   * IMPORTANT:
+   *
+   * We are using a REAL anchor/link for Shopify OAuth.
+   *
+   * This avoids:
+   * - window.open()
+   * - JavaScript popup behavior
+   * - form target behavior
+   *
+   * The user's tap directly activates the
+   * Shopify OAuth URL.
+   */
+  const shopifyOAuthUrl =
+    shopifyDomainIsValid
+      ? `/api/auth/shopify?shop=${encodeURIComponent(
+          cleanShop
+        )}`
+      : "#";
+
   return (
     <main className="app-shell">
 
-      {/* TOP BAR */}
+      {/* =========================
+          TOP BAR
+      ========================== */}
 
       <header className="topbar">
 
@@ -247,7 +180,9 @@ export default function ConnectPage() {
 
       </header>
 
-      {/* HERO */}
+      {/* =========================
+          HERO
+      ========================== */}
 
       <section className="hero">
 
@@ -273,7 +208,9 @@ export default function ConnectPage() {
 
       </section>
 
-      {/* WORKSPACE */}
+      {/* =========================
+          WORKSPACE
+      ========================== */}
 
       <section className="workspace">
 
@@ -304,7 +241,7 @@ export default function ConnectPage() {
 
             </div>
 
-            {/* ERROR / MESSAGE */}
+            {/* MESSAGE */}
 
             {message && (
               <div className="alert error">
@@ -362,9 +299,11 @@ export default function ConnectPage() {
                         </div>
 
                         <div className="platform-check">
+
                           {active
                             ? "✓"
                             : ""}
+
                         </div>
 
                       </button>
@@ -374,7 +313,9 @@ export default function ConnectPage() {
 
               </div>
 
-              {/* SHOPIFY */}
+              {/* =========================
+                  SHOPIFY CONNECTION
+              ========================== */}
 
               {selected === "shopify" && (
 
@@ -394,71 +335,82 @@ export default function ConnectPage() {
                     mystore.myshopify.com
                   </p>
 
-                  {/*
+                  <div className="shop-domain-input">
 
-                    IMPORTANT FIX
+                    <input
+                      type="text"
+                      value={shop}
+                      onChange={(event) => {
+                        setShop(
+                          event.target.value
+                        );
 
-                    This is now a real HTML form.
+                        setMessage("");
+                      }}
+                      placeholder="mystore.myshopify.com"
+                      autoCapitalize="none"
+                      autoCorrect="off"
+                      spellCheck={false}
+                      inputMode="url"
+                    />
 
-                    The browser performs the navigation
-                    directly after the user presses
-                    Continue.
+                  </div>
 
-                    This avoids window.open()
-                    and avoids relying on JavaScript
-                    frame navigation.
+                  <div className="connect-actions">
 
-                  */}
+                    {shopifyDomainIsValid ? (
 
-                  <form
-                    action="/api/auth/shopify"
-                    method="GET"
-                    target="_top"
-                    onSubmit={
-                      handleContinue
-                    }
-                  >
+                      /*
+                       * THIS IS THE IMPORTANT FIX.
+                       *
+                       * It is a real link, not:
+                       * window.open()
+                       * window.location
+                       * or form submission.
+                       *
+                       * target="_blank" gives the
+                       * Shopify OAuth page its own
+                       * browser context.
+                       */
 
-                    <div className="shop-domain-input">
+                      <a
+                        href={shopifyOAuthUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="generate-button oauth-link"
+                      >
+                        Continue
+                      </a>
 
-                      <input
-                        type="text"
-                        name="shop"
-                        value={shop}
-                        onChange={(event) =>
-                          setShop(
-                            event.target.value
-                          )
-                        }
-                        placeholder="mystore.myshopify.com"
-                        autoCapitalize="none"
-                        autoCorrect="off"
-                        spellCheck={false}
-                      />
-
-                    </div>
-
-                    <div className="connect-actions">
+                    ) : (
 
                       <button
-                        type="submit"
+                        type="button"
                         className="generate-button"
-                        disabled={
-                          !shopifyDomainIsValid
-                        }
+                        disabled
                       >
                         Continue
                       </button>
 
-                    </div>
+                    )}
 
-                  </form>
+                  </div>
+
+                  <div className="oauth-help">
+
+                    Shopify authorization will
+                    open in a separate browser
+                    window.
+
+                  </div>
 
                 </div>
 
               )}
 
-              {/* NON-SHOPIFY CONTINUE */}
+              {/* =========================
+                  OTHER PLATFORMS
+              ========================== */}
 
               {selected &&
                 selected !== "shopify" &&
@@ -470,6 +422,7 @@ export default function ConnectPage() {
                       type="button"
                       className="generate-button"
                       onClick={() => {
+
                         const platformName =
                           platforms.find(
                             (platform) =>
@@ -480,6 +433,7 @@ export default function ConnectPage() {
                         setMessage(
                           `${platformName} connection is coming next.`
                         );
+
                       }}
                     >
                       Continue
@@ -489,7 +443,9 @@ export default function ConnectPage() {
 
                 )}
 
-              {/* MANUAL */}
+              {/* =========================
+                  MANUAL IMPORT
+              ========================== */}
 
               {selected === "manual" && (
 
@@ -512,7 +468,9 @@ export default function ConnectPage() {
 
             </div>
 
-            {/* WORKFLOW */}
+            {/* =========================
+                WORKFLOW
+            ========================== */}
 
             <div className="content-card">
 
@@ -587,6 +545,103 @@ export default function ConnectPage() {
         </div>
 
       </section>
+
+      {/* =========================
+          MOBILE / LOCAL STYLES
+      ========================== */}
+
+      <style jsx>{`
+
+        .topbar-actions {
+          display: flex;
+          align-items: center;
+          justify-content: flex-end;
+          gap: 10px;
+        }
+
+        .subscribe-button {
+          min-height: 40px;
+          padding: 0 16px;
+
+          border: 0;
+          border-radius: 10px;
+
+          background: #111318;
+          color: #ffffff;
+
+          font-size: 12px;
+          font-weight: 850;
+
+          cursor: pointer;
+
+          white-space: nowrap;
+
+          box-shadow:
+            0 7px 16px
+            rgba(17, 19, 24, 0.15);
+        }
+
+        .subscribe-button:hover {
+          background: #292d34;
+        }
+
+        .subscribe-button:disabled {
+          opacity: 0.55;
+          cursor: wait;
+        }
+
+        .oauth-link {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+
+          min-width: 150px;
+
+          text-decoration: none;
+        }
+
+        .oauth-help {
+          margin-top: 10px;
+
+          color: #8a9098;
+
+          font-size: 10px;
+          line-height: 1.5;
+          text-align: center;
+        }
+
+        @media (max-width: 700px) {
+
+          .topbar {
+            min-height: 82px;
+            padding: 10px 16px;
+          }
+
+          .topbar-actions {
+            flex-direction: column;
+            align-items: stretch;
+            gap: 6px;
+          }
+
+          .shop-pill {
+            max-width: 150px;
+            align-self: flex-end;
+
+            padding: 6px 9px;
+
+            font-size: 9px;
+          }
+
+          .subscribe-button {
+            min-height: 36px;
+            padding: 0 11px;
+
+            font-size: 11px;
+          }
+
+        }
+
+      `}</style>
 
     </main>
   );
