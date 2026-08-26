@@ -1,6 +1,28 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+
+type Platform =
+  | "shopify"
+  | "woocommerce"
+  | "bigcommerce"
+  | "wix";
+
+type EcommerceProduct = {
+  id: string;
+  title: string;
+  description?: string;
+  productType?: string;
+  tags?: string[];
+  status?: string;
+  vendor?: string;
+  price?: string;
+  images?: {
+    url: string;
+    altText?: string | null;
+  }[];
+  featuredImage?: string | null;
+};
 
 type AIResult = {
   analysis?: {
@@ -36,6 +58,28 @@ type AIResult = {
   reasoning?: string;
 };
 
+const platforms: {
+  value: Platform;
+  label: string;
+}[] = [
+  {
+    value: "shopify",
+    label: "Shopify",
+  },
+  {
+    value: "woocommerce",
+    label: "WooCommerce",
+  },
+  {
+    value: "bigcommerce",
+    label: "BigCommerce",
+  },
+  {
+    value: "wix",
+    label: "Wix",
+  },
+];
+
 export default function Home() {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -43,25 +87,61 @@ export default function Home() {
   const [vendor, setVendor] = useState("");
   const [price, setPrice] = useState("");
 
-  const [result, setResult] = useState<AIResult | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [checkoutLoading, setCheckoutLoading] = useState(false);
-  const [error, setError] = useState("");
+  const [result, setResult] =
+    useState<AIResult | null>(null);
 
+  const [loading, setLoading] =
+    useState(false);
+
+  const [checkoutLoading, setCheckoutLoading] =
+    useState(false);
+
+  const [productsLoading, setProductsLoading] =
+    useState(false);
+
+  const [products, setProducts] =
+    useState<EcommerceProduct[]>([]);
+
+  const [selectedProductId, setSelectedProductId] =
+    useState("");
+
+  const [platform, setPlatform] =
+    useState<Platform>("shopify");
+
+  const [storeConnected, setStoreConnected] =
+    useState(false);
+
+  const [error, setError] =
+    useState("");
+
+  const [productMessage, setProductMessage] =
+    useState("");
+
+  /*
+   * CHECKOUT
+   */
   async function startCheckout() {
     setCheckoutLoading(true);
     setError("");
 
     try {
-      const response = await fetch("/api/stripe/checkout", {
-        method: "POST",
-      });
+      const response = await fetch(
+        "/api/stripe/checkout",
+        {
+          method: "POST",
+        }
+      );
 
       const data = await response.json();
 
-      if (!response.ok || !data.success || !data.url) {
+      if (
+        !response.ok ||
+        !data.success ||
+        !data.url
+      ) {
         throw new Error(
-          data.error || "Unable to start subscription checkout."
+          data.error ||
+            "Unable to start subscription checkout."
         );
       }
 
@@ -72,14 +152,118 @@ export default function Home() {
           ? err.message
           : "Unable to start subscription checkout."
       );
+
       setCheckoutLoading(false);
     }
   }
 
+  /*
+   * CONNECT STORE
+   *
+   * The existing /app/connect route remains
+   * responsible for the actual platform connection.
+   */
+  function connectStore() {
+    setError("");
+    setProductMessage("");
+
+    window.location.href =
+      `/connect?platform=${platform}`;
+  }
+
+  /*
+   * LOAD PRODUCTS
+   *
+   * Uses the universal products endpoint:
+   *
+   * /api/stores/products?platform=...
+   */
+  async function loadProducts() {
+    setProductsLoading(true);
+    setError("");
+    setProductMessage("");
+
+    try {
+      const response = await fetch(
+        `/api/stores/products?platform=${platform}`,
+        {
+          method: "GET",
+          cache: "no-store",
+        }
+      );
+
+      const data = await response.json();
+
+      if (
+        !response.ok ||
+        !data.success
+      ) {
+        throw new Error(
+          data.error ||
+            `Unable to load ${platform} products.`
+        );
+      }
+
+      const loadedProducts =
+        Array.isArray(data.products)
+          ? data.products
+          : [];
+
+      setProducts(loadedProducts);
+      setStoreConnected(true);
+
+      if (!loadedProducts.length) {
+        setProductMessage(
+          "No products were returned from the connected store."
+        );
+      } else {
+        setProductMessage(
+          `${loadedProducts.length} products loaded.`
+        );
+      }
+    } catch (err) {
+      setStoreConnected(false);
+
+      setError(
+        err instanceof Error
+          ? err.message
+          : `Unable to load ${platform} products.`
+      );
+    } finally {
+      setProductsLoading(false);
+    }
+  }
+
+  /*
+   * WHEN A PRODUCT IS SELECTED
+   */
+  function selectProduct(
+    product: EcommerceProduct
+  ) {
+    setSelectedProductId(product.id);
+
+    setTitle(product.title || "");
+    setDescription(
+      product.description || ""
+    );
+    setProductType(
+      product.productType || ""
+    );
+    setVendor(product.vendor || "");
+    setPrice(product.price || "");
+
+    setResult(null);
+    setError("");
+  }
+
+  /*
+   * OPTIMIZE PRODUCT
+   */
   async function optimize() {
-    // PRODUCT TITLE ONLY IS REQUIRED
     if (!title.trim()) {
-      setError("Enter a product title first.");
+      setError(
+        "Select a product or enter a product title first."
+      );
       return;
     }
 
@@ -88,27 +272,40 @@ export default function Home() {
     setResult(null);
 
     try {
-      const response = await fetch("/api/ai/analyze", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          product: {
-            title: title.trim(),
-            description: description.trim(),
-            productType: productType.trim(),
-            vendor: vendor.trim(),
-            price: price.trim(),
+      const response = await fetch(
+        "/api/ai/analyze",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type":
+              "application/json",
           },
-        }),
-      });
+          body: JSON.stringify({
+            product: {
+              title: title.trim(),
+              description:
+                description.trim(),
+              productType:
+                productType.trim(),
+              vendor: vendor.trim(),
+              price: price.trim(),
+              platform,
+              productId:
+                selectedProductId || null,
+            },
+          }),
+        }
+      );
 
       const data = await response.json();
 
-      if (!response.ok || !data.success) {
+      if (
+        !response.ok ||
+        !data.success
+      ) {
         throw new Error(
-          data.error || "AI optimization failed."
+          data.error ||
+            "AI optimization failed."
         );
       }
 
@@ -124,27 +321,73 @@ export default function Home() {
     }
   }
 
-  async function copyText(value?: string) {
+  /*
+   * COPY
+   */
+  async function copyText(
+    value?: string
+  ) {
     if (!value) return;
 
     try {
-      await navigator.clipboard.writeText(value);
+      await navigator.clipboard.writeText(
+        value
+      );
     } catch {
-      setError("Unable to copy text.");
+      setError(
+        "Unable to copy text."
+      );
     }
   }
 
-  function listToText(items?: string[]) {
+  function listToText(
+    items?: string[]
+  ) {
     return items?.length
-      ? items.map((item) => `• ${item}`).join("\n")
+      ? items
+          .map(
+            (item) => `• ${item}`
+          )
+          .join("\n")
       : "";
   }
+
+  /*
+   * LOAD PRODUCTS AFTER PAGE LOAD
+   *
+   * This does not force Shopify.
+   * It only attempts to load the selected
+   * platform when the user has a connection.
+   */
+  useEffect(() => {
+    const params =
+      new URLSearchParams(
+        window.location.search
+      );
+
+    const connectedPlatform =
+      params.get("platform");
+
+    if (
+      connectedPlatform === "shopify" ||
+      connectedPlatform ===
+        "woocommerce" ||
+      connectedPlatform ===
+        "bigcommerce" ||
+      connectedPlatform === "wix"
+    ) {
+      setPlatform(
+        connectedPlatform
+      );
+    }
+  }, []);
 
   return (
     <main className="app-shell">
 
       {/* TOP BAR */}
       <header className="topbar">
+
         <div>
           <div className="brand-small">
             VIRELLO AI
@@ -156,6 +399,7 @@ export default function Home() {
         </div>
 
         <div className="topbar-actions">
+
           <div className="shop-pill">
             Ecommerce & Dropshipping
           </div>
@@ -163,68 +407,294 @@ export default function Home() {
           <button
             type="button"
             className="subscribe-button"
-            onClick={startCheckout}
-            disabled={checkoutLoading}
+            onClick={
+              startCheckout
+            }
+            disabled={
+              checkoutLoading
+            }
           >
             {checkoutLoading
               ? "Opening checkout..."
               : "Subscribe to Virello"}
           </button>
+
         </div>
+
       </header>
 
       {/* HERO */}
       <section className="hero">
+
         <div className="hero-inner">
+
           <div className="eyebrow">
             AI PRODUCT INTELLIGENCE
           </div>
 
           <h1>
-            Optimize any ecommerce product{" "}
+            Optimize any ecommerce
+            product{" "}
             <span>with AI.</span>
           </h1>
 
           <p>
-            Create stronger product listings, SEO copy
-            and conversion-focused content for ecommerce
-            and dropshipping businesses.
+            Create stronger product
+            listings, SEO copy and
+            conversion-focused content
+            for ecommerce and
+            dropshipping businesses.
           </p>
+
         </div>
+
       </section>
 
       {/* WORKSPACE */}
       <section className="workspace">
+
         <div className="workspace-grid">
 
           <section className="optimizer-panel">
 
+            {/* STORE CONNECTION */}
+            <div className="content-card">
+
+              <div className="step-label">
+                CONNECT YOUR STORE
+              </div>
+
+              <h2>
+                Import your ecommerce
+                products
+              </h2>
+
+              <p>
+                Connect your store and
+                bring your existing
+                products into Virello.
+              </p>
+
+              <div
+                className="score-grid"
+                style={{
+                  marginTop: "20px",
+                }}
+              >
+
+                <select
+                  className="search-input"
+                  value={platform}
+                  onChange={(e) =>
+                    setPlatform(
+                      e.target
+                        .value as Platform
+                    )
+                  }
+                >
+                  {platforms.map(
+                    (item) => (
+                      <option
+                        key={
+                          item.value
+                        }
+                        value={
+                          item.value
+                        }
+                      >
+                        {item.label}
+                      </option>
+                    )
+                  )}
+                </select>
+
+                <button
+                  type="button"
+                  className="generate-button"
+                  onClick={
+                    connectStore
+                  }
+                >
+                  Connect Store
+                </button>
+
+              </div>
+
+              <button
+                type="button"
+                className="small-button"
+                onClick={
+                  loadProducts
+                }
+                disabled={
+                  productsLoading
+                }
+                style={{
+                  marginTop: "15px",
+                }}
+              >
+                {productsLoading
+                  ? "Loading products..."
+                  : `Load ${platforms.find(
+                      (item) =>
+                        item.value ===
+                        platform
+                    )?.label || "Store"} Products`}
+              </button>
+
+              {productMessage && (
+                <div
+                  className="alert"
+                  style={{
+                    marginTop: "15px",
+                  }}
+                >
+                  {productMessage}
+                </div>
+              )}
+
+            </div>
+
+            {/* PRODUCT LIST */}
+            {products.length >
+              0 && (
+              <div className="content-card">
+
+                <div className="step-label">
+                  YOUR PRODUCTS
+                </div>
+
+                <h2>
+                  Select a product
+                </h2>
+
+                <p>
+                  Choose a product to
+                  automatically fill the
+                  optimizer.
+                </p>
+
+                <div
+                  style={{
+                    display: "grid",
+                    gap: "12px",
+                    marginTop: "20px",
+                  }}
+                >
+
+                  {products.map(
+                    (product) => (
+                      <button
+                        type="button"
+                        key={
+                          product.id
+                        }
+                        onClick={() =>
+                          selectProduct(
+                            product
+                          )
+                        }
+                        style={{
+                          width:
+                            "100%",
+                          textAlign:
+                            "left",
+                          padding:
+                            "16px",
+                          border:
+                            selectedProductId ===
+                            product.id
+                              ? "2px solid #111"
+                              : "1px solid #ddd",
+                          borderRadius:
+                            "12px",
+                          background:
+                            selectedProductId ===
+                            product.id
+                              ? "#f5f5f5"
+                              : "#fff",
+                          cursor:
+                            "pointer",
+                        }}
+                      >
+
+                        <strong>
+                          {product.title ||
+                            "Untitled product"}
+                        </strong>
+
+                        {product.vendor && (
+                          <div
+                            style={{
+                              marginTop:
+                                "5px",
+                              fontSize:
+                                "13px",
+                              opacity:
+                                0.65,
+                            }}
+                          >
+                            {product.vendor}
+                          </div>
+                        )}
+
+                        {product.price && (
+                          <div
+                            style={{
+                              marginTop:
+                                "5px",
+                              fontSize:
+                                "14px",
+                            }}
+                          >
+                            {product.price}
+                          </div>
+                        )}
+
+                      </button>
+                    )
+                  )}
+
+                </div>
+
+              </div>
+            )}
+
             {/* PRODUCT HEADER */}
             <div className="selected-product">
+
               <div>
+
                 <div className="step-label">
                   PRODUCT INFORMATION
                 </div>
 
                 <h2>
-                  Tell Virello about your product
+                  Tell Virello about
+                  your product
                 </h2>
 
                 <p>
-                  Add your product details below.
+                  Select an imported
+                  product or add your
+                  product details below.
                 </p>
+
               </div>
 
               <button
                 type="button"
                 className="generate-button"
-                onClick={optimize}
+                onClick={
+                  optimize
+                }
                 disabled={loading}
               >
                 {loading
                   ? "Optimizing..."
                   : "Optimize with AI"}
               </button>
+
             </div>
 
             <div className="results">
@@ -241,6 +711,7 @@ export default function Home() {
 
                 {/* PRODUCT TITLE */}
                 <div className="result-field">
+
                   <div className="field-header">
                     <label>
                       Product title *
@@ -251,28 +722,38 @@ export default function Home() {
                     className="search-input"
                     value={title}
                     onChange={(e) =>
-                      setTitle(e.target.value)
+                      setTitle(
+                        e.target.value
+                      )
                     }
                     placeholder="Example: Portable Mini Blender"
                   />
+
                 </div>
 
-                {/* DESCRIPTION OPTIONAL */}
+                {/* DESCRIPTION */}
                 <div className="result-field">
+
                   <div className="field-header">
                     <label>
-                      Description (optional)
+                      Description
+                      (optional)
                     </label>
                   </div>
 
                   <textarea
                     className="search-input"
-                    value={description}
+                    value={
+                      description
+                    }
                     onChange={(e) =>
-                      setDescription(e.target.value)
+                      setDescription(
+                        e.target.value
+                      )
                     }
                     placeholder="Paste your current product description (optional)"
                   />
+
                 </div>
 
                 {/* OPTIONAL DETAILS */}
@@ -280,9 +761,13 @@ export default function Home() {
 
                   <input
                     className="search-input"
-                    value={productType}
+                    value={
+                      productType
+                    }
                     onChange={(e) =>
-                      setProductType(e.target.value)
+                      setProductType(
+                        e.target.value
+                      )
                     }
                     placeholder="Product type (optional)"
                   />
@@ -291,7 +776,9 @@ export default function Home() {
                     className="search-input"
                     value={vendor}
                     onChange={(e) =>
-                      setVendor(e.target.value)
+                      setVendor(
+                        e.target.value
+                      )
                     }
                     placeholder="Brand / supplier (optional)"
                   />
@@ -300,12 +787,15 @@ export default function Home() {
                     className="search-input"
                     value={price}
                     onChange={(e) =>
-                      setPrice(e.target.value)
+                      setPrice(
+                        e.target.value
+                      )
                     }
                     placeholder="Price (optional)"
                   />
 
                 </div>
+
               </div>
 
               {/* AI RESULTS */}
@@ -316,26 +806,41 @@ export default function Home() {
                   <div className="score-overview">
 
                     <div>
+
                       <div className="step-label light">
                         VIRELLO SCORE
                       </div>
 
                       <h2>
-                        Product optimization score
+                        Product
+                        optimization
+                        score
                       </h2>
 
                       <p>
-                        Based on listing quality, SEO,
-                        clarity and conversion potential.
+                        Based on listing
+                        quality, SEO,
+                        clarity and
+                        conversion
+                        potential.
                       </p>
+
                     </div>
 
                     <div className="overall-score">
+
                       <strong>
-                        {result.score?.overall ?? 0}
+                        {
+                          result.score
+                            ?.overall ??
+                          0
+                        }
                       </strong>
 
-                      <span>/100</span>
+                      <span>
+                        /100
+                      </span>
+
                     </div>
 
                   </div>
@@ -346,59 +851,77 @@ export default function Home() {
                     {[
                       [
                         "Title",
-                        result.score?.title,
+                        result.score
+                          ?.title,
                       ],
                       [
                         "Description",
-                        result.score?.description,
+                        result.score
+                          ?.description,
                       ],
                       [
                         "SEO",
-                        result.score?.seo,
+                        result.score
+                          ?.seo,
                       ],
                       [
                         "Clarity",
-                        result.score?.productClarity,
+                        result.score
+                          ?.productClarity,
                       ],
                       [
                         "Conversion",
-                        result.score?.conversionPotential,
+                        result.score
+                          ?.conversionPotential,
                       ],
-                    ].map(([label, value]) => {
+                    ].map(
+                      ([
+                        label,
+                        value,
+                      ]) => {
 
-                      const score =
-                        typeof value === "number"
-                          ? value
-                          : 0;
+                        const score =
+                          typeof value ===
+                          "number"
+                            ? value
+                            : 0;
 
-                      return (
-                        <div
-                          className="score-card"
-                          key={String(label)}
-                        >
-                          <div className="score-header">
+                        return (
+                          <div
+                            className="score-card"
+                            key={String(
+                              label
+                            )}
+                          >
 
-                            <span>
-                              {label}
-                            </span>
+                            <div className="score-header">
 
-                            <strong>
-                              {score}/100
-                            </strong>
+                              <span>
+                                {label}
+                              </span>
+
+                              <strong>
+                                {score}
+                                /100
+                              </strong>
+
+                            </div>
+
+                            <div className="score-track">
+
+                              <div
+                                className="score-fill"
+                                style={{
+                                  width: `${score}%`,
+                                }}
+                              />
+
+                            </div>
 
                           </div>
-
-                          <div className="score-track">
-                            <div
-                              className="score-fill"
-                              style={{
-                                width: `${score}%`,
-                              }}
-                            />
-                          </div>
-                        </div>
-                      );
-                    })}
+                        );
+                      }
+                    )}
 
                   </div>
 
@@ -406,21 +929,28 @@ export default function Home() {
                   <div className="content-card">
 
                     <div className="card-title">
+
                       <div>
+
                         <div className="step-label">
-                          OPTIMIZED LISTING
+                          OPTIMIZED
+                          LISTING
                         </div>
 
                         <h2>
-                          Ready-to-use content
+                          Ready-to-use
+                          content
                         </h2>
+
                       </div>
+
                     </div>
 
                     {/* TITLE */}
                     <div className="result-field">
 
                       <div className="field-header">
+
                         <label>
                           Product title
                         </label>
@@ -430,17 +960,24 @@ export default function Home() {
                           className="small-button"
                           onClick={() =>
                             copyText(
-                              result.optimization?.title
+                              result
+                                .optimization
+                                ?.title
                             )
                           }
                         >
                           Copy
                         </button>
+
                       </div>
 
                       <div className="field-value">
-                        {result.optimization?.title ||
-                          "No output"}
+                        {
+                          result
+                            .optimization
+                            ?.title ||
+                          "No output"
+                        }
                       </div>
 
                     </div>
@@ -449,6 +986,7 @@ export default function Home() {
                     <div className="result-field">
 
                       <div className="field-header">
+
                         <label>
                           Product type
                         </label>
@@ -458,17 +996,24 @@ export default function Home() {
                           className="small-button"
                           onClick={() =>
                             copyText(
-                              result.optimization?.productType
+                              result
+                                .optimization
+                                ?.productType
                             )
                           }
                         >
                           Copy
                         </button>
+
                       </div>
 
                       <div className="field-value">
-                        {result.optimization?.productType ||
-                          "No output"}
+                        {
+                          result
+                            .optimization
+                            ?.productType ||
+                          "No output"
+                        }
                       </div>
 
                     </div>
@@ -477,8 +1022,10 @@ export default function Home() {
                     <div className="result-field">
 
                       <div className="field-header">
+
                         <label>
-                          Product description
+                          Product
+                          description
                         </label>
 
                         <button
@@ -486,17 +1033,24 @@ export default function Home() {
                           className="small-button"
                           onClick={() =>
                             copyText(
-                              result.optimization?.description
+                              result
+                                .optimization
+                                ?.description
                             )
                           }
                         >
                           Copy
                         </button>
+
                       </div>
 
                       <div className="field-value multiline">
-                        {result.optimization?.description ||
-                          "No output"}
+                        {
+                          result
+                            .optimization
+                            ?.description ||
+                          "No output"
+                        }
                       </div>
 
                     </div>
@@ -505,6 +1059,7 @@ export default function Home() {
                     <div className="result-field">
 
                       <div className="field-header">
+
                         <label>
                           Features
                         </label>
@@ -515,19 +1070,25 @@ export default function Home() {
                           onClick={() =>
                             copyText(
                               listToText(
-                                result.optimization?.features
+                                result
+                                  .optimization
+                                  ?.features
                               )
                             )
                           }
                         >
                           Copy
                         </button>
+
                       </div>
 
                       <div className="field-value multiline">
                         {listToText(
-                          result.optimization?.features
-                        ) || "No output"}
+                          result
+                            .optimization
+                            ?.features
+                        ) ||
+                          "No output"}
                       </div>
 
                     </div>
@@ -536,6 +1097,7 @@ export default function Home() {
                     <div className="result-field">
 
                       <div className="field-header">
+
                         <label>
                           Specifications
                         </label>
@@ -546,7 +1108,8 @@ export default function Home() {
                           onClick={() =>
                             copyText(
                               listToText(
-                                result.optimization
+                                result
+                                  .optimization
                                   ?.specifications
                               )
                             )
@@ -554,13 +1117,16 @@ export default function Home() {
                         >
                           Copy
                         </button>
+
                       </div>
 
                       <div className="field-value multiline">
                         {listToText(
-                          result.optimization
+                          result
+                            .optimization
                             ?.specifications
-                        ) || "No output"}
+                        ) ||
+                          "No output"}
                       </div>
 
                     </div>
@@ -577,8 +1143,13 @@ export default function Home() {
                         <div className="field-actions">
 
                           <span className="character-count">
-                            {result.optimization
-                              ?.seoTitle?.length ?? 0}
+                            {
+                              result
+                                .optimization
+                                ?.seoTitle
+                                ?.length ??
+                              0
+                            }
                             /50
                           </span>
 
@@ -587,7 +1158,8 @@ export default function Home() {
                             className="small-button"
                             onClick={() =>
                               copyText(
-                                result.optimization
+                                result
+                                  .optimization
                                   ?.seoTitle
                               )
                             }
@@ -596,11 +1168,16 @@ export default function Home() {
                           </button>
 
                         </div>
+
                       </div>
 
                       <div className="field-value">
-                        {result.optimization?.seoTitle ||
-                          "No output"}
+                        {
+                          result
+                            .optimization
+                            ?.seoTitle ||
+                          "No output"
+                        }
                       </div>
 
                     </div>
@@ -611,14 +1188,20 @@ export default function Home() {
                       <div className="field-header">
 
                         <label>
-                          Meta description
+                          Meta
+                          description
                         </label>
 
                         <div className="field-actions">
 
                           <span className="character-count">
-                            {result.optimization
-                              ?.metaDescription?.length ?? 0}
+                            {
+                              result
+                                .optimization
+                                ?.metaDescription
+                                ?.length ??
+                              0
+                            }
                             /150
                           </span>
 
@@ -627,7 +1210,8 @@ export default function Home() {
                             className="small-button"
                             onClick={() =>
                               copyText(
-                                result.optimization
+                                result
+                                  .optimization
                                   ?.metaDescription
                               )
                             }
@@ -636,12 +1220,16 @@ export default function Home() {
                           </button>
 
                         </div>
+
                       </div>
 
                       <div className="field-value multiline">
-                        {result.optimization
-                          ?.metaDescription ||
-                          "No output"}
+                        {
+                          result
+                            .optimization
+                            ?.metaDescription ||
+                          "No output"
+                        }
                       </div>
 
                     </div>
@@ -660,9 +1248,10 @@ export default function Home() {
                           className="small-button"
                           onClick={() =>
                             copyText(
-                              result.optimization?.tags?.join(
-                                ", "
-                              )
+                              result
+                                .optimization
+                                ?.tags
+                                ?.join(", ")
                             )
                           }
                         >
@@ -672,11 +1261,19 @@ export default function Home() {
                       </div>
 
                       <div className="field-value multiline">
-                        {result.optimization?.tags?.length
-                          ? result.optimization.tags.join(
-                              ", "
-                            )
-                          : "No output"}
+                        {
+                          result
+                            .optimization
+                            ?.tags
+                            ?.length
+                            ? result
+                                .optimization
+                                .tags
+                                .join(
+                                  ", "
+                                )
+                            : "No output"
+                        }
                       </div>
 
                     </div>
@@ -695,7 +1292,8 @@ export default function Home() {
                         What Virello found
                       </h2>
 
-                      {result.analysis.targetCustomer && (
+                      {result.analysis
+                        .targetCustomer && (
                         <div className="analysis-block">
 
                           <strong>
@@ -703,22 +1301,29 @@ export default function Home() {
                           </strong>
 
                           <p>
-                            {result.analysis.targetCustomer}
+                            {
+                              result
+                                .analysis
+                                .targetCustomer
+                            }
                           </p>
 
                         </div>
                       )}
 
-                      {result.analysis.purchaseMotivation && (
+                      {result.analysis
+                        .purchaseMotivation && (
                         <div className="analysis-block">
 
                           <strong>
-                            Purchase motivation
+                            Purchase
+                            motivation
                           </strong>
 
                           <p>
                             {
-                              result.analysis
+                              result
+                                .analysis
                                 .purchaseMotivation
                             }
                           </p>
@@ -727,19 +1332,29 @@ export default function Home() {
                       )}
 
                       {result.analysis
-                        .strongestFeatures?.length ? (
+                        .strongestFeatures
+                        ?.length ? (
                         <div className="analysis-block">
 
                           <strong>
-                            Strongest features
+                            Strongest
+                            features
                           </strong>
 
                           <ul>
-                            {result.analysis
+                            {result
+                              .analysis
                               .strongestFeatures
                               .map(
-                                (item, index) => (
-                                  <li key={index}>
+                                (
+                                  item,
+                                  index
+                                ) => (
+                                  <li
+                                    key={
+                                      index
+                                    }
+                                  >
                                     {item}
                                   </li>
                                 )
@@ -750,7 +1365,8 @@ export default function Home() {
                       ) : null}
 
                       {result.analysis
-                        .weaknesses?.length ? (
+                        .weaknesses
+                        ?.length ? (
                         <div className="analysis-block">
 
                           <strong>
@@ -758,32 +1374,52 @@ export default function Home() {
                           </strong>
 
                           <ul>
-                            {result.analysis.weaknesses.map(
-                              (item, index) => (
-                                <li key={index}>
-                                  {item}
-                                </li>
-                              )
-                            )}
+                            {result
+                              .analysis
+                              .weaknesses
+                              .map(
+                                (
+                                  item,
+                                  index
+                                ) => (
+                                  <li
+                                    key={
+                                      index
+                                    }
+                                  >
+                                    {item}
+                                  </li>
+                                )
+                              )}
                           </ul>
 
                         </div>
                       ) : null}
 
                       {result.analysis
-                        .missingInformation?.length ? (
+                        .missingInformation
+                        ?.length ? (
                         <div className="analysis-block">
 
                           <strong>
-                            Missing information
+                            Missing
+                            information
                           </strong>
 
                           <ul>
-                            {result.analysis
+                            {result
+                              .analysis
                               .missingInformation
                               .map(
-                                (item, index) => (
-                                  <li key={index}>
+                                (
+                                  item,
+                                  index
+                                ) => (
+                                  <li
+                                    key={
+                                      index
+                                    }
+                                  >
                                     {item}
                                   </li>
                                 )
@@ -794,19 +1430,29 @@ export default function Home() {
                       ) : null}
 
                       {result.analysis
-                        .seoOpportunities?.length ? (
+                        .seoOpportunities
+                        ?.length ? (
                         <div className="analysis-block">
 
                           <strong>
-                            SEO opportunities
+                            SEO
+                            opportunities
                           </strong>
 
                           <ul>
-                            {result.analysis
+                            {result
+                              .analysis
                               .seoOpportunities
                               .map(
-                                (item, index) => (
-                                  <li key={index}>
+                                (
+                                  item,
+                                  index
+                                ) => (
+                                  <li
+                                    key={
+                                      index
+                                    }
+                                  >
                                     {item}
                                   </li>
                                 )
@@ -817,19 +1463,29 @@ export default function Home() {
                       ) : null}
 
                       {result.analysis
-                        .conversionOpportunities?.length ? (
+                        .conversionOpportunities
+                        ?.length ? (
                         <div className="analysis-block">
 
                           <strong>
-                            Conversion opportunities
+                            Conversion
+                            opportunities
                           </strong>
 
                           <ul>
-                            {result.analysis
+                            {result
+                              .analysis
                               .conversionOpportunities
                               .map(
-                                (item, index) => (
-                                  <li key={index}>
+                                (
+                                  item,
+                                  index
+                                ) => (
+                                  <li
+                                    key={
+                                      index
+                                    }
+                                  >
                                     {item}
                                   </li>
                                 )
@@ -851,7 +1507,9 @@ export default function Home() {
                       </div>
 
                       <p className="reasoning-text">
-                        {result.reasoning}
+                        {
+                          result.reasoning
+                        }
                       </p>
 
                     </div>
@@ -861,9 +1519,13 @@ export default function Home() {
               )}
 
             </div>
+
           </section>
+
         </div>
+
       </section>
+
     </main>
   );
-}
+                            }
