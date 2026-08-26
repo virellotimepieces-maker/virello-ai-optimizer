@@ -6,7 +6,8 @@ function cleanShopDomain(value: string) {
     .trim()
     .toLowerCase()
     .replace(/^https?:\/\//, "")
-    .replace(/\/+$/, "");
+    .replace(/\/+$/, "")
+    .replace(/\.myshopify\.com\.myshopify\.com$/, ".myshopify.com");
 }
 
 export async function GET(request: NextRequest) {
@@ -46,24 +47,26 @@ export async function GET(request: NextRequest) {
       process.env.SHOPIFY_SCOPES ||
       "read_products,write_products";
 
-    const params = new URLSearchParams({
-      client_id: apiKey,
-      scope: scopes,
-      redirect_uri: redirectUri,
-      state,
-    });
+    const params = new URLSearchParams();
 
-    const response = NextResponse.redirect(
-      `https://${shop}/admin/oauth/authorize?${params.toString()}`
-    );
+    params.set("client_id", apiKey);
+    params.set("scope", scopes);
+    params.set("redirect_uri", redirectUri);
+    params.set("state", state);
+
+    const authorizationUrl =
+      `https://${shop}/admin/oauth/authorize?${params.toString()}`;
+
+    const response =
+      NextResponse.redirect(authorizationUrl);
 
     response.cookies.set(
       "virello_shopify_oauth_state",
       state,
       {
         httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "lax",
+        secure: true,
+        sameSite: "none",
         path: "/",
         maxAge: 600,
       }
@@ -74,8 +77,8 @@ export async function GET(request: NextRequest) {
       shop,
       {
         httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "lax",
+        secure: true,
+        sameSite: "none",
         path: "/",
         maxAge: 600,
       }
@@ -83,7 +86,10 @@ export async function GET(request: NextRequest) {
 
     return response;
   } catch (error) {
-    console.error("SHOPIFY_OAUTH_START_ERROR:", error);
+    console.error(
+      "SHOPIFY_OAUTH_START_ERROR:",
+      error
+    );
 
     return NextResponse.json(
       {
