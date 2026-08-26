@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createHmac, timingSafeEqual } from "crypto";
+import {
+  createHmac,
+  timingSafeEqual,
+} from "crypto";
 
 function cleanShopDomain(value: string) {
   return value
@@ -7,13 +10,16 @@ function cleanShopDomain(value: string) {
     .toLowerCase()
     .replace(/^https?:\/\//, "")
     .replace(/\/+$/, "")
-    .replace(/\.myshopify\.com\.myshopify\.com$/, ".myshopify.com");
+    .replace(
+      /\.myshopify\.com\.myshopify\.com$/,
+      ".myshopify.com"
+    );
 }
 
 function verifyOAuthState(
   state: string,
   secret: string
-): { shop: string } | null {
+) {
   try {
     const parts = state.split(".");
 
@@ -21,64 +27,72 @@ function verifyOAuthState(
       return null;
     }
 
-    const [encodedPayload, receivedSignature] = parts;
+    const [encodedPayload, receivedSignature] =
+      parts;
 
-    if (!encodedPayload || !receivedSignature) {
-      return null;
-    }
+    const expectedSignature =
+      createHmac("sha256", secret)
+        .update(encodedPayload)
+        .digest("base64url");
 
-    const expectedSignature = createHmac("sha256", secret)
-      .update(encodedPayload)
-      .digest("base64url");
+    const receivedBuffer =
+      Buffer.from(
+        receivedSignature
+      );
 
-    const receivedBuffer = Buffer.from(
-      receivedSignature,
-      "utf8"
-    );
-
-    const expectedBuffer = Buffer.from(
-      expectedSignature,
-      "utf8"
-    );
+    const expectedBuffer =
+      Buffer.from(
+        expectedSignature
+      );
 
     if (
-      receivedBuffer.length !== expectedBuffer.length ||
-      !timingSafeEqual(receivedBuffer, expectedBuffer)
+      receivedBuffer.length !==
+      expectedBuffer.length
     ) {
       return null;
     }
 
-    const payloadText = Buffer.from(
-      encodedPayload,
-      "base64url"
-    ).toString("utf8");
-
-    const payload = JSON.parse(payloadText);
-
     if (
-      !payload?.shop ||
-      !payload?.nonce ||
-      !payload?.timestamp
+      !timingSafeEqual(
+        receivedBuffer,
+        expectedBuffer
+      )
     ) {
       return null;
     }
 
-    const age = Date.now() - Number(payload.timestamp);
+    const payloadText =
+      Buffer.from(
+        encodedPayload,
+        "base64url"
+      ).toString("utf8");
 
-    if (age < 0 || age > 10 * 60 * 1000) {
+    const payload =
+      JSON.parse(payloadText);
+
+    if (
+      !payload ||
+      typeof payload.shop !== "string" ||
+      typeof payload.nonce !== "string" ||
+      typeof payload.timestamp !== "number"
+    ) {
       return null;
     }
 
-    const shop = cleanShopDomain(payload.shop);
+    const stateAge =
+      Date.now() - payload.timestamp;
 
-    if (!shop.endsWith(".myshopify.com")) {
+    if (
+      stateAge < 0 ||
+      stateAge > 10 * 60 * 1000
+    ) {
       return null;
     }
 
-    return { shop };
+    return payload;
   } catch (error) {
     console.error(
-      "SHOPIFY_OAUTH_STATE_VERIFY_ERROR:",
+      "SHOPIFY_STATE_VERIFY_ERROR:",
       error
     );
 
@@ -86,46 +100,82 @@ function verifyOAuthState(
   }
 }
 
-export async function GET(request: NextRequest) {
+export async function GET(
+  request: NextRequest
+) {
   try {
-    const params = request.nextUrl.searchParams;
+    const params =
+      request.nextUrl.searchParams;
 
-    const code = params.get("code") || "";
-    const shop = cleanShopDomain(
-      params.get("shop") || ""
-    );
-    const state = params.get("state") || "";
+    const code =
+      params.get("code") || "";
 
-    if (!code || !shop || !state) {
+    const shop =
+      cleanShopDomain(
+        params.get("shop") || ""
+      );
+
+    const state =
+      params.get("state") || "";
+
+    /*
+     * ================================================
+     * 1. Validate Shopify response
+     * ================================================
+     */
+
+    if (
+      !code ||
+      !shop ||
+      !state
+    ) {
       return NextResponse.json(
         {
           success: false,
           error:
             "Shopify authorization response is incomplete.",
-          debug: {
-            hasCode: Boolean(code),
-            hasShop: Boolean(shop),
-            hasState: Boolean(state),
-          },
         },
         { status: 400 }
       );
     }
 
-    if (!shop.endsWith(".myshopify.com")) {
+    /*
+     * ================================================
+     * 2. Validate Shopify shop domain
+     * ================================================
+     */
+
+    if (
+      !shop.endsWith(
+        ".myshopify.com"
+      )
+    ) {
       return NextResponse.json(
         {
           success: false,
-          error: "Invalid Shopify store domain.",
+          error:
+            "Invalid Shopify store domain.",
         },
         { status: 400 }
       );
     }
 
-    const apiKey = process.env.SHOPIFY_API_KEY;
-    const apiSecret = process.env.SHOPIFY_API_SECRET;
+    /*
+     * ================================================
+     * 3. Shopify credentials
+     * ================================================
+     */
 
-    if (!apiKey || !apiSecret) {
+    const apiKey =
+      process.env.SHOPIFY_API_KEY;
+
+    const apiSecret =
+      process.env.SHOPIFY_API_SECRET;
+
+    if (
+      !apiKey ||
+      !apiSecret
+    ) {
       return NextResponse.json(
         {
           success: false,
@@ -136,48 +186,88 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const verifiedState = verifyOAuthState(
-      state,
-      apiSecret
-    );
+    /*
+     * ================================================
+     * 4. VERIFY SIGNED OAUTH STATE
+     *
+     * IMPORTANT:
+     *
+     * We do NOT read the old OAuth state cookie.
+     *
+     * The /api/auth/shopify route now creates a
+     * signed state containing the Shopify shop.
+     * ================================================
+     */
 
-    if (!verifiedState) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: "Invalid Shopify OAuth state.",
-        },
-        { status: 400 }
+    const statePayload =
+      verifyOAuthState(
+        state,
+        apiSecret
       );
-    }
 
-    if (verifiedState.shop !== shop) {
+    if (!statePayload) {
       return NextResponse.json(
         {
           success: false,
           error:
-            "Shopify OAuth store does not match the original store.",
+            "Invalid or expired Shopify OAuth state.",
         },
         { status: 400 }
       );
     }
 
-    const tokenResponse = await fetch(
-      `https://${shop}/admin/oauth/access_token`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type":
-            "application/x-www-form-urlencoded",
+    /*
+     * ================================================
+     * 5. Make sure state belongs to this shop
+     * ================================================
+     */
+
+    const stateShop =
+      cleanShopDomain(
+        statePayload.shop
+      );
+
+    if (
+      !stateShop ||
+      stateShop !== shop
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Shopify OAuth store does not match the authorized store.",
         },
-        body: new URLSearchParams({
-          client_id: apiKey,
-          client_secret: apiSecret,
-          code,
-        }).toString(),
-        cache: "no-store",
-      }
-    );
+        { status: 400 }
+      );
+    }
+
+    /*
+     * ================================================
+     * 6. Exchange authorization code for token
+     * ================================================
+     */
+
+    const tokenResponse =
+      await fetch(
+        `https://${shop}/admin/oauth/access_token`,
+        {
+          method: "POST",
+
+          headers: {
+            "Content-Type":
+              "application/x-www-form-urlencoded",
+          },
+
+          body:
+            new URLSearchParams({
+              client_id: apiKey,
+              client_secret: apiSecret,
+              code,
+            }).toString(),
+
+          cache: "no-store",
+        }
+      );
 
     const responseText =
       await tokenResponse.text();
@@ -185,7 +275,10 @@ export async function GET(request: NextRequest) {
     let data: any;
 
     try {
-      data = JSON.parse(responseText);
+      data =
+        JSON.parse(
+          responseText
+        );
     } catch {
       console.error(
         "SHOPIFY_TOKEN_RESPONSE:",
@@ -201,6 +294,12 @@ export async function GET(request: NextRequest) {
         { status: 502 }
       );
     }
+
+    /*
+     * ================================================
+     * 7. Check access token
+     * ================================================
+     */
 
     if (
       !tokenResponse.ok ||
@@ -226,8 +325,17 @@ export async function GET(request: NextRequest) {
     const accessToken =
       data.access_token;
 
+    /*
+     * ================================================
+     * 8. Redirect to connected screen
+     * ================================================
+     */
+
     const redirectUrl =
-      new URL("/connect", request.url);
+      new URL(
+        "/connect",
+        request.url
+      );
 
     redirectUrl.searchParams.set(
       "shop",
@@ -244,18 +352,32 @@ export async function GET(request: NextRequest) {
         redirectUrl
       );
 
+    /*
+     * ================================================
+     * 9. Store Shopify access token
+     * ================================================
+     */
+
     result.cookies.set(
       "virello_shopify_access_token",
       accessToken,
       {
         httpOnly: true,
         secure:
-          process.env.NODE_ENV === "production",
+          process.env.NODE_ENV ===
+          "production",
         sameSite: "lax",
         path: "/",
-        maxAge: 60 * 60 * 24 * 30,
+        maxAge:
+          60 * 60 * 24 * 30,
       }
     );
+
+    /*
+     * ================================================
+     * 10. Store connected shop
+     * ================================================
+     */
 
     result.cookies.set(
       "virello_shopify_shop",
@@ -263,12 +385,34 @@ export async function GET(request: NextRequest) {
       {
         httpOnly: true,
         secure:
-          process.env.NODE_ENV === "production",
+          process.env.NODE_ENV ===
+          "production",
         sameSite: "lax",
         path: "/",
-        maxAge: 60 * 60 * 24 * 30,
+        maxAge:
+          60 * 60 * 24 * 30,
       }
     );
+
+    /*
+     * ================================================
+     * 11. Remove old OAuth cookies if they exist
+     * ================================================
+     */
+
+    result.cookies.delete(
+      "virello_shopify_oauth_state"
+    );
+
+    result.cookies.delete(
+      "virello_shopify_oauth_shop"
+    );
+
+    /*
+     * ================================================
+     * 12. SUCCESS
+     * ================================================
+     */
 
     return result;
   } catch (error) {
