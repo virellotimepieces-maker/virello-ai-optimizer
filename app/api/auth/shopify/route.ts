@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { randomBytes } from "crypto";
+import {
+  createHmac,
+} from "crypto";
 
 function cleanShopDomain(value: string) {
   return value
@@ -13,11 +15,41 @@ function cleanShopDomain(value: string) {
     );
 }
 
-export async function GET(request: NextRequest) {
+function createOAuthState(
+  shop: string,
+  apiSecret: string
+) {
+  const payload = {
+    shop,
+    timestamp: Date.now(),
+  };
+
+  const encodedPayload =
+    Buffer.from(
+      JSON.stringify(payload)
+    ).toString("base64url");
+
+  const signature =
+    createHmac(
+      "sha256",
+      apiSecret
+    )
+      .update(encodedPayload)
+      .digest("base64url");
+
+  return `${encodedPayload}.${signature}`;
+}
+
+export async function GET(
+  request: NextRequest
+) {
   try {
-    const shop = cleanShopDomain(
-      request.nextUrl.searchParams.get("shop") || ""
-    );
+    const shop =
+      cleanShopDomain(
+        request.nextUrl.searchParams.get(
+          "shop"
+        ) || ""
+      );
 
     if (
       !shop ||
@@ -28,16 +60,23 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(
         {
           success: false,
-          error: "Invalid Shopify store domain.",
+          error:
+            "Invalid Shopify store domain.",
         },
         { status: 400 }
       );
     }
 
-    const apiKey = process.env.SHOPIFY_API_KEY;
-    const apiSecret = process.env.SHOPIFY_API_SECRET;
+    const apiKey =
+      process.env.SHOPIFY_API_KEY;
 
-    if (!apiKey || !apiSecret) {
+    const apiSecret =
+      process.env.SHOPIFY_API_SECRET;
+
+    if (
+      !apiKey ||
+      !apiSecret
+    ) {
       return NextResponse.json(
         {
           success: false,
@@ -49,10 +88,14 @@ export async function GET(request: NextRequest) {
     }
 
     /*
-     * OAuth state is stored in an HttpOnly cookie.
-     * This matches the callback flow.
+     * Create a signed OAuth state.
+     * This matches the callback route.
      */
-    const state = randomBytes(32).toString("hex");
+    const state =
+      createOAuthState(
+        shop,
+        apiSecret
+      );
 
     const redirectUri =
       "https://virello-ai-optimizer.vercel.app/api/auth/callback";
@@ -61,44 +104,35 @@ export async function GET(request: NextRequest) {
       process.env.SHOPIFY_SCOPES ||
       "read_products,write_products";
 
-    const params = new URLSearchParams();
+    const params =
+      new URLSearchParams();
 
-    params.set("client_id", apiKey);
-    params.set("scope", scopes);
-    params.set("redirect_uri", redirectUri);
-    params.set("state", state);
+    params.set(
+      "client_id",
+      apiKey
+    );
+
+    params.set(
+      "scope",
+      scopes
+    );
+
+    params.set(
+      "redirect_uri",
+      redirectUri
+    );
+
+    params.set(
+      "state",
+      state
+    );
 
     const authorizationUrl =
       `https://${shop}/admin/oauth/authorize?${params.toString()}`;
 
-    const response =
-      NextResponse.redirect(authorizationUrl);
-
-    response.cookies.set(
-      "virello_shopify_oauth_state",
-      state,
-      {
-        httpOnly: true,
-        secure: true,
-        sameSite: "none",
-        path: "/",
-        maxAge: 10 * 60,
-      }
+    return NextResponse.redirect(
+      authorizationUrl
     );
-
-    response.cookies.set(
-      "virello_shopify_oauth_shop",
-      shop,
-      {
-        httpOnly: true,
-        secure: true,
-        sameSite: "none",
-        path: "/",
-        maxAge: 10 * 60,
-      }
-    );
-
-    return response;
   } catch (error) {
     console.error(
       "SHOPIFY_OAUTH_START_ERROR:",
