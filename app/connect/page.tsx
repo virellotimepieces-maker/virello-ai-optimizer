@@ -107,18 +107,10 @@ export default function ConnectPage() {
         return;
       }
 
-      /*
-       * IMPORTANT:
-       * Shopify OAuth must leave the embedded
-       * Shopify Admin iframe and navigate the
-       * top-level browser window.
-       */
-      const authUrl =
+      window.location.href =
         `/api/auth/shopify?shop=${encodeURIComponent(
           cleanShop
         )}`;
-
-      window.open(authUrl, "_top");
 
       return;
     }
@@ -137,7 +129,6 @@ export default function ConnectPage() {
   return (
     <main className="app-shell">
 
-      {/* TOP BAR */}
       <header className="topbar">
         <div>
           <div className="brand-small">
@@ -154,7 +145,6 @@ export default function ConnectPage() {
         </div>
       </header>
 
-      {/* HERO */}
       <section className="hero">
         <div className="hero-inner">
 
@@ -177,14 +167,12 @@ export default function ConnectPage() {
         </div>
       </section>
 
-      {/* WORKSPACE */}
       <section className="workspace">
 
         <div className="workspace-grid">
 
           <section className="optimizer-panel">
 
-            {/* HEADER */}
             <div className="selected-product">
 
               <div>
@@ -204,14 +192,12 @@ export default function ConnectPage() {
 
             </div>
 
-            {/* MESSAGE */}
             {message && (
               <div className="alert error">
                 {message}
               </div>
             )}
 
-            {/* PLATFORM CARD */}
             <div className="content-card">
 
               <div className="platform-grid">
@@ -272,7 +258,6 @@ export default function ConnectPage() {
 
               </div>
 
-              {/* SHOPIFY STORE DOMAIN */}
               {selected === "shopify" && (
                 <div className="shopify-connect-box">
 
@@ -318,7 +303,6 @@ export default function ConnectPage() {
                 </div>
               )}
 
-              {/* CONTINUE */}
               <div className="connect-actions">
 
                 <button
@@ -335,7 +319,6 @@ export default function ConnectPage() {
 
             </div>
 
-            {/* WORKFLOW */}
             <div className="content-card">
 
               <div className="step-label">
