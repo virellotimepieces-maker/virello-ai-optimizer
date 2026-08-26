@@ -66,12 +66,6 @@ export default function ConnectPage() {
   const [connectedShop, setConnectedShop] =
     useState("");
 
-  /*
-   * ==================================================
-   * READ SHOPIFY CONNECTION RESULT
-   * ==================================================
-   */
-
   useEffect(() => {
     const params = new URLSearchParams(
       window.location.search
@@ -103,12 +97,6 @@ export default function ConnectPage() {
     }
   }, []);
 
-  /*
-   * ==================================================
-   * PLATFORM SELECT
-   * ==================================================
-   */
-
   function handlePlatformSelect(
     platform: Platform
   ) {
@@ -119,12 +107,6 @@ export default function ConnectPage() {
       setShop("");
     }
   }
-
-  /*
-   * ==================================================
-   * STRIPE SUBSCRIPTION CHECKOUT
-   * ==================================================
-   */
 
   async function startCheckout() {
     setCheckoutLoading(true);
@@ -165,12 +147,6 @@ export default function ConnectPage() {
     }
   }
 
-  /*
-   * ==================================================
-   * SHOPIFY DOMAIN
-   * ==================================================
-   */
-
   const cleanShop =
     cleanShopDomain(shop);
 
@@ -179,18 +155,17 @@ export default function ConnectPage() {
       cleanShop
     );
 
+  /*
+   * IMPORTANT:
+   * Use the absolute Virello production URL.
+   * Do not use a relative /api/auth/shopify URL.
+   */
   const shopifyOAuthUrl =
     shopifyDomainIsValid
-      ? `/api/auth/shopify?shop=${encodeURIComponent(
+      ? `https://virello-ai-optimizer.vercel.app/api/auth/shopify?shop=${encodeURIComponent(
           cleanShop
         )}`
       : "";
-
-  /*
-   * ==================================================
-   * SUCCESSFUL SHOPIFY CONNECTION SCREEN
-   * ==================================================
-   */
 
   if (connected) {
     return (
@@ -318,7 +293,6 @@ export default function ConnectPage() {
                 <div className="flow-grid">
 
                   <div className="flow-card">
-
                     <strong>
                       1. Connect
                     </strong>
@@ -327,11 +301,9 @@ export default function ConnectPage() {
                       Your Shopify store is
                       connected.
                     </p>
-
                   </div>
 
                   <div className="flow-card">
-
                     <strong>
                       2. Import
                     </strong>
@@ -340,11 +312,9 @@ export default function ConnectPage() {
                       Bring your product
                       information into Virello.
                     </p>
-
                   </div>
 
                   <div className="flow-card">
-
                     <strong>
                       3. Optimize
                     </strong>
@@ -353,11 +323,9 @@ export default function ConnectPage() {
                       Generate improved product
                       content with AI.
                     </p>
-
                   </div>
 
                   <div className="flow-card">
-
                     <strong>
                       4. Apply
                     </strong>
@@ -366,7 +334,6 @@ export default function ConnectPage() {
                       Send approved content back
                       to your store.
                     </p>
-
                   </div>
 
                 </div>
@@ -731,12 +698,6 @@ export default function ConnectPage() {
       </main>
     );
   }
-
-  /*
-   * ==================================================
-   * NORMAL CONNECT SCREEN
-   * ==================================================
-   */
 
   return (
     <main className="app-shell">
