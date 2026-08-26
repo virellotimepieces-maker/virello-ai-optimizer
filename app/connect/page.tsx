@@ -108,28 +108,30 @@ export default function ConnectPage() {
       }
 
       /*
-       * IMPORTANT FIX
+       * SHOPIFY OAUTH
        *
-       * Shopify can open Virello inside an
-       * embedded/admin frame. Using normal
-       * window.location.href can cause Shopify
-       * to block the OAuth login response.
+       * IMPORTANT:
+       * Virello can be opened inside Shopify Admin.
+       * We must force the OAuth URL to the
+       * top-level browser context.
        *
-       * We intentionally navigate the TOP-LEVEL
-       * browser window for OAuth.
+       * Do NOT change the callback URL here.
        */
       const oauthUrl =
         `/api/auth/shopify?shop=${encodeURIComponent(
           cleanShop
         )}`;
 
-      if (window.top) {
-        window.top.location.href =
-          oauthUrl;
-      } else {
-        window.location.href =
-          oauthUrl;
-      }
+      /*
+       * FIX:
+       * Open Shopify OAuth in the top-level
+       * browser window instead of the embedded
+       * Shopify frame.
+       */
+      window.open(
+        oauthUrl,
+        "_top"
+      );
 
       return;
     }
@@ -149,7 +151,9 @@ export default function ConnectPage() {
     <main className="app-shell">
 
       <header className="topbar">
+
         <div>
+
           <div className="brand-small">
             VIRELLO AI
           </div>
@@ -157,14 +161,17 @@ export default function ConnectPage() {
           <div className="brand-name">
             Virello AI Optimizer
           </div>
+
         </div>
 
         <div className="shop-pill">
           Multi-Platform Ecommerce
         </div>
+
       </header>
 
       <section className="hero">
+
         <div className="hero-inner">
 
           <div className="eyebrow">
@@ -184,6 +191,7 @@ export default function ConnectPage() {
           </p>
 
         </div>
+
       </section>
 
       <section className="workspace">
@@ -195,6 +203,7 @@ export default function ConnectPage() {
             <div className="selected-product">
 
               <div>
+
                 <div className="step-label">
                   STEP 1
                 </div>
@@ -207,6 +216,7 @@ export default function ConnectPage() {
                   Select the ecommerce platform
                   where your products are stored.
                 </p>
+
               </div>
 
             </div>
@@ -245,9 +255,11 @@ export default function ConnectPage() {
                       >
 
                         <div className="platform-icon">
+
                           {platform.name.charAt(
                             0
                           )}
+
                         </div>
 
                         <div className="platform-info">
@@ -265,9 +277,11 @@ export default function ConnectPage() {
                         </div>
 
                         <div className="platform-check">
+
                           {active
                             ? "✓"
                             : ""}
+
                         </div>
 
                       </button>
@@ -309,11 +323,13 @@ export default function ConnectPage() {
                       autoCorrect="off"
                       spellCheck={false}
                       onKeyDown={(event) => {
+
                         if (
                           event.key === "Enter"
                         ) {
                           handleContinue();
                         }
+
                       }}
                     />
 
@@ -351,6 +367,7 @@ export default function ConnectPage() {
               <div className="flow-grid">
 
                 <div className="flow-card">
+
                   <strong>
                     1. Connect
                   </strong>
@@ -359,9 +376,11 @@ export default function ConnectPage() {
                     Connect your ecommerce
                     platform.
                   </p>
+
                 </div>
 
                 <div className="flow-card">
+
                   <strong>
                     2. Import
                   </strong>
@@ -370,9 +389,11 @@ export default function ConnectPage() {
                     Bring product information
                     into Virello.
                   </p>
+
                 </div>
 
                 <div className="flow-card">
+
                   <strong>
                     3. Optimize
                   </strong>
@@ -381,9 +402,11 @@ export default function ConnectPage() {
                     Generate improved product
                     content with AI.
                   </p>
+
                 </div>
 
                 <div className="flow-card">
+
                   <strong>
                     4. Apply
                   </strong>
@@ -392,6 +415,7 @@ export default function ConnectPage() {
                     Send approved content back
                     to the store.
                   </p>
+
                 </div>
 
               </div>
