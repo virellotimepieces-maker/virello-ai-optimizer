@@ -24,11 +24,21 @@ function verifyOAuthState(
     const parts = state.split(".");
 
     if (parts.length !== 2) {
+      console.error(
+        "SHOPIFY_STATE_DIAGNOSTIC: invalid parts count",
+        {
+          stateLength: state.length,
+          stateParts: parts.length,
+        }
+      );
+
       return null;
     }
 
-    const [encodedPayload, receivedSignature] =
-      parts;
+    const [
+      encodedPayload,
+      receivedSignature,
+    ] = parts;
 
     const expectedSignature =
       createHmac("sha256", secret)
@@ -49,6 +59,16 @@ function verifyOAuthState(
       receivedBuffer.length !==
       expectedBuffer.length
     ) {
+      console.error(
+        "SHOPIFY_STATE_DIAGNOSTIC: signature length mismatch",
+        {
+          receivedSignatureLength:
+            receivedBuffer.length,
+          expectedSignatureLength:
+            expectedBuffer.length,
+        }
+      );
+
       return null;
     }
 
@@ -58,6 +78,10 @@ function verifyOAuthState(
         expectedBuffer
       )
     ) {
+      console.error(
+        "SHOPIFY_STATE_DIAGNOSTIC: signature mismatch"
+      );
+
       return null;
     }
 
@@ -76,6 +100,21 @@ function verifyOAuthState(
       typeof payload.nonce !== "string" ||
       typeof payload.timestamp !== "number"
     ) {
+      console.error(
+        "SHOPIFY_STATE_DIAGNOSTIC: invalid payload structure",
+        {
+          hasShop:
+            typeof payload?.shop ===
+            "string",
+          hasNonce:
+            typeof payload?.nonce ===
+            "string",
+          hasTimestamp:
+            typeof payload?.timestamp ===
+            "number",
+        }
+      );
+
       return null;
     }
 
@@ -86,6 +125,13 @@ function verifyOAuthState(
       stateAge < 0 ||
       stateAge > 10 * 60 * 1000
     ) {
+      console.error(
+        "SHOPIFY_STATE_DIAGNOSTIC: state expired",
+        {
+          stateAge,
+        }
+      );
+
       return null;
     }
 
@@ -120,6 +166,45 @@ export async function GET(
 
     /*
      * ================================================
+     * TEMPORARY OAUTH DIAGNOSTIC
+     *
+     * IMPORTANT:
+     * We intentionally DO NOT log the actual
+     * authorization code, state, API secret,
+     * or access token.
+     * ================================================
+     */
+
+    console.log(
+      "SHOPIFY_OAUTH_DIAGNOSTIC:",
+      {
+        hasCode:
+          Boolean(code),
+
+        hasShop:
+          Boolean(shop),
+
+        hasState:
+          Boolean(state),
+
+        shop,
+
+        stateLength:
+          state.length,
+
+        stateParts:
+          state.split(".").length,
+
+        signatureLength:
+          state.includes(".")
+            ? state.split(".")[1]
+                ?.length || 0
+            : 0,
+      }
+    );
+
+    /*
+     * ================================================
      * 1. Validate Shopify response
      * ================================================
      */
@@ -146,8 +231,8 @@ export async function GET(
      */
 
     if (
-      !shop.endsWith(
-        ".myshopify.com"
+      !/^([a-z0-9][a-z0-9-]*[a-z0-9]|[a-z0-9])\.myshopify\.com$/i.test(
+        shop
       )
     ) {
       return NextResponse.json(
@@ -190,12 +275,13 @@ export async function GET(
      * ================================================
      * 4. VERIFY SIGNED OAUTH STATE
      *
-     * IMPORTANT:
+     * The Shopify OAuth start route creates:
      *
-     * We do NOT read the old OAuth state cookie.
+     * encodedPayload.signature
      *
-     * The /api/auth/shopify route now creates a
-     * signed state containing the Shopify shop.
+     * using SHOPIFY_API_SECRET.
+     *
+     * This callback verifies that signature.
      * ================================================
      */
 
@@ -231,6 +317,14 @@ export async function GET(
       !stateShop ||
       stateShop !== shop
     ) {
+      console.error(
+        "SHOPIFY_STATE_DIAGNOSTIC: shop mismatch",
+        {
+          callbackShop: shop,
+          stateShop,
+        }
+      );
+
       return NextResponse.json(
         {
           success: false,
@@ -260,8 +354,12 @@ export async function GET(
 
           body:
             new URLSearchParams({
-              client_id: apiKey,
-              client_secret: apiSecret,
+              client_id:
+                apiKey,
+
+              client_secret:
+                apiSecret,
+
               code,
             }).toString(),
 
@@ -363,11 +461,15 @@ export async function GET(
       accessToken,
       {
         httpOnly: true,
+
         secure:
           process.env.NODE_ENV ===
           "production",
+
         sameSite: "lax",
+
         path: "/",
+
         maxAge:
           60 * 60 * 24 * 30,
       }
@@ -384,11 +486,15 @@ export async function GET(
       shop,
       {
         httpOnly: true,
+
         secure:
           process.env.NODE_ENV ===
           "production",
+
         sameSite: "lax",
+
         path: "/",
+
         maxAge:
           60 * 60 * 24 * 30,
       }
