@@ -43,7 +43,29 @@ export default function ConnectPage() {
   const [selected, setSelected] =
     useState<Platform>(null);
 
+  const [shop, setShop] = useState("");
+
   const [message, setMessage] = useState("");
+
+  function cleanShopDomain(value: string) {
+    return value
+      .trim()
+      .toLowerCase()
+      .replace(/^https?:\/\//, "")
+      .replace(/\/+$/, "")
+      .replace(/\.myshopify\.com\.myshopify\.com$/, ".myshopify.com");
+  }
+
+  function handlePlatformSelect(
+    platform: Platform
+  ) {
+    setSelected(platform);
+    setMessage("");
+
+    if (platform !== "shopify") {
+      setShop("");
+    }
+  }
 
   function handleContinue() {
     setMessage("");
@@ -60,6 +82,33 @@ export default function ConnectPage() {
       return;
     }
 
+    if (selected === "shopify") {
+      const cleanShop = cleanShopDomain(shop);
+
+      if (!cleanShop) {
+        setMessage(
+          "Enter your Shopify store domain first."
+        );
+        return;
+      }
+
+      if (
+        !cleanShop.endsWith(".myshopify.com")
+      ) {
+        setMessage(
+          "Enter your Shopify domain like mystore.myshopify.com."
+        );
+        return;
+      }
+
+      window.location.href =
+        `/api/auth/shopify?shop=${encodeURIComponent(
+          cleanShop
+        )}`;
+
+      return;
+    }
+
     const platformName =
       platforms.find(
         (platform) =>
@@ -67,7 +116,7 @@ export default function ConnectPage() {
       )?.name;
 
     setMessage(
-      `${platformName} selected. The secure connection step will be added next.`
+      `${platformName} connection is coming next.`
     );
   }
 
@@ -169,12 +218,11 @@ export default function ConnectPage() {
                             ? "platform-card active"
                             : "platform-card"
                         }
-                        onClick={() => {
-                          setSelected(
+                        onClick={() =>
+                          handlePlatformSelect(
                             platform.id
-                          );
-                          setMessage("");
-                        }}
+                          )
+                        }
                       >
 
                         <div className="platform-icon">
@@ -210,6 +258,53 @@ export default function ConnectPage() {
 
               </div>
 
+              {/* SHOPIFY STORE DOMAIN */}
+              {selected === "shopify" && (
+                <div className="shopify-connect-box">
+
+                  <div className="step-label">
+                    SHOPIFY STORE
+                  </div>
+
+                  <h3>
+                    Enter your Shopify store
+                  </h3>
+
+                  <p>
+                    Use your Shopify domain,
+                    for example:
+                    mystore.myshopify.com
+                  </p>
+
+                  <div className="shop-domain-input">
+
+                    <input
+                      type="text"
+                      value={shop}
+                      onChange={(event) =>
+                        setShop(
+                          event.target.value
+                        )
+                      }
+                      placeholder="mystore.myshopify.com"
+                      autoCapitalize="none"
+                      autoCorrect="off"
+                      spellCheck={false}
+                      onKeyDown={(event) => {
+                        if (
+                          event.key === "Enter"
+                        ) {
+                          handleContinue();
+                        }
+                      }}
+                    />
+
+                  </div>
+
+                </div>
+              )}
+
+              {/* CONTINUE */}
               <div className="connect-actions">
 
                 <button
