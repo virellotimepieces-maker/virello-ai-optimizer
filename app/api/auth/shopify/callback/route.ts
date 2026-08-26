@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { createHmac, timingSafeEqual } from "crypto";
 
 function cleanShopDomain(value: string) {
   return value
@@ -9,23 +10,103 @@ function cleanShopDomain(value: string) {
     .replace(/\.myshopify\.com\.myshopify\.com$/, ".myshopify.com");
 }
 
-export async function GET(request: NextRequest) {
+function verifyOAuthState(
+  state: string,
+  apiSecret: string
+) {
   try {
-    const params = request.nextUrl.searchParams;
+    const parts = state.split(".");
 
-    const code = params.get("code") || "";
-    const shop = cleanShopDomain(params.get("shop") || "");
-    const state = params.get("state") || "";
+    if (parts.length !== 2) {
+      return null;
+    }
 
-    const savedState =
-      request.cookies.get(
-        "virello_shopify_oauth_state"
-      )?.value || "";
+    const [encodedPayload, receivedSignature] = parts;
 
-    const savedShop =
-      request.cookies.get(
-        "virello_shopify_oauth_shop"
-      )?.value || "";
+    const expectedSignature = createHmac(
+      "sha256",
+      apiSecret
+    )
+      .update(encodedPayload)
+      .digest("base64url");
+
+    const receivedBuffer =
+      Buffer.from(receivedSignature);
+
+    const expectedBuffer =
+      Buffer.from(expectedSignature);
+
+    if (
+      receivedBuffer.length !==
+      expectedBuffer.length
+    ) {
+      return null;
+    }
+
+    if (
+      !timingSafeEqual(
+        receivedBuffer,
+        expectedBuffer
+      )
+    ) {
+      return null;
+    }
+
+    const payloadText =
+      Buffer.from(
+        encodedPayload,
+        "base64url"
+      ).toString("utf8");
+
+    const payload =
+      JSON.parse(payloadText);
+
+    if (
+      !payload ||
+      typeof payload.shop !== "string" ||
+      typeof payload.timestamp !== "number"
+    ) {
+      return null;
+    }
+
+    /*
+     * State expires after 10 minutes.
+     */
+    const age =
+      Date.now() - payload.timestamp;
+
+    if (
+      age < 0 ||
+      age > 10 * 60 * 1000
+    ) {
+      return null;
+    }
+
+    return {
+      shop: cleanShopDomain(payload.shop),
+    };
+  } catch {
+    return null;
+  }
+}
+
+export async function GET(
+  request: NextRequest
+) {
+  try {
+    const params =
+      request.nextUrl.searchParams;
+
+    const code =
+      params.get("code") || "";
+
+    const shop =
+      cleanShopDomain(
+        params.get("shop") || ""
+      );
+
+    const state =
+      params.get("state") || "";
 
     if (!code || !shop || !state) {
       return NextResponse.json(
@@ -33,42 +114,21 @@ export async function GET(request: NextRequest) {
           success: false,
           error:
             "Shopify authorization response is incomplete.",
-          debug: {
-            hasCode: Boolean(code),
-            hasShop: Boolean(shop),
-            hasState: Boolean(state),
-          },
         },
         { status: 400 }
       );
     }
 
-    if (!shop.endsWith(".myshopify.com")) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: "Invalid Shopify store domain.",
-        },
-        { status: 400 }
-      );
-    }
-
-    if (!savedState || savedState !== state) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: "Invalid Shopify OAuth state.",
-        },
-        { status: 400 }
-      );
-    }
-
-    if (savedShop && savedShop !== shop) {
+    if (
+      !/^([a-z0-9][a-z0-9-]*[a-z0-9]|[a-z0-9])\.myshopify\.com$/i.test(
+        shop
+      )
+    ) {
       return NextResponse.json(
         {
           success: false,
           error:
-            "Shopify OAuth store does not match the original store.",
+            "Invalid Shopify store domain.",
         },
         { status: 400 }
       );
@@ -91,22 +151,60 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const tokenResponse = await fetch(
-      `https://${shop}/admin/oauth/access_token`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type":
-            "application/x-www-form-urlencoded",
+    /*
+     * Verify the signed OAuth state.
+     * No browser cookie is required.
+     */
+    const stateData =
+      verifyOAuthState(
+        state,
+        apiSecret
+      );
+
+    if (!stateData) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Invalid or expired Shopify OAuth state.",
         },
-        body: new URLSearchParams({
-          client_id: apiKey,
-          client_secret: apiSecret,
-          code,
-        }).toString(),
-        cache: "no-store",
-      }
-    );
+        { status: 400 }
+      );
+    }
+
+    if (stateData.shop !== shop) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Shopify OAuth store does not match the original store.",
+        },
+        { status: 400 }
+      );
+    }
+
+    /*
+     * Exchange Shopify authorization code
+     * for an access token.
+     */
+    const tokenResponse =
+      await fetch(
+        `https://${shop}/admin/oauth/access_token`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type":
+              "application/x-www-form-urlencoded",
+          },
+          body:
+            new URLSearchParams({
+              client_id: apiKey,
+              client_secret: apiSecret,
+              code,
+            }).toString(),
+          cache: "no-store",
+        }
+      );
 
     const responseText =
       await tokenResponse.text();
@@ -114,8 +212,14 @@ export async function GET(request: NextRequest) {
     let data: any;
 
     try {
-      data = JSON.parse(responseText);
+      data =
+        JSON.parse(responseText);
     } catch {
+      console.error(
+        "SHOPIFY_TOKEN_RESPONSE:",
+        responseText
+      );
+
       return NextResponse.json(
         {
           success: false,
@@ -130,6 +234,11 @@ export async function GET(request: NextRequest) {
       !tokenResponse.ok ||
       !data?.access_token
     ) {
+      console.error(
+        "SHOPIFY_TOKEN_ERROR:",
+        data
+      );
+
       return NextResponse.json(
         {
           success: false,
@@ -145,8 +254,14 @@ export async function GET(request: NextRequest) {
     const accessToken =
       data.access_token;
 
+    /*
+     * Send the user back to Virello.
+     */
     const redirectUrl =
-      new URL("/connect", request.url);
+      new URL(
+        "/connect",
+        request.url
+      );
 
     redirectUrl.searchParams.set(
       "shop",
@@ -163,15 +278,21 @@ export async function GET(request: NextRequest) {
         redirectUrl
       );
 
+    /*
+     * Store the Shopify access token.
+     */
     result.cookies.set(
       "virello_shopify_access_token",
       accessToken,
       {
         httpOnly: true,
-        secure: true,
-        sameSite: "none",
+        secure:
+          process.env.NODE_ENV ===
+          "production",
+        sameSite: "lax",
         path: "/",
-        maxAge: 60 * 60 * 24 * 30,
+        maxAge:
+          60 * 60 * 24 * 30,
       }
     );
 
@@ -180,19 +301,14 @@ export async function GET(request: NextRequest) {
       shop,
       {
         httpOnly: true,
-        secure: true,
-        sameSite: "none",
+        secure:
+          process.env.NODE_ENV ===
+          "production",
+        sameSite: "lax",
         path: "/",
-        maxAge: 60 * 60 * 24 * 30,
+        maxAge:
+          60 * 60 * 24 * 30,
       }
-    );
-
-    result.cookies.delete(
-      "virello_shopify_oauth_state"
-    );
-
-    result.cookies.delete(
-      "virello_shopify_oauth_shop"
     );
 
     return result;
