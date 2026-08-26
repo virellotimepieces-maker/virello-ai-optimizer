@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { randomBytes } from "crypto";
+import { createHmac, randomBytes } from "crypto";
 
 function cleanShopDomain(value: string) {
   return value
@@ -8,6 +8,23 @@ function cleanShopDomain(value: string) {
     .replace(/^https?:\/\//, "")
     .replace(/\/+$/, "")
     .replace(/\.myshopify\.com\.myshopify\.com$/, ".myshopify.com");
+}
+
+function createOAuthState(shop: string, secret: string) {
+  const payload = JSON.stringify({
+    shop,
+    nonce: randomBytes(32).toString("hex"),
+    timestamp: Date.now(),
+  });
+
+  const encodedPayload =
+    Buffer.from(payload).toString("base64url");
+
+  const signature = createHmac("sha256", secret)
+    .update(encodedPayload)
+    .digest("base64url");
+
+  return `${encodedPayload}.${signature}`;
 }
 
 export async function GET(request: NextRequest) {
@@ -32,26 +49,21 @@ export async function GET(request: NextRequest) {
     }
 
     const apiKey = process.env.SHOPIFY_API_KEY;
+    const apiSecret = process.env.SHOPIFY_API_SECRET;
 
-    if (!apiKey) {
+    if (!apiKey || !apiSecret) {
       return NextResponse.json(
         {
           success: false,
-          error: "SHOPIFY_API_KEY is missing in Vercel.",
+          error:
+            "SHOPIFY_API_KEY or SHOPIFY_API_SECRET is missing in Vercel.",
         },
         { status: 500 }
       );
     }
 
-    /*
-     * Create a fresh OAuth state for this authorization attempt.
-     */
-    const state = randomBytes(32).toString("hex");
+    const state = createOAuthState(shop, apiSecret);
 
-    /*
-     * This URL MUST exactly match the redirect URL
-     * configured in Shopify Dev Dashboard.
-     */
     const redirectUri =
       "https://virello-ai-optimizer.vercel.app/api/auth/callback";
 
@@ -59,9 +71,6 @@ export async function GET(request: NextRequest) {
       process.env.SHOPIFY_SCOPES ||
       "read_products,write_products";
 
-    /*
-     * Build Shopify authorization URL.
-     */
     const params = new URLSearchParams();
 
     params.set("client_id", apiKey);
@@ -72,44 +81,7 @@ export async function GET(request: NextRequest) {
     const authorizationUrl =
       `https://${shop}/admin/oauth/authorize?${params.toString()}`;
 
-    /*
-     * Redirect to Shopify.
-     */
-    const response =
-      NextResponse.redirect(authorizationUrl);
-
-    /*
-     * IMPORTANT:
-     * Save the exact state so the callback can verify it.
-     */
-    response.cookies.set(
-      "virello_shopify_oauth_state",
-      state,
-      {
-        httpOnly: true,
-        secure: true,
-        sameSite: "lax",
-        path: "/",
-        maxAge: 600,
-      }
-    );
-
-    /*
-     * Save the original Shopify store as well.
-     */
-    response.cookies.set(
-      "virello_shopify_oauth_shop",
-      shop,
-      {
-        httpOnly: true,
-        secure: true,
-        sameSite: "lax",
-        path: "/",
-        maxAge: 600,
-      }
-    );
-
-    return response;
+    return NextResponse.redirect(authorizationUrl);
   } catch (error) {
     console.error(
       "SHOPIFY_OAUTH_START_ERROR:",
