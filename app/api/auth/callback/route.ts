@@ -1,8 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import {
-  createHmac,
-  timingSafeEqual,
-} from "crypto";
 
 function cleanShopDomain(value: string) {
   return value
@@ -16,139 +12,7 @@ function cleanShopDomain(value: string) {
     );
 }
 
-function verifyOAuthState(
-  state: string,
-  secret: string
-) {
-  try {
-    const parts = state.split(".");
-
-    if (parts.length !== 2) {
-      console.error(
-        "SHOPIFY_STATE_DIAGNOSTIC: invalid parts count",
-        {
-          stateLength: state.length,
-          stateParts: parts.length,
-        }
-      );
-
-      return null;
-    }
-
-    const [
-      encodedPayload,
-      receivedSignature,
-    ] = parts;
-
-    const expectedSignature =
-      createHmac("sha256", secret)
-        .update(encodedPayload)
-        .digest("base64url");
-
-    const receivedBuffer =
-      Buffer.from(
-        receivedSignature
-      );
-
-    const expectedBuffer =
-      Buffer.from(
-        expectedSignature
-      );
-
-    if (
-      receivedBuffer.length !==
-      expectedBuffer.length
-    ) {
-      console.error(
-        "SHOPIFY_STATE_DIAGNOSTIC: signature length mismatch",
-        {
-          receivedSignatureLength:
-            receivedBuffer.length,
-          expectedSignatureLength:
-            expectedBuffer.length,
-        }
-      );
-
-      return null;
-    }
-
-    if (
-      !timingSafeEqual(
-        receivedBuffer,
-        expectedBuffer
-      )
-    ) {
-      console.error(
-        "SHOPIFY_STATE_DIAGNOSTIC: signature mismatch"
-      );
-
-      return null;
-    }
-
-    const payloadText =
-      Buffer.from(
-        encodedPayload,
-        "base64url"
-      ).toString("utf8");
-
-    const payload =
-      JSON.parse(payloadText);
-
-    if (
-      !payload ||
-      typeof payload.shop !== "string" ||
-      typeof payload.nonce !== "string" ||
-      typeof payload.timestamp !== "number"
-    ) {
-      console.error(
-        "SHOPIFY_STATE_DIAGNOSTIC: invalid payload structure",
-        {
-          hasShop:
-            typeof payload?.shop ===
-            "string",
-          hasNonce:
-            typeof payload?.nonce ===
-            "string",
-          hasTimestamp:
-            typeof payload?.timestamp ===
-            "number",
-        }
-      );
-
-      return null;
-    }
-
-    const stateAge =
-      Date.now() - payload.timestamp;
-
-    if (
-      stateAge < 0 ||
-      stateAge > 10 * 60 * 1000
-    ) {
-      console.error(
-        "SHOPIFY_STATE_DIAGNOSTIC: state expired",
-        {
-          stateAge,
-        }
-      );
-
-      return null;
-    }
-
-    return payload;
-  } catch (error) {
-    console.error(
-      "SHOPIFY_STATE_VERIFY_ERROR:",
-      error
-    );
-
-    return null;
-  }
-}
-
-export async function GET(
-  request: NextRequest
-) {
+export async function GET(request: NextRequest) {
   try {
     const params =
       request.nextUrl.searchParams;
@@ -164,56 +28,23 @@ export async function GET(
     const state =
       params.get("state") || "";
 
-    /*
-     * ================================================
-     * TEMPORARY OAUTH DIAGNOSTIC
-     *
-     * IMPORTANT:
-     * We intentionally DO NOT log the actual
-     * authorization code, state, API secret,
-     * or access token.
-     * ================================================
-     */
+    const savedState =
+      request.cookies.get(
+        "virello_shopify_oauth_state"
+      )?.value || "";
 
-    console.log(
-      "SHOPIFY_OAUTH_DIAGNOSTIC:",
-      {
-        hasCode:
-          Boolean(code),
-
-        hasShop:
-          Boolean(shop),
-
-        hasState:
-          Boolean(state),
-
-        shop,
-
-        stateLength:
-          state.length,
-
-        stateParts:
-          state.split(".").length,
-
-        signatureLength:
-          state.includes(".")
-            ? state.split(".")[1]
-                ?.length || 0
-            : 0,
-      }
-    );
+    const savedShop =
+      cleanShopDomain(
+        request.cookies.get(
+          "virello_shopify_oauth_shop"
+        )?.value || ""
+      );
 
     /*
-     * ================================================
      * 1. Validate Shopify response
-     * ================================================
      */
 
-    if (
-      !code ||
-      !shop ||
-      !state
-    ) {
+    if (!code || !shop || !state) {
       return NextResponse.json(
         {
           success: false,
@@ -225,9 +56,7 @@ export async function GET(
     }
 
     /*
-     * ================================================
-     * 2. Validate Shopify shop domain
-     * ================================================
+     * 2. Validate Shopify shop
      */
 
     if (
@@ -246,9 +75,43 @@ export async function GET(
     }
 
     /*
-     * ================================================
-     * 3. Shopify credentials
-     * ================================================
+     * 3. Validate OAuth state
+     */
+
+    if (
+      !savedState ||
+      savedState !== state
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Invalid Shopify OAuth state.",
+        },
+        { status: 400 }
+      );
+    }
+
+    /*
+     * 4. Validate shop from original request
+     */
+
+    if (
+      savedShop &&
+      savedShop !== shop
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Shopify OAuth store does not match the original store.",
+        },
+        { status: 400 }
+      );
+    }
+
+    /*
+     * 5. Shopify credentials
      */
 
     const apiKey =
@@ -257,10 +120,7 @@ export async function GET(
     const apiSecret =
       process.env.SHOPIFY_API_SECRET;
 
-    if (
-      !apiKey ||
-      !apiSecret
-    ) {
+    if (!apiKey || !apiSecret) {
       return NextResponse.json(
         {
           success: false,
@@ -272,73 +132,7 @@ export async function GET(
     }
 
     /*
-     * ================================================
-     * 4. VERIFY SIGNED OAUTH STATE
-     *
-     * The Shopify OAuth start route creates:
-     *
-     * encodedPayload.signature
-     *
-     * using SHOPIFY_API_SECRET.
-     *
-     * This callback verifies that signature.
-     * ================================================
-     */
-
-    const statePayload =
-      verifyOAuthState(
-        state,
-        apiSecret
-      );
-
-    if (!statePayload) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "Invalid or expired Shopify OAuth state.",
-        },
-        { status: 400 }
-      );
-    }
-
-    /*
-     * ================================================
-     * 5. Make sure state belongs to this shop
-     * ================================================
-     */
-
-    const stateShop =
-      cleanShopDomain(
-        statePayload.shop
-      );
-
-    if (
-      !stateShop ||
-      stateShop !== shop
-    ) {
-      console.error(
-        "SHOPIFY_STATE_DIAGNOSTIC: shop mismatch",
-        {
-          callbackShop: shop,
-          stateShop,
-        }
-      );
-
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "Shopify OAuth store does not match the authorized store.",
-        },
-        { status: 400 }
-      );
-    }
-
-    /*
-     * ================================================
-     * 6. Exchange authorization code for token
-     * ================================================
+     * 6. Exchange authorization code
      */
 
     const tokenResponse =
@@ -354,12 +148,8 @@ export async function GET(
 
           body:
             new URLSearchParams({
-              client_id:
-                apiKey,
-
-              client_secret:
-                apiSecret,
-
+              client_id: apiKey,
+              client_secret: apiSecret,
               code,
             }).toString(),
 
@@ -394,9 +184,7 @@ export async function GET(
     }
 
     /*
-     * ================================================
-     * 7. Check access token
-     * ================================================
+     * 7. Validate token
      */
 
     if (
@@ -424,9 +212,7 @@ export async function GET(
       data.access_token;
 
     /*
-     * ================================================
-     * 8. Redirect to connected screen
-     * ================================================
+     * 8. Redirect back to Virello
      */
 
     const redirectUrl =
@@ -451,9 +237,7 @@ export async function GET(
       );
 
     /*
-     * ================================================
-     * 9. Store Shopify access token
-     * ================================================
+     * 9. Save Shopify access token
      */
 
     result.cookies.set(
@@ -461,24 +245,16 @@ export async function GET(
       accessToken,
       {
         httpOnly: true,
-
-        secure:
-          process.env.NODE_ENV ===
-          "production",
-
-        sameSite: "lax",
-
+        secure: true,
+        sameSite: "none",
         path: "/",
-
         maxAge:
           60 * 60 * 24 * 30,
       }
     );
 
     /*
-     * ================================================
-     * 10. Store connected shop
-     * ================================================
+     * 10. Save connected shop
      */
 
     result.cookies.set(
@@ -486,24 +262,16 @@ export async function GET(
       shop,
       {
         httpOnly: true,
-
-        secure:
-          process.env.NODE_ENV ===
-          "production",
-
-        sameSite: "lax",
-
+        secure: true,
+        sameSite: "none",
         path: "/",
-
         maxAge:
           60 * 60 * 24 * 30,
       }
     );
 
     /*
-     * ================================================
-     * 11. Remove old OAuth cookies if they exist
-     * ================================================
+     * 11. Remove temporary OAuth cookies
      */
 
     result.cookies.delete(
@@ -515,9 +283,7 @@ export async function GET(
     );
 
     /*
-     * ================================================
-     * 12. SUCCESS
-     * ================================================
+     * 12. Success
      */
 
     return result;
