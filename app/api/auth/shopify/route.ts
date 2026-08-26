@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { randomBytes } from "crypto";
+import { createHmac, randomBytes } from "crypto";
 
 function cleanShopDomain(value: string) {
   return value
@@ -8,6 +8,22 @@ function cleanShopDomain(value: string) {
     .replace(/^https?:\/\//, "")
     .replace(/\/+$/, "")
     .replace(/\.myshopify\.com\.myshopify\.com$/, ".myshopify.com");
+}
+
+function createOAuthState(shop: string, secret: string) {
+  const payload = JSON.stringify({
+    shop,
+    nonce: randomBytes(32).toString("hex"),
+    timestamp: Date.now(),
+  });
+
+  const encodedPayload = Buffer.from(payload).toString("base64url");
+
+  const signature = createHmac("sha256", secret)
+    .update(encodedPayload)
+    .digest("base64url");
+
+  return `${encodedPayload}.${signature}`;
 }
 
 export async function GET(request: NextRequest) {
@@ -27,18 +43,20 @@ export async function GET(request: NextRequest) {
     }
 
     const apiKey = process.env.SHOPIFY_API_KEY;
+    const apiSecret = process.env.SHOPIFY_API_SECRET;
 
-    if (!apiKey) {
+    if (!apiKey || !apiSecret) {
       return NextResponse.json(
         {
           success: false,
-          error: "SHOPIFY_API_KEY is missing in Vercel.",
+          error:
+            "SHOPIFY_API_KEY or SHOPIFY_API_SECRET is missing in Vercel.",
         },
         { status: 500 }
       );
     }
 
-    const state = randomBytes(32).toString("hex");
+    const state = createOAuthState(shop, apiSecret);
 
     const redirectUri =
       "https://virello-ai-optimizer.vercel.app/api/auth/callback";
@@ -57,34 +75,7 @@ export async function GET(request: NextRequest) {
     const authorizationUrl =
       `https://${shop}/admin/oauth/authorize?${params.toString()}`;
 
-    const response =
-      NextResponse.redirect(authorizationUrl);
-
-    response.cookies.set(
-      "virello_shopify_oauth_state",
-      state,
-      {
-        httpOnly: true,
-        secure: true,
-        sameSite: "none",
-        path: "/",
-        maxAge: 600,
-      }
-    );
-
-    response.cookies.set(
-      "virello_shopify_oauth_shop",
-      shop,
-      {
-        httpOnly: true,
-        secure: true,
-        sameSite: "none",
-        path: "/",
-        maxAge: 600,
-      }
-    );
-
-    return response;
+    return NextResponse.redirect(authorizationUrl);
   } catch (error) {
     console.error(
       "SHOPIFY_OAUTH_START_ERROR:",
