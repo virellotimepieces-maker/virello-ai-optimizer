@@ -53,7 +53,10 @@ export default function ConnectPage() {
       .toLowerCase()
       .replace(/^https?:\/\//, "")
       .replace(/\/+$/, "")
-      .replace(/\.myshopify\.com\.myshopify\.com$/, ".myshopify.com");
+      .replace(
+        /\.myshopify\.com\.myshopify\.com$/,
+        ".myshopify.com"
+      );
   }
 
   function handlePlatformSelect(
@@ -83,7 +86,8 @@ export default function ConnectPage() {
     }
 
     if (selected === "shopify") {
-      const cleanShop = cleanShopDomain(shop);
+      const cleanShop =
+        cleanShopDomain(shop);
 
       if (!cleanShop) {
         setMessage(
@@ -93,7 +97,9 @@ export default function ConnectPage() {
       }
 
       if (
-        !cleanShop.endsWith(".myshopify.com")
+        !cleanShop.endsWith(
+          ".myshopify.com"
+        )
       ) {
         setMessage(
           "Enter your Shopify domain like mystore.myshopify.com."
@@ -101,10 +107,18 @@ export default function ConnectPage() {
         return;
       }
 
-      window.location.href =
+      /*
+       * IMPORTANT:
+       * Shopify OAuth must leave the embedded
+       * Shopify Admin iframe and navigate the
+       * top-level browser window.
+       */
+      const authUrl =
         `/api/auth/shopify?shop=${encodeURIComponent(
           cleanShop
         )}`;
+
+      window.open(authUrl, "_top");
 
       return;
     }
