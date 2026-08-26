@@ -2,14 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 const SHOPIFY_API_VERSION = "2026-07";
 
-class InvalidShopifySessionError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "InvalidShopifySessionError";
-  }
-}
-
-function getToken(request: NextRequest) {
+function getHeaderToken(request: NextRequest) {
   return (
     request.headers
       .get("authorization")
@@ -22,17 +15,7 @@ function getToken(request: NextRequest) {
   );
 }
 
-function getShop(request: NextRequest, token: string) {
-  const headerShop = request.headers
-    .get("x-shopify-shop")
-    ?.trim();
-
-  if (headerShop) {
-    return headerShop
-      .replace(/^https?:\/\//i, "")
-      .replace(/\/+$/, "");
-  }
-
+function getShopFromToken(token: string) {
   try {
     const parts = token.split(".");
 
@@ -41,7 +24,10 @@ function getShop(request: NextRequest, token: string) {
     }
 
     const payload = JSON.parse(
-      Buffer.from(parts[1], "base64url").toString("utf8")
+      Buffer.from(
+        parts[1],
+        "base64url"
+      ).toString("utf8")
     );
 
     if (typeof payload.dest !== "string") {
@@ -58,8 +44,11 @@ async function exchangeToken(
   shop: string,
   idToken: string
 ) {
-  const apiKey = process.env.SHOPIFY_API_KEY;
-  const apiSecret = process.env.SHOPIFY_API_SECRET;
+  const apiKey =
+    process.env.SHOPIFY_API_KEY;
+
+  const apiSecret =
+    process.env.SHOPIFY_API_SECRET;
 
   if (!apiKey || !apiSecret) {
     throw new Error(
@@ -97,22 +86,8 @@ async function exchangeToken(
   try {
     data = JSON.parse(text);
   } catch {
-    if (response.status === 400) {
-      throw new InvalidShopifySessionError(
-        "Invalid or expired Shopify session token."
-      );
-    }
-
     throw new Error(
       `Shopify token exchange returned non-JSON response (${response.status}).`
-    );
-  }
-
-  if (response.status === 400) {
-    throw new InvalidShopifySessionError(
-      data?.error_description ||
-        data?.error ||
-        "Invalid or expired Shopify session token."
     );
   }
 
@@ -120,8 +95,7 @@ async function exchangeToken(
     throw new Error(
       data?.error_description ||
         data?.error ||
-        data?.errors?.[0]?.message ||
-        `Shopify token exchange failed (${response.status}).`
+        "Shopify token exchange failed."
     );
   }
 
@@ -143,8 +117,10 @@ async function shopifyGraphQL(
     {
       method: "POST",
       headers: {
-        "Content-Type": "application/json",
-        "X-Shopify-Access-Token": accessToken,
+        "Content-Type":
+          "application/json",
+        "X-Shopify-Access-Token":
+          accessToken,
       },
       body: JSON.stringify({
         query: `
@@ -207,111 +183,133 @@ async function shopifyGraphQL(
   if (data?.errors?.length) {
     throw new Error(
       data.errors
-        .map((error: any) => error.message)
+        .map(
+          (error: any) =>
+            error.message
+        )
         .join("; ")
     );
   }
 
-  return data?.data?.products?.nodes || [];
+  return (
+    data?.data?.products?.nodes ||
+    []
+  );
 }
 
-export async function GET(request: NextRequest) {
+export async function GET(
+  request: NextRequest
+) {
   try {
-    const token = getToken(request);
+    const sessionToken =
+      getHeaderToken(request);
 
-    if (!token) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "Shopify session token is missing. Open Virello from Shopify Admin.",
-        },
-        {
-          status: 401,
-          headers: {
-            "X-Shopify-Retry-Invalid-Session-Request": "1",
-          },
-        }
-      );
-    }
+    const cookieAccessToken =
+      request.cookies.get(
+        "virello_shopify_access_token"
+      )?.value || "";
 
-    const shop = getShop(request, token);
+    const cookieShop =
+      request.cookies.get(
+        "virello_shopify_shop"
+      )?.value || "";
 
-    if (!shop) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "Shopify store could not be determined.",
-        },
-        { status: 400 }
-      );
-    }
+    let shop = "";
+    let accessToken = "";
 
-    let accessToken: string;
-
-    try {
-      accessToken = await exchangeToken(
-        shop,
-        token
-      );
-    } catch (error) {
-      if (
-        error instanceof InvalidShopifySessionError
-      ) {
+    if (
+      cookieAccessToken &&
+      cookieShop
+    ) {
+      shop = cookieShop;
+      accessToken =
+        cookieAccessToken;
+    } else {
+      if (!sessionToken) {
         return NextResponse.json(
           {
             success: false,
             error:
-              error.message ||
-              "Invalid or expired Shopify session token.",
+              "Shopify connection is missing. Connect your Shopify store first.",
           },
-          {
-            status: 401,
-            headers: {
-              "X-Shopify-Retry-Invalid-Session-Request":
-                "1",
-            },
-          }
+          { status: 401 }
         );
       }
 
-      throw error;
+      shop =
+        request.headers
+          .get("x-shopify-shop")
+          ?.trim() ||
+        getShopFromToken(
+          sessionToken
+        );
+
+      if (!shop) {
+        return NextResponse.json(
+          {
+            success: false,
+            error:
+              "Shopify store could not be determined.",
+          },
+          { status: 400 }
+        );
+      }
+
+      accessToken =
+        await exchangeToken(
+          shop,
+          sessionToken
+        );
     }
 
-    const products = await shopifyGraphQL(
-      shop,
-      accessToken
-    );
+    const products =
+      await shopifyGraphQL(
+        shop,
+        accessToken
+      );
 
-    const normalized = products.map(
-      (product: any) => ({
-        id: product.id,
-        title: product.title || "",
-        description: product.description || "",
-        productType: product.productType || "",
-        tags: Array.isArray(product.tags)
-          ? product.tags
-          : [],
-        status: product.status || "",
-        vendor: product.vendor || "",
-        price:
-          product.variants?.nodes?.[0]?.price || "",
-        images: Array.isArray(
-          product.images?.nodes
-        )
-          ? product.images.nodes.map(
-              (image: any) => ({
-                url: image.url,
-                altText:
-                  image.altText || null,
-              })
+    const normalized =
+      products.map(
+        (product: any) => ({
+          id: product.id,
+          title:
+            product.title || "",
+          description:
+            product.description || "",
+          productType:
+            product.productType || "",
+          tags:
+            Array.isArray(
+              product.tags
             )
-          : [],
-        featuredImage:
-          product.featuredImage?.url || null,
-      })
-    );
+              ? product.tags
+              : [],
+          status:
+            product.status || "",
+          vendor:
+            product.vendor || "",
+          price:
+            product.variants
+              ?.nodes?.[0]
+              ?.price || "",
+          images:
+            Array.isArray(
+              product.images?.nodes
+            )
+              ? product.images.nodes.map(
+                  (image: any) => ({
+                    url: image.url,
+                    altText:
+                      image.altText ||
+                      null,
+                  })
+                )
+              : [],
+          featuredImage:
+            product.featuredImage
+              ?.url || null,
+        })
+      );
 
     return NextResponse.json({
       success: true,
