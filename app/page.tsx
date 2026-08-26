@@ -45,7 +45,36 @@ export default function Home() {
 
   const [result, setResult] = useState<AIResult | null>(null);
   const [loading, setLoading] = useState(false);
+  const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [error, setError] = useState("");
+
+  async function startCheckout() {
+    setCheckoutLoading(true);
+    setError("");
+
+    try {
+      const response = await fetch("/api/stripe/checkout", {
+        method: "POST",
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success || !data.url) {
+        throw new Error(
+          data.error || "Unable to start subscription checkout."
+        );
+      }
+
+      window.location.href = data.url;
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Unable to start subscription checkout."
+      );
+      setCheckoutLoading(false);
+    }
+  }
 
   async function optimize() {
     // PRODUCT TITLE ONLY IS REQUIRED
@@ -126,8 +155,21 @@ export default function Home() {
           </div>
         </div>
 
-        <div className="shop-pill">
-          Ecommerce & Dropshipping
+        <div className="topbar-actions">
+          <div className="shop-pill">
+            Ecommerce & Dropshipping
+          </div>
+
+          <button
+            type="button"
+            className="subscribe-button"
+            onClick={startCheckout}
+            disabled={checkoutLoading}
+          >
+            {checkoutLoading
+              ? "Opening checkout..."
+              : "Subscribe to Virello"}
+          </button>
         </div>
       </header>
 
