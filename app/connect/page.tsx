@@ -60,11 +60,20 @@ export default function ConnectPage() {
   const [checkoutLoading, setCheckoutLoading] =
     useState(false);
 
+  const [connecting, setConnecting] =
+    useState(false);
+
   const [connected, setConnected] =
     useState(false);
 
   const [connectedShop, setConnectedShop] =
     useState("");
+
+  /*
+   * ==================================================
+   * READ SHOPIFY CONNECTION RESULT
+   * ==================================================
+   */
 
   useEffect(() => {
     const params = new URLSearchParams(
@@ -81,13 +90,12 @@ export default function ConnectPage() {
       connectedParam === "1" &&
       shopParam
     ) {
+      const cleanedShop =
+        cleanShopDomain(shopParam);
+
       setConnected(true);
-      setConnectedShop(
-        cleanShopDomain(shopParam)
-      );
-      setShop(
-        cleanShopDomain(shopParam)
-      );
+      setConnectedShop(cleanedShop);
+      setShop(cleanedShop);
       setSelected("shopify");
 
       window.history.replaceState(
@@ -97,6 +105,12 @@ export default function ConnectPage() {
       );
     }
   }, []);
+
+  /*
+   * ==================================================
+   * PLATFORM SELECT
+   * ==================================================
+   */
 
   function handlePlatformSelect(
     platform: Platform
@@ -108,6 +122,12 @@ export default function ConnectPage() {
       setShop("");
     }
   }
+
+  /*
+   * ==================================================
+   * STRIPE SUBSCRIPTION CHECKOUT
+   * ==================================================
+   */
 
   async function startCheckout() {
     setCheckoutLoading(true);
@@ -148,6 +168,12 @@ export default function ConnectPage() {
     }
   }
 
+  /*
+   * ==================================================
+   * SHOPIFY DOMAIN
+   * ==================================================
+   */
+
   const cleanShop =
     cleanShopDomain(shop);
 
@@ -161,28 +187,88 @@ export default function ConnectPage() {
       ? `/api/auth/shopify?shop=${encodeURIComponent(
           cleanShop
         )}`
-      : "#";
+      : "";
 
-  function continueToVirello() {
-    const targetUrl =
-      `${window.location.origin}/?platform=shopify&connected=1`;
+  /*
+   * ==================================================
+   * SHOPIFY CONNECT
+   *
+   * IMPORTANT:
+   *
+   * Shopify OAuth must leave the embedded iframe.
+   *
+   * We intentionally use:
+   *
+   * window.open(url, "_top")
+   *
+   * This tells the browser to navigate the TOP
+   * browser window instead of the Shopify iframe.
+   * ==================================================
+   */
 
-    try {
-      if (
-        window.top &&
-        window.top !== window.self
-      ) {
-        window.top.location.href =
-          targetUrl;
-        return;
-      }
-    } catch {
-      // Fallback below.
+  function connectShopify() {
+    setMessage("");
+
+    const currentShop =
+      cleanShopDomain(shop);
+
+    const valid =
+      /^([a-z0-9][a-z0-9-]*[a-z0-9]|[a-z0-9])\.myshopify\.com$/i.test(
+        currentShop
+      );
+
+    if (!valid) {
+      setMessage(
+        "Enter a valid Shopify domain, for example mystore.myshopify.com."
+      );
+      return;
     }
 
-    window.location.href =
-      targetUrl;
+    const url =
+      `/api/auth/shopify?shop=${encodeURIComponent(
+        currentShop
+      )}`;
+
+    setConnecting(true);
+
+    /*
+     * IMPORTANT:
+     *
+     * Do NOT use:
+     *
+     * window.location.href = url
+     *
+     * Do NOT use:
+     *
+     * window.top.location.href = url
+     *
+     * The Shopify embedded environment can keep the
+     * navigation inside the iframe.
+     *
+     * "_top" explicitly targets the top browser window.
+     */
+
+    try {
+      window.open(url, "_top");
+    } catch (error) {
+      console.error(
+        "SHOPIFY_TOP_NAVIGATION_ERROR:",
+        error
+      );
+
+      /*
+       * Fallback for a normal standalone browser page.
+       */
+
+      window.location.href = url;
+    }
   }
+
+  /*
+   * ==================================================
+   * SUCCESSFUL SHOPIFY CONNECTION SCREEN
+   * ==================================================
+   */
 
   if (connected) {
     return (
@@ -251,7 +337,7 @@ export default function ConnectPage() {
 
             <section className="optimizer-panel">
 
-              <div className="content-card success-card">
+              <section className="content-card success-card">
 
                 <div className="success-icon">
                   ✓
@@ -287,16 +373,29 @@ export default function ConnectPage() {
                   <button
                     type="button"
                     className="generate-button"
-                    onClick={continueToVirello}
+                    onClick={() => {
+                      const targetUrl =
+                        `${window.location.origin}/?platform=shopify&connected=1`;
+
+                      try {
+                        window.open(
+                          targetUrl,
+                          "_top"
+                        );
+                      } catch {
+                        window.location.href =
+                          targetUrl;
+                      }
+                    }}
                   >
                     Continue to Virello
                   </button>
 
                 </div>
 
-              </div>
+              </section>
 
-              <div className="content-card">
+              <section className="content-card">
 
                 <div className="step-label">
                   VIRELLO WORKFLOW
@@ -309,7 +408,6 @@ export default function ConnectPage() {
                 <div className="flow-grid">
 
                   <div className="flow-card">
-
                     <strong>
                       1. Connect
                     </strong>
@@ -318,11 +416,9 @@ export default function ConnectPage() {
                       Your Shopify store is
                       connected.
                     </p>
-
                   </div>
 
                   <div className="flow-card">
-
                     <strong>
                       2. Import
                     </strong>
@@ -331,11 +427,9 @@ export default function ConnectPage() {
                       Bring your product
                       information into Virello.
                     </p>
-
                   </div>
 
                   <div className="flow-card">
-
                     <strong>
                       3. Optimize
                     </strong>
@@ -344,11 +438,9 @@ export default function ConnectPage() {
                       Generate improved product
                       content with AI.
                     </p>
-
                   </div>
 
                   <div className="flow-card">
-
                     <strong>
                       4. Apply
                     </strong>
@@ -357,12 +449,11 @@ export default function ConnectPage() {
                       Send approved content back
                       to your store.
                     </p>
-
                   </div>
 
                 </div>
 
-              </div>
+              </section>
 
             </section>
 
@@ -594,6 +685,7 @@ export default function ConnectPage() {
           .connect-actions {
             display: flex;
             justify-content: center;
+
             margin-top: 22px;
           }
 
@@ -643,51 +735,60 @@ export default function ConnectPage() {
           }
 
           .flow-card strong {
+            display: block;
+
             color: #111318;
-            font-size: 14px;
-            font-weight: 800;
+
+            font-size: 15px;
+            font-weight: 850;
           }
 
           .flow-card p {
-            margin: 8px 0 0;
+            margin: 9px 0 0;
 
-            color: #747a82;
+            color: #7a8088;
 
             font-size: 13px;
             line-height: 1.55;
           }
 
-          @media (max-width: 700px) {
+          .message {
+            margin-top: 16px;
+            padding: 14px 16px;
+
+            border: 1px solid #e1e4e8;
+            border-radius: 12px;
+
+            background: #f8f9fa;
+
+            color: #555b63;
+
+            font-size: 13px;
+            line-height: 1.5;
+          }
+
+          @media (max-width: 760px) {
 
             .topbar {
-              min-height: 82px;
-              padding: 10px 16px;
+              padding: 16px;
+              align-items: flex-start;
             }
 
             .topbar-actions {
               flex-direction: column;
-              align-items: stretch;
-              gap: 6px;
+              align-items: flex-end;
             }
 
             .shop-pill {
-              max-width: 150px;
-              align-self: flex-end;
-
-              padding: 6px 9px;
-
-              font-size: 9px;
+              display: none;
             }
 
-            .subscribe-button {
-              min-height: 36px;
-              padding: 0 11px;
-
-              font-size: 11px;
+            .brand-name {
+              font-size: 17px;
             }
 
             .hero-inner {
-              padding: 48px 20px 44px;
+              padding: 52px 20px 48px;
             }
 
             .hero h1 {
@@ -711,10 +812,6 @@ export default function ConnectPage() {
               grid-template-columns: 1fr;
             }
 
-            .success-card h2 {
-              font-size: 24px;
-            }
-
           }
 
         `}</style>
@@ -723,13 +820,18 @@ export default function ConnectPage() {
     );
   }
 
+  /*
+   * ==================================================
+   * NORMAL CONNECT SCREEN
+   * ==================================================
+   */
+
   return (
     <main className="app-shell">
 
       <header className="topbar">
 
         <div>
-
           <div className="brand-small">
             VIRELLO AI
           </div>
@@ -737,7 +839,6 @@ export default function ConnectPage() {
           <div className="brand-name">
             Virello AI Optimizer
           </div>
-
         </div>
 
         <div className="topbar-actions">
@@ -791,7 +892,7 @@ export default function ConnectPage() {
 
           <section className="optimizer-panel">
 
-            <div className="content-card">
+            <section className="content-card">
 
               <div className="step-label">
                 STEP 1
@@ -806,200 +907,171 @@ export default function ConnectPage() {
                 where your products are stored.
               </p>
 
-            </div>
+              <div className="platform-list">
 
-            {message && (
-              <div className="alert">
-                {message}
-              </div>
-            )}
+                {platforms.map((platform) => {
 
-            <div className="content-card">
+                  const isSelected =
+                    selected === platform.id;
 
-              <div className="platform-grid">
+                  return (
+                    <button
+                      key={platform.id}
+                      type="button"
+                      className={
+                        isSelected
+                          ? "platform-card selected"
+                          : "platform-card"
+                      }
+                      onClick={() =>
+                        handlePlatformSelect(
+                          platform.id
+                        )
+                      }
+                    >
 
-                {platforms.map(
-                  (platform) => {
+                      <div className="platform-icon">
+                        {platform.id ===
+                        "shopify"
+                          ? "S"
+                          : platform.id ===
+                            "woocommerce"
+                          ? "W"
+                          : platform.id ===
+                            "bigcommerce"
+                          ? "B"
+                          : platform.id ===
+                            "wix"
+                          ? "W"
+                          : "M"}
+                      </div>
 
-                    const active =
-                      selected ===
-                      platform.id;
+                      <div className="platform-info">
 
-                    return (
-                      <button
-                        type="button"
-                        key={platform.id}
+                        <strong>
+                          {platform.name}
+                        </strong>
+
+                        <span>
+                          {platform.description}
+                        </span>
+
+                      </div>
+
+                      <div
                         className={
-                          active
-                            ? "platform-card active"
-                            : "platform-card"
-                        }
-                        onClick={() =>
-                          handlePlatformSelect(
-                            platform.id
-                          )
+                          isSelected
+                            ? "radio selected-radio"
+                            : "radio"
                         }
                       >
+                        {isSelected
+                          ? "✓"
+                          : ""}
+                      </div>
 
-                        <div className="platform-icon">
-                          {platform.name.charAt(
-                            0
-                          )}
-                        </div>
+                    </button>
+                  );
 
-                        <div className="platform-info">
-
-                          <strong>
-                            {platform.name}
-                          </strong>
-
-                          <span>
-                            {
-                              platform.description
-                            }
-                          </span>
-
-                        </div>
-
-                        <div className="platform-check">
-                          {active
-                            ? "✓"
-                            : ""}
-                        </div>
-
-                      </button>
-                    );
-                  }
-                )}
+                })}
 
               </div>
 
-              {selected === "shopify" && (
+            </section>
 
-                <div className="shopify-connect-box">
+            {selected === "shopify" && (
+              <section className="content-card">
 
-                  <div className="step-label">
-                    SHOPIFY STORE
-                  </div>
-
-                  <h3>
-                    Enter your Shopify store
-                  </h3>
-
-                  <p>
-                    Use your Shopify domain,
-                    for example:
-                    <br />
-                    mystore.myshopify.com
-                  </p>
-
-                  <div className="shop-domain-input">
-
-                    <input
-                      type="text"
-                      value={shop}
-                      onChange={(event) => {
-                        setShop(
-                          event.target.value
-                        );
-                        setMessage("");
-                      }}
-                      placeholder="mystore.myshopify.com"
-                      autoCapitalize="none"
-                      autoCorrect="off"
-                      spellCheck={false}
-                      inputMode="url"
-                    />
-
-                  </div>
-
-                  <div className="connect-actions">
-
-                    {shopifyDomainIsValid ? (
-
-                      <a
-                        href={shopifyOAuthUrl}
-                        className="generate-button oauth-link"
-                      >
-                        Continue
-                      </a>
-
-                    ) : (
-
-                      <button
-                        type="button"
-                        className="generate-button"
-                        disabled
-                      >
-                        Continue
-                      </button>
-
-                    )}
-
-                  </div>
-
-                  <div className="oauth-help">
-                    Shopify authorization will
-                    open in this browser.
-                  </div>
-
+                <div className="step-label">
+                  SHOPIFY STORE
                 </div>
 
-              )}
+                <h2>
+                  Enter your Shopify store
+                </h2>
 
-              {selected &&
-                selected !== "shopify" &&
-                selected !== "manual" && (
+                <p className="section-description">
+                  Use your Shopify domain, for
+                  example:
+                  <br />
+                  <strong>
+                    mystore.myshopify.com
+                  </strong>
+                </p>
 
-                  <div className="connect-actions">
+                <div className="form-group">
 
-                    <button
-                      type="button"
-                      className="generate-button"
-                      onClick={() => {
-
-                        const platformName =
-                          platforms.find(
-                            (platform) =>
-                              platform.id ===
-                              selected
-                          )?.name;
-
-                        setMessage(
-                          `${platformName} connection is coming next.`
-                        );
-
-                      }}
-                    >
-                      Continue
-                    </button>
-
-                  </div>
-
-                )}
-
-              {selected === "manual" && (
-
-                <div className="connect-actions">
+                  <input
+                    type="text"
+                    value={shop}
+                    onChange={(event) => {
+                      setShop(
+                        event.target.value
+                      );
+                      setMessage("");
+                      setConnecting(false);
+                    }}
+                    placeholder="mystore.myshopify.com"
+                    autoComplete="off"
+                    spellCheck={false}
+                  />
 
                   <button
                     type="button"
-                    className="generate-button"
-                    onClick={() => {
-                      window.location.href =
-                        "/";
-                    }}
+                    className="generate-button continue-button"
+                    onClick={connectShopify}
+                    disabled={
+                      connecting ||
+                      !shopifyDomainIsValid
+                    }
                   >
-                    Continue
+                    {connecting
+                      ? "Opening Shopify..."
+                      : "Continue"}
                   </button>
 
                 </div>
 
-              )}
+                {message && (
+                  <div className="message">
+                    {message}
+                  </div>
+                )}
 
-            </div>
+                <p className="oauth-note">
+                  Shopify authorization will open
+                  in the main browser window.
+                </p>
 
-            <div className="content-card">
+              </section>
+            )}
+
+            {selected !== "shopify" && (
+              <section className="content-card">
+
+                <div className="step-label">
+                  VIRELLO
+                </div>
+
+                <h2>
+                  {selected === "manual"
+                    ? "Manual / Import"
+                    : `Connect ${platforms.find(
+                        (item) =>
+                          item.id === selected
+                      )?.name || "platform"}`}
+                </h2>
+
+                <p className="section-description">
+                  This platform connection will
+                  be available in your Virello
+                  workspace.
+                </p>
+
+              </section>
+            )}
+
+            <section className="content-card">
 
               <div className="step-label">
                 VIRELLO WORKFLOW
@@ -1012,7 +1084,6 @@ export default function ConnectPage() {
               <div className="flow-grid">
 
                 <div className="flow-card">
-
                   <strong>
                     1. Connect
                   </strong>
@@ -1021,11 +1092,9 @@ export default function ConnectPage() {
                     Connect your ecommerce
                     platform.
                   </p>
-
                 </div>
 
                 <div className="flow-card">
-
                   <strong>
                     2. Import
                   </strong>
@@ -1034,11 +1103,9 @@ export default function ConnectPage() {
                     Bring product information
                     into Virello.
                   </p>
-
                 </div>
 
                 <div className="flow-card">
-
                   <strong>
                     3. Optimize
                   </strong>
@@ -1047,11 +1114,9 @@ export default function ConnectPage() {
                     Generate improved product
                     content with AI.
                   </p>
-
                 </div>
 
                 <div className="flow-card">
-
                   <strong>
                     4. Apply
                   </strong>
@@ -1060,12 +1125,11 @@ export default function ConnectPage() {
                     Send approved content back
                     to the store.
                   </p>
-
                 </div>
 
               </div>
 
-            </div>
+            </section>
 
           </section>
 
@@ -1226,23 +1290,27 @@ export default function ConnectPage() {
             rgba(17, 19, 24, 0.04);
         }
 
+        .content-card h2 {
+          margin: 12px 0 10px;
+
+          font-size: 30px;
+          letter-spacing: -0.035em;
+        }
+
         .section-description {
-          margin: -12px 0 0;
-          color: #747a82;
+          margin: 0 0 24px;
+
+          color: #7a8088;
+
+          font-size: 16px;
           line-height: 1.6;
         }
 
-        .alert {
-          padding: 14px 16px;
-          border: 1px solid #e4b4b4;
-          border-radius: 12px;
-          background: #fff5f5;
-          color: #a33a3a;
-          font-size: 13px;
-          line-height: 1.5;
+        .section-description strong {
+          color: #111318;
         }
 
-        .platform-grid {
+        .platform-list {
           display: flex;
           flex-direction: column;
           gap: 12px;
@@ -1251,19 +1319,20 @@ export default function ConnectPage() {
         .platform-card {
           width: 100%;
           min-height: 108px;
-          padding: 18px 20px;
 
-          display: flex;
-          align-items: center;
-          gap: 18px;
+          padding: 18px 20px;
 
           border: 1px solid #e0e3e7;
           border-radius: 18px;
 
           background: #ffffff;
-          color: #111318;
+
+          display: flex;
+          align-items: center;
+          gap: 20px;
 
           text-align: left;
+
           cursor: pointer;
 
           transition:
@@ -1273,23 +1342,22 @@ export default function ConnectPage() {
         }
 
         .platform-card:hover {
-          background: #fafbfc;
-          border-color: #cfd3d8;
+          border-color: #bfc4ca;
         }
 
-        .platform-card.active {
-          border-color: #b8bdc4;
+        .platform-card.selected {
+          border-color: #aeb4bb;
 
           box-shadow:
-            0 6px 18px
-            rgba(17, 19, 24, 0.05);
+            0 8px 20px
+            rgba(17, 19, 24, 0.06);
         }
 
         .platform-icon {
-          width: 58px;
-          height: 58px;
+          width: 56px;
+          height: 56px;
 
-          flex: 0 0 58px;
+          flex: 0 0 56px;
 
           display: flex;
           align-items: center;
@@ -1299,6 +1367,8 @@ export default function ConnectPage() {
 
           background: #f1f2f4;
 
+          color: #111318;
+
           font-size: 24px;
           font-weight: 900;
         }
@@ -1306,86 +1376,74 @@ export default function ConnectPage() {
         .platform-info {
           flex: 1;
 
+          min-width: 0;
+
           display: flex;
           flex-direction: column;
           gap: 6px;
         }
 
         .platform-info strong {
-          font-size: 17px;
+          color: #111318;
+          font-size: 18px;
           font-weight: 850;
         }
 
         .platform-info span {
-          color: #7b8189;
-          font-size: 13px;
+          color: #858b93;
+          font-size: 14px;
         }
 
-        .platform-check {
-          width: 42px;
-          height: 42px;
+        .radio {
+          width: 32px;
+          height: 32px;
 
-          flex: 0 0 42px;
+          flex: 0 0 32px;
+
+          border: 2px solid #d5d8dc;
+          border-radius: 50%;
 
           display: flex;
           align-items: center;
           justify-content: center;
 
-          border: 2px solid #d7d9dd;
-          border-radius: 50%;
+          color: #ffffff;
 
-          font-size: 18px;
+          font-size: 16px;
           font-weight: 900;
         }
 
-        .platform-card.active
-        .platform-check {
+        .selected-radio {
           border-color: #111318;
           background: #111318;
-          color: #ffffff;
         }
 
-        .shopify-connect-box {
-          margin-top: 22px;
-          padding-top: 26px;
-
-          border-top: 1px solid #e8e9eb;
+        .form-group {
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
         }
 
-        .shopify-connect-box h3 {
-          margin: 12px 0 10px;
-
-          font-size: 30px;
-          letter-spacing: -0.035em;
-        }
-
-        .shopify-connect-box p {
-          color: #747a82;
-          line-height: 1.6;
-        }
-
-        .shop-domain-input {
-          margin-top: 18px;
-        }
-
-        .shop-domain-input input {
+        .form-group input {
           width: 100%;
-          min-height: 54px;
 
-          padding: 0 16px;
+          min-height: 56px;
 
-          border: 1px solid #d9dce1;
+          padding: 0 18px;
+
+          border: 1px solid #d9dce0;
           border-radius: 12px;
 
           background: #ffffff;
+
           color: #111318;
 
-          font-size: 15px;
+          font-size: 16px;
 
           outline: none;
         }
 
-        .shop-domain-input input:focus {
+        .form-group input:focus {
           border-color: #111318;
 
           box-shadow:
@@ -1393,14 +1451,17 @@ export default function ConnectPage() {
             rgba(17, 19, 24, 0.08);
         }
 
-        .connect-actions {
-          display: flex;
-          justify-content: center;
-          margin-top: 22px;
+        .form-group input::placeholder {
+          color: #9ca1a8;
+        }
+
+        .continue-button {
+          width: 100%;
         }
 
         .generate-button {
           min-height: 48px;
+
           padding: 0 24px;
 
           border: 0;
@@ -1420,28 +1481,71 @@ export default function ConnectPage() {
         }
 
         .generate-button:disabled {
-          opacity: 0.5;
+          opacity: 0.45;
           cursor: not-allowed;
         }
 
-        .oauth-link {
-          min-width: 150px;
+        .oauth-note {
+          margin: 14px 0 0;
 
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
+          color: #92979e;
 
-          text-decoration: none;
+          font-size: 12px;
+          line-height: 1.5;
+
+          text-align: center;
         }
 
-        .oauth-help {
-          margin-top: 10px;
+        .message {
+          margin-top: 16px;
 
-          color: #8a9098;
+          padding: 14px 16px;
 
-          font-size: 10px;
+          border: 1px solid #e1e4e8;
+          border-radius: 12px;
+
+          background: #f8f9fa;
+
+          color: #555b63;
+
+          font-size: 13px;
           line-height: 1.5;
-          text-align: center;
+        }
+
+        .flow-grid {
+          display: grid;
+
+          grid-template-columns:
+            repeat(2, minmax(0, 1fr));
+
+          gap: 12px;
+        }
+
+        .flow-card {
+          padding: 20px;
+
+          border: 1px solid #e2e4e8;
+          border-radius: 16px;
+
+          background: #fafbfc;
+        }
+
+        .flow-card strong {
+          display: block;
+
+          color: #111318;
+
+          font-size: 15px;
+          font-weight: 850;
+        }
+
+        .flow-card p {
+          margin: 9px 0 0;
+
+          color: #7a8088;
+
+          font-size: 13px;
+          line-height: 1.55;
         }
 
         .success-card {
@@ -1507,75 +1611,41 @@ export default function ConnectPage() {
 
         .connected-store strong {
           color: #111318;
+
           font-size: 16px;
 
           word-break: break-word;
         }
 
-        .flow-grid {
-          display: grid;
+        .connect-actions {
+          display: flex;
+          justify-content: center;
 
-          grid-template-columns:
-            repeat(2, minmax(0, 1fr));
-
-          gap: 12px;
+          margin-top: 22px;
         }
 
-        .flow-card {
-          padding: 20px;
-
-          border: 1px solid #e2e4e8;
-          border-radius: 16px;
-
-          background: #fafbfc;
-        }
-
-        .flow-card strong {
-          color: #111318;
-          font-size: 14px;
-          font-weight: 800;
-        }
-
-        .flow-card p {
-          margin: 8px 0 0;
-
-          color: #747a82;
-
-          font-size: 13px;
-          line-height: 1.55;
-        }
-
-        @media (max-width: 700px) {
+        @media (max-width: 760px) {
 
           .topbar {
-            min-height: 82px;
-            padding: 10px 16px;
+            padding: 16px;
+            align-items: flex-start;
           }
 
           .topbar-actions {
             flex-direction: column;
-            align-items: stretch;
-            gap: 6px;
+            align-items: flex-end;
           }
 
           .shop-pill {
-            max-width: 150px;
-            align-self: flex-end;
-
-            padding: 6px 9px;
-
-            font-size: 9px;
+            display: none;
           }
 
-          .subscribe-button {
-            min-height: 36px;
-            padding: 0 11px;
-
-            font-size: 11px;
+          .brand-name {
+            font-size: 17px;
           }
 
           .hero-inner {
-            padding: 48px 20px 44px;
+            padding: 52px 20px 48px;
           }
 
           .hero h1 {
@@ -1595,42 +1665,32 @@ export default function ConnectPage() {
             border-radius: 18px;
           }
 
+          .content-card h2 {
+            font-size: 26px;
+          }
+
           .platform-card {
             min-height: 92px;
-            padding: 14px;
-            gap: 12px;
+            padding: 15px;
+            gap: 14px;
           }
 
           .platform-icon {
-            width: 48px;
-            height: 48px;
-            flex-basis: 48px;
+            width: 50px;
+            height: 50px;
+            flex-basis: 50px;
           }
 
           .platform-info strong {
-            font-size: 15px;
+            font-size: 16px;
           }
 
           .platform-info span {
             font-size: 12px;
           }
 
-          .platform-check {
-            width: 36px;
-            height: 36px;
-            flex-basis: 36px;
-          }
-
-          .shopify-connect-box h3 {
-            font-size: 25px;
-          }
-
           .flow-grid {
             grid-template-columns: 1fr;
-          }
-
-          .success-card h2 {
-            font-size: 24px;
           }
 
         }
