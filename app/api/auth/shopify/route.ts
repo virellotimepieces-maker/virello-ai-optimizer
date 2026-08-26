@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createHmac, randomBytes } from "crypto";
+import { randomBytes } from "crypto";
 
 function cleanShopDomain(value: string) {
   return value
@@ -7,24 +7,10 @@ function cleanShopDomain(value: string) {
     .toLowerCase()
     .replace(/^https?:\/\//, "")
     .replace(/\/+$/, "")
-    .replace(/\.myshopify\.com\.myshopify\.com$/, ".myshopify.com");
-}
-
-function createOAuthState(shop: string, secret: string) {
-  const payload = JSON.stringify({
-    shop,
-    nonce: randomBytes(32).toString("hex"),
-    timestamp: Date.now(),
-  });
-
-  const encodedPayload =
-    Buffer.from(payload).toString("base64url");
-
-  const signature = createHmac("sha256", secret)
-    .update(encodedPayload)
-    .digest("base64url");
-
-  return `${encodedPayload}.${signature}`;
+    .replace(
+      /\.myshopify\.com\.myshopify\.com$/,
+      ".myshopify.com"
+    );
 }
 
 export async function GET(request: NextRequest) {
@@ -62,7 +48,11 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const state = createOAuthState(shop, apiSecret);
+    /*
+     * OAuth state is stored in an HttpOnly cookie.
+     * This matches the callback flow.
+     */
+    const state = randomBytes(32).toString("hex");
 
     const redirectUri =
       "https://virello-ai-optimizer.vercel.app/api/auth/callback";
@@ -81,7 +71,34 @@ export async function GET(request: NextRequest) {
     const authorizationUrl =
       `https://${shop}/admin/oauth/authorize?${params.toString()}`;
 
-    return NextResponse.redirect(authorizationUrl);
+    const response =
+      NextResponse.redirect(authorizationUrl);
+
+    response.cookies.set(
+      "virello_shopify_oauth_state",
+      state,
+      {
+        httpOnly: true,
+        secure: true,
+        sameSite: "none",
+        path: "/",
+        maxAge: 10 * 60,
+      }
+    );
+
+    response.cookies.set(
+      "virello_shopify_oauth_shop",
+      shop,
+      {
+        httpOnly: true,
+        secure: true,
+        sameSite: "none",
+        path: "/",
+        maxAge: 10 * 60,
+      }
+    );
+
+    return response;
   } catch (error) {
     console.error(
       "SHOPIFY_OAUTH_START_ERROR:",
