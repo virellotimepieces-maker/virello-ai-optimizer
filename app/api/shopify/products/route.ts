@@ -108,96 +108,7 @@ async function exchangeToken(
   return data.access_token as string;
 }
 
-async function shopifyGraphQL(
-  shop: string,
-  accessToken: string
-) {
-  const response = await fetch(
-    `https://${shop}/admin/api/${SHOPIFY_API_VERSION}/graphql.json`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type":
-          "application/json",
-        "X-Shopify-Access-Token":
-          accessToken,
-      },
-      body: JSON.stringify({
-        query: `
-          query GetProducts {
-            products(first: 100) {
-              nodes {
-                id
-                title
-                description
-                productType
-                tags
-                status
-                vendor
-
-                featuredImage {
-                  url
-                  altText
-                }
-
-                variants(first: 1) {
-                  nodes {
-                    price
-                  }
-                }
-
-                images(first: 20) {
-                  nodes {
-                    url
-                    altText
-                  }
-                }
-              }
-            }
-          }
-        `,
-      }),
-      cache: "no-store",
-    }
-  );
-
-  const text = await response.text();
-
-  let data: any;
-
-  try {
-    data = JSON.parse(text);
-  } catch {
-    throw new Error(
-      `Shopify returned non-JSON response (${response.status}).`
-    );
-  }
-
-  if (!response.ok) {
-    throw new Error(
-      data?.errors?.[0]?.message ||
-        `Shopify API request failed (${response.status}).`
-    );
-  }
-
-  if (data?.errors?.length) {
-    throw new Error(
-      data.errors
-        .map(
-          (error: any) =>
-            error.message
-        )
-        .join("; ")
-    );
-  }
-
-  return (
-    data?.data?.products?.nodes ||
-    []
-  );
-}
-
-export async function GET(
+export async function POST(
   request: NextRequest
 ) {
   try {
@@ -230,7 +141,7 @@ export async function GET(
           {
             success: false,
             error:
-              "Shopify connection is missing. Connect your Shopify store first.",
+              "Shopify connection is missing.",
           },
           { status: 401 }
         );
@@ -262,63 +173,192 @@ export async function GET(
         );
     }
 
-    const products =
-      await shopifyGraphQL(
-        shop,
-        accessToken
-      );
+    const body =
+      await request.json();
 
-    const normalized =
-      products.map(
-        (product: any) => ({
-          id: product.id,
-          title:
-            product.title || "",
-          description:
-            product.description || "",
-          productType:
-            product.productType || "",
-          tags:
-            Array.isArray(
-              product.tags
-            )
-              ? product.tags
-              : [],
-          status:
-            product.status || "",
-          vendor:
-            product.vendor || "",
-          price:
-            product.variants
-              ?.nodes?.[0]
-              ?.price || "",
-          images:
-            Array.isArray(
-              product.images?.nodes
-            )
-              ? product.images.nodes.map(
-                  (image: any) => ({
-                    url: image.url,
-                    altText:
-                      image.altText ||
-                      null,
-                  })
-                )
-              : [],
-          featuredImage:
-            product.featuredImage
-              ?.url || null,
-        })
+    const {
+      productId,
+      title,
+      description,
+      productType,
+      tags,
+      seoTitle,
+      metaDescription,
+    } = body;
+
+    if (!productId) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Product ID is required.",
+        },
+        { status: 400 }
       );
+    }
+
+    const tagList =
+      Array.isArray(tags)
+        ? tags
+        : typeof tags === "string"
+          ? tags
+              .split(",")
+              .map(
+                (tag: string) =>
+                  tag.trim()
+              )
+              .filter(Boolean)
+          : [];
+
+    const mutation = `
+      mutation UpdateProduct(
+        $input: ProductInput!
+      ) {
+        productUpdate(input: $input) {
+          product {
+            id
+            title
+            descriptionHtml
+            productType
+            tags
+            seo {
+              title
+              description
+            }
+          }
+
+          userErrors {
+            field
+            message
+          }
+        }
+      }
+    `;
+
+    const variables = {
+      input: {
+        id: productId,
+
+        ...(typeof title === "string"
+          ? {
+              title: title.trim(),
+            }
+          : {}),
+
+        ...(typeof description === "string"
+          ? {
+              descriptionHtml:
+                description,
+            }
+          : {}),
+
+        ...(typeof productType === "string"
+          ? {
+              productType:
+                productType.trim(),
+            }
+          : {}),
+
+        tags: tagList,
+
+        seo: {
+          ...(typeof seoTitle === "string"
+            ? {
+                title:
+                  seoTitle.trim(),
+              }
+            : {}),
+
+          ...(typeof metaDescription ===
+          "string"
+            ? {
+                description:
+                  metaDescription.trim(),
+              }
+            : {}),
+        },
+      },
+    };
+
+    const response = await fetch(
+      `https://${shop}/admin/api/${SHOPIFY_API_VERSION}/graphql.json`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type":
+            "application/json",
+          "X-Shopify-Access-Token":
+            accessToken,
+        },
+        body: JSON.stringify({
+          query: mutation,
+          variables,
+        }),
+        cache: "no-store",
+      }
+    );
+
+    const text =
+      await response.text();
+
+    let data: any;
+
+    try {
+      data = JSON.parse(text);
+    } catch {
+      throw new Error(
+        `Shopify returned a non-JSON response (${response.status}).`
+      );
+    }
+
+    if (!response.ok) {
+      throw new Error(
+        data?.errors?.[0]?.message ||
+          `Shopify API request failed (${response.status}).`
+      );
+    }
+
+    if (data?.errors?.length) {
+      throw new Error(
+        data.errors
+          .map(
+            (error: any) =>
+              error.message
+          )
+          .join("; ")
+      );
+    }
+
+    const result =
+      data?.data?.productUpdate;
+
+    if (!result) {
+      throw new Error(
+        "Shopify did not return a product update result."
+      );
+    }
+
+    if (result.userErrors?.length) {
+      throw new Error(
+        result.userErrors
+          .map(
+            (error: any) =>
+              error.message
+          )
+          .join("; ")
+      );
+    }
 
     return NextResponse.json({
       success: true,
-      shop,
-      products: normalized,
+      message:
+        "Product saved to Shopify successfully.",
+      product:
+        result.product,
     });
   } catch (error) {
     console.error(
-      "SHOPIFY_PRODUCTS_ERROR:",
+      "SHOPIFY_SAVE_PRODUCT_ERROR:",
       error
     );
 
@@ -328,7 +368,7 @@ export async function GET(
         error:
           error instanceof Error
             ? error.message
-            : "Unable to load Shopify products.",
+            : "Unable to save product to Shopify.",
       },
       { status: 500 }
     );
