@@ -60,9 +60,6 @@ export default function ConnectPage() {
   const [checkoutLoading, setCheckoutLoading] =
     useState(false);
 
-  const [connecting, setConnecting] =
-    useState(false);
-
   const [connected, setConnected] =
     useState(false);
 
@@ -191,81 +188,6 @@ export default function ConnectPage() {
 
   /*
    * ==================================================
-   * SHOPIFY CONNECT
-   *
-   * IMPORTANT:
-   *
-   * Shopify OAuth must leave the embedded iframe.
-   *
-   * We intentionally use:
-   *
-   * window.open(url, "_top")
-   *
-   * This tells the browser to navigate the TOP
-   * browser window instead of the Shopify iframe.
-   * ==================================================
-   */
-
-  function connectShopify() {
-    setMessage("");
-
-    const currentShop =
-      cleanShopDomain(shop);
-
-    const valid =
-      /^([a-z0-9][a-z0-9-]*[a-z0-9]|[a-z0-9])\.myshopify\.com$/i.test(
-        currentShop
-      );
-
-    if (!valid) {
-      setMessage(
-        "Enter a valid Shopify domain, for example mystore.myshopify.com."
-      );
-      return;
-    }
-
-    const url =
-      `/api/auth/shopify?shop=${encodeURIComponent(
-        currentShop
-      )}`;
-
-    setConnecting(true);
-
-    /*
-     * IMPORTANT:
-     *
-     * Do NOT use:
-     *
-     * window.location.href = url
-     *
-     * Do NOT use:
-     *
-     * window.top.location.href = url
-     *
-     * The Shopify embedded environment can keep the
-     * navigation inside the iframe.
-     *
-     * "_top" explicitly targets the top browser window.
-     */
-
-    try {
-      window.open(url, "_top");
-    } catch (error) {
-      console.error(
-        "SHOPIFY_TOP_NAVIGATION_ERROR:",
-        error
-      );
-
-      /*
-       * Fallback for a normal standalone browser page.
-       */
-
-      window.location.href = url;
-    }
-  }
-
-  /*
-   * ==================================================
    * SUCCESSFUL SHOPIFY CONNECTION SCREEN
    * ==================================================
    */
@@ -370,26 +292,14 @@ export default function ConnectPage() {
 
                 <div className="connect-actions">
 
-                  <button
-                    type="button"
-                    className="generate-button"
-                    onClick={() => {
-                      const targetUrl =
-                        `${window.location.origin}/?platform=shopify&connected=1`;
-
-                      try {
-                        window.open(
-                          targetUrl,
-                          "_top"
-                        );
-                      } catch {
-                        window.location.href =
-                          targetUrl;
-                      }
-                    }}
+                  <a
+                    href={`/?platform=shopify&connected=1`}
+                    target="_top"
+                    rel="noopener noreferrer"
+                    className="generate-button oauth-link"
                   >
                     Continue to Virello
-                  </button>
+                  </a>
 
                 </div>
 
@@ -408,6 +318,7 @@ export default function ConnectPage() {
                 <div className="flow-grid">
 
                   <div className="flow-card">
+
                     <strong>
                       1. Connect
                     </strong>
@@ -416,9 +327,11 @@ export default function ConnectPage() {
                       Your Shopify store is
                       connected.
                     </p>
+
                   </div>
 
                   <div className="flow-card">
+
                     <strong>
                       2. Import
                     </strong>
@@ -427,9 +340,11 @@ export default function ConnectPage() {
                       Bring your product
                       information into Virello.
                     </p>
+
                   </div>
 
                   <div className="flow-card">
+
                     <strong>
                       3. Optimize
                     </strong>
@@ -438,9 +353,11 @@ export default function ConnectPage() {
                       Generate improved product
                       content with AI.
                     </p>
+
                   </div>
 
                   <div className="flow-card">
+
                     <strong>
                       4. Apply
                     </strong>
@@ -449,6 +366,7 @@ export default function ConnectPage() {
                       Send approved content back
                       to your store.
                     </p>
+
                   </div>
 
                 </div>
@@ -614,6 +532,49 @@ export default function ConnectPage() {
               rgba(17, 19, 24, 0.04);
           }
 
+          .content-card h2 {
+            margin: 12px 0 10px;
+
+            font-size: 30px;
+            letter-spacing: -0.035em;
+          }
+
+          .flow-grid {
+            display: grid;
+
+            grid-template-columns:
+              repeat(2, minmax(0, 1fr));
+
+            gap: 12px;
+          }
+
+          .flow-card {
+            padding: 20px;
+
+            border: 1px solid #e2e4e8;
+            border-radius: 16px;
+
+            background: #fafbfc;
+          }
+
+          .flow-card strong {
+            display: block;
+
+            color: #111318;
+
+            font-size: 15px;
+            font-weight: 850;
+          }
+
+          .flow-card p {
+            margin: 9px 0 0;
+
+            color: #7a8088;
+
+            font-size: 13px;
+            line-height: 1.55;
+          }
+
           .success-card {
             text-align: center;
           }
@@ -677,6 +638,7 @@ export default function ConnectPage() {
 
           .connected-store strong {
             color: #111318;
+
             font-size: 16px;
 
             word-break: break-word;
@@ -691,6 +653,7 @@ export default function ConnectPage() {
 
           .generate-button {
             min-height: 48px;
+
             padding: 0 24px;
 
             border: 0;
@@ -709,62 +672,11 @@ export default function ConnectPage() {
             background: #292d34;
           }
 
-          .content-card h2 {
-            margin: 12px 0 24px;
-
-            font-size: 30px;
-            letter-spacing: -0.035em;
-          }
-
-          .flow-grid {
-            display: grid;
-
-            grid-template-columns:
-              repeat(2, minmax(0, 1fr));
-
-            gap: 12px;
-          }
-
-          .flow-card {
-            padding: 20px;
-
-            border: 1px solid #e2e4e8;
-            border-radius: 16px;
-
-            background: #fafbfc;
-          }
-
-          .flow-card strong {
-            display: block;
-
-            color: #111318;
-
-            font-size: 15px;
-            font-weight: 850;
-          }
-
-          .flow-card p {
-            margin: 9px 0 0;
-
-            color: #7a8088;
-
-            font-size: 13px;
-            line-height: 1.55;
-          }
-
-          .message {
-            margin-top: 16px;
-            padding: 14px 16px;
-
-            border: 1px solid #e1e4e8;
-            border-radius: 12px;
-
-            background: #f8f9fa;
-
-            color: #555b63;
-
-            font-size: 13px;
-            line-height: 1.5;
+          .oauth-link {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            text-decoration: none;
           }
 
           @media (max-width: 760px) {
@@ -832,6 +744,7 @@ export default function ConnectPage() {
       <header className="topbar">
 
         <div>
+
           <div className="brand-small">
             VIRELLO AI
           </div>
@@ -839,6 +752,7 @@ export default function ConnectPage() {
           <div className="brand-name">
             Virello AI Optimizer
           </div>
+
         </div>
 
         <div className="topbar-actions">
@@ -1009,26 +923,34 @@ export default function ConnectPage() {
                         event.target.value
                       );
                       setMessage("");
-                      setConnecting(false);
                     }}
                     placeholder="mystore.myshopify.com"
                     autoComplete="off"
                     spellCheck={false}
                   />
 
-                  <button
-                    type="button"
-                    className="generate-button continue-button"
-                    onClick={connectShopify}
-                    disabled={
-                      connecting ||
-                      !shopifyDomainIsValid
-                    }
-                  >
-                    {connecting
-                      ? "Opening Shopify..."
-                      : "Continue"}
-                  </button>
+                  {shopifyDomainIsValid ? (
+
+                    <a
+                      href={shopifyOAuthUrl}
+                      target="_top"
+                      rel="noopener noreferrer"
+                      className="generate-button continue-button oauth-link"
+                    >
+                      Continue
+                    </a>
+
+                  ) : (
+
+                    <button
+                      type="button"
+                      className="generate-button continue-button"
+                      disabled
+                    >
+                      Continue
+                    </button>
+
+                  )}
 
                 </div>
 
@@ -1056,10 +978,13 @@ export default function ConnectPage() {
                 <h2>
                   {selected === "manual"
                     ? "Manual / Import"
-                    : `Connect ${platforms.find(
-                        (item) =>
-                          item.id === selected
-                      )?.name || "platform"}`}
+                    : `Connect ${
+                        platforms.find(
+                          (item) =>
+                            item.id === selected
+                        )?.name ||
+                        "platform"
+                      }`}
                 </h2>
 
                 <p className="section-description">
@@ -1084,6 +1009,7 @@ export default function ConnectPage() {
               <div className="flow-grid">
 
                 <div className="flow-card">
+
                   <strong>
                     1. Connect
                   </strong>
@@ -1092,9 +1018,11 @@ export default function ConnectPage() {
                     Connect your ecommerce
                     platform.
                   </p>
+
                 </div>
 
                 <div className="flow-card">
+
                   <strong>
                     2. Import
                   </strong>
@@ -1103,9 +1031,11 @@ export default function ConnectPage() {
                     Bring product information
                     into Virello.
                   </p>
+
                 </div>
 
                 <div className="flow-card">
+
                   <strong>
                     3. Optimize
                   </strong>
@@ -1114,9 +1044,11 @@ export default function ConnectPage() {
                     Generate improved product
                     content with AI.
                   </p>
+
                 </div>
 
                 <div className="flow-card">
+
                   <strong>
                     4. Apply
                   </strong>
@@ -1125,6 +1057,7 @@ export default function ConnectPage() {
                     Send approved content back
                     to the store.
                   </p>
+
                 </div>
 
               </div>
@@ -1483,6 +1416,13 @@ export default function ConnectPage() {
         .generate-button:disabled {
           opacity: 0.45;
           cursor: not-allowed;
+        }
+
+        .oauth-link {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          text-decoration: none;
         }
 
         .oauth-note {
