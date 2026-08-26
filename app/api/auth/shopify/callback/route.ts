@@ -5,7 +5,8 @@ function cleanShopDomain(value: string) {
     .trim()
     .toLowerCase()
     .replace(/^https?:\/\//, "")
-    .replace(/\/+$/, "");
+    .replace(/\/+$/, "")
+    .replace(/\.myshopify\.com\.myshopify\.com$/, ".myshopify.com");
 }
 
 export async function GET(request: NextRequest) {
@@ -13,14 +14,17 @@ export async function GET(request: NextRequest) {
     const params = request.nextUrl.searchParams;
 
     const code = params.get("code") || "";
-    const shop = cleanShopDomain(
-      params.get("shop") || ""
-    );
+    const shop = cleanShopDomain(params.get("shop") || "");
     const state = params.get("state") || "";
 
     const savedState =
       request.cookies.get(
         "virello_shopify_oauth_state"
+      )?.value || "";
+
+    const savedShop =
+      request.cookies.get(
+        "virello_shopify_oauth_shop"
       )?.value || "";
 
     if (!code || !shop || !state) {
@@ -29,6 +33,11 @@ export async function GET(request: NextRequest) {
           success: false,
           error:
             "Shopify authorization response is incomplete.",
+          debug: {
+            hasCode: Boolean(code),
+            hasShop: Boolean(shop),
+            hasState: Boolean(state),
+          },
         },
         { status: 400 }
       );
@@ -54,6 +63,17 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    if (savedShop && savedShop !== shop) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Shopify OAuth store does not match the original store.",
+        },
+        { status: 400 }
+      );
+    }
+
     const apiKey =
       process.env.SHOPIFY_API_KEY;
 
@@ -71,7 +91,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const response = await fetch(
+    const tokenResponse = await fetch(
       `https://${shop}/admin/oauth/access_token`,
       {
         method: "POST",
@@ -88,12 +108,13 @@ export async function GET(request: NextRequest) {
       }
     );
 
-    const text = await response.text();
+    const responseText =
+      await tokenResponse.text();
 
     let data: any;
 
     try {
-      data = JSON.parse(text);
+      data = JSON.parse(responseText);
     } catch {
       return NextResponse.json(
         {
@@ -106,7 +127,7 @@ export async function GET(request: NextRequest) {
     }
 
     if (
-      !response.ok ||
+      !tokenResponse.ok ||
       !data?.access_token
     ) {
       return NextResponse.json(
@@ -124,10 +145,8 @@ export async function GET(request: NextRequest) {
     const accessToken =
       data.access_token;
 
-    const redirectUrl = new URL(
-      "/connect",
-      request.url
-    );
+    const redirectUrl =
+      new URL("/connect", request.url);
 
     redirectUrl.searchParams.set(
       "shop",
@@ -149,10 +168,8 @@ export async function GET(request: NextRequest) {
       accessToken,
       {
         httpOnly: true,
-        secure:
-          process.env.NODE_ENV ===
-          "production",
-        sameSite: "lax",
+        secure: true,
+        sameSite: "none",
         path: "/",
         maxAge: 60 * 60 * 24 * 30,
       }
@@ -163,10 +180,8 @@ export async function GET(request: NextRequest) {
       shop,
       {
         httpOnly: true,
-        secure:
-          process.env.NODE_ENV ===
-          "production",
-        sameSite: "lax",
+        secure: true,
+        sameSite: "none",
         path: "/",
         maxAge: 60 * 60 * 24 * 30,
       }
