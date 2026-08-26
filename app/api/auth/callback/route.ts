@@ -1,4 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
+import {
+  createHmac,
+  timingSafeEqual,
+} from "crypto";
 
 function cleanShopDomain(value: string) {
   return value
@@ -12,7 +16,99 @@ function cleanShopDomain(value: string) {
     );
 }
 
-export async function GET(request: NextRequest) {
+function verifyOAuthState(
+  state: string,
+  apiSecret: string
+) {
+  try {
+    const parts = state.split(".");
+
+    if (parts.length !== 2) {
+      return null;
+    }
+
+    const [
+      encodedPayload,
+      receivedSignature,
+    ] = parts;
+
+    const expectedSignature =
+      createHmac(
+        "sha256",
+        apiSecret
+      )
+        .update(encodedPayload)
+        .digest("base64url");
+
+    const receivedBuffer =
+      Buffer.from(
+        receivedSignature
+      );
+
+    const expectedBuffer =
+      Buffer.from(
+        expectedSignature
+      );
+
+    if (
+      receivedBuffer.length !==
+      expectedBuffer.length
+    ) {
+      return null;
+    }
+
+    if (
+      !timingSafeEqual(
+        receivedBuffer,
+        expectedBuffer
+      )
+    ) {
+      return null;
+    }
+
+    const payloadText =
+      Buffer.from(
+        encodedPayload,
+        "base64url"
+      ).toString("utf8");
+
+    const payload =
+      JSON.parse(payloadText);
+
+    if (
+      !payload ||
+      typeof payload.shop !==
+        "string" ||
+      typeof payload.timestamp !==
+        "number"
+    ) {
+      return null;
+    }
+
+    const age =
+      Date.now() -
+      payload.timestamp;
+
+    if (
+      age < 0 ||
+      age > 10 * 60 * 1000
+    ) {
+      return null;
+    }
+
+    return {
+      shop: cleanShopDomain(
+        payload.shop
+      ),
+    };
+  } catch {
+    return null;
+  }
+}
+
+export async function GET(
+  request: NextRequest
+) {
   try {
     const params =
       request.nextUrl.searchParams;
@@ -28,23 +124,11 @@ export async function GET(request: NextRequest) {
     const state =
       params.get("state") || "";
 
-    const savedState =
-      request.cookies.get(
-        "virello_shopify_oauth_state"
-      )?.value || "";
-
-    const savedShop =
-      cleanShopDomain(
-        request.cookies.get(
-          "virello_shopify_oauth_shop"
-        )?.value || ""
-      );
-
-    /*
-     * 1. Validate Shopify response
-     */
-
-    if (!code || !shop || !state) {
+    if (
+      !code ||
+      !shop ||
+      !state
+    ) {
       return NextResponse.json(
         {
           success: false,
@@ -54,10 +138,6 @@ export async function GET(request: NextRequest) {
         { status: 400 }
       );
     }
-
-    /*
-     * 2. Validate Shopify shop
-     */
 
     if (
       !/^([a-z0-9][a-z0-9-]*[a-z0-9]|[a-z0-9])\.myshopify\.com$/i.test(
@@ -74,31 +154,53 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    /*
-     * 3. Validate OAuth state
-     */
+    const apiKey =
+      process.env.SHOPIFY_API_KEY;
+
+    const apiSecret =
+      process.env.SHOPIFY_API_SECRET;
 
     if (
-      !savedState ||
-      savedState !== state
+      !apiKey ||
+      !apiSecret
     ) {
       return NextResponse.json(
         {
           success: false,
           error:
-            "Invalid Shopify OAuth state.",
+            "SHOPIFY_API_KEY or SHOPIFY_API_SECRET is missing in Vercel.",
+        },
+        { status: 500 }
+      );
+    }
+
+    /*
+     * Verify the signed Shopify OAuth state.
+     */
+    const stateData =
+      verifyOAuthState(
+        state,
+        apiSecret
+      );
+
+    if (!stateData) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Invalid or expired Shopify OAuth state.",
         },
         { status: 400 }
       );
     }
 
     /*
-     * 4. Validate shop from original request
+     * Make sure the Shopify store returned
+     * by Shopify matches the store encoded
+     * in the signed state.
      */
-
     if (
-      savedShop &&
-      savedShop !== shop
+      stateData.shop !== shop
     ) {
       return NextResponse.json(
         {
@@ -111,30 +213,9 @@ export async function GET(request: NextRequest) {
     }
 
     /*
-     * 5. Shopify credentials
+     * Exchange the Shopify authorization
+     * code for an access token.
      */
-
-    const apiKey =
-      process.env.SHOPIFY_API_KEY;
-
-    const apiSecret =
-      process.env.SHOPIFY_API_SECRET;
-
-    if (!apiKey || !apiSecret) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "SHOPIFY_API_KEY or SHOPIFY_API_SECRET is missing in Vercel.",
-        },
-        { status: 500 }
-      );
-    }
-
-    /*
-     * 6. Exchange authorization code
-     */
-
     const tokenResponse =
       await fetch(
         `https://${shop}/admin/oauth/access_token`,
@@ -148,8 +229,12 @@ export async function GET(request: NextRequest) {
 
           body:
             new URLSearchParams({
-              client_id: apiKey,
-              client_secret: apiSecret,
+              client_id:
+                apiKey,
+
+              client_secret:
+                apiSecret,
+
               code,
             }).toString(),
 
@@ -184,9 +269,8 @@ export async function GET(request: NextRequest) {
     }
 
     /*
-     * 7. Validate token
+     * Validate Shopify token response.
      */
-
     if (
       !tokenResponse.ok ||
       !data?.access_token
@@ -212,9 +296,8 @@ export async function GET(request: NextRequest) {
       data.access_token;
 
     /*
-     * 8. Redirect back to Virello
+     * Redirect back to Virello.
      */
-
     const redirectUrl =
       new URL(
         "/connect",
@@ -237,9 +320,8 @@ export async function GET(request: NextRequest) {
       );
 
     /*
-     * 9. Save Shopify access token
+     * Store Shopify access token.
      */
-
     result.cookies.set(
       "virello_shopify_access_token",
       accessToken,
@@ -254,9 +336,8 @@ export async function GET(request: NextRequest) {
     );
 
     /*
-     * 10. Save connected shop
+     * Store connected Shopify shop.
      */
-
     result.cookies.set(
       "virello_shopify_shop",
       shop,
@@ -269,22 +350,6 @@ export async function GET(request: NextRequest) {
           60 * 60 * 24 * 30,
       }
     );
-
-    /*
-     * 11. Remove temporary OAuth cookies
-     */
-
-    result.cookies.delete(
-      "virello_shopify_oauth_state"
-    );
-
-    result.cookies.delete(
-      "virello_shopify_oauth_shop"
-    );
-
-    /*
-     * 12. Success
-     */
 
     return result;
   } catch (error) {
