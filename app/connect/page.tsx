@@ -107,10 +107,29 @@ export default function ConnectPage() {
         return;
       }
 
-      window.location.href =
+      /*
+       * IMPORTANT FIX
+       *
+       * Shopify can open Virello inside an
+       * embedded/admin frame. Using normal
+       * window.location.href can cause Shopify
+       * to block the OAuth login response.
+       *
+       * We intentionally navigate the TOP-LEVEL
+       * browser window for OAuth.
+       */
+      const oauthUrl =
         `/api/auth/shopify?shop=${encodeURIComponent(
           cleanShop
         )}`;
+
+      if (window.top) {
+        window.top.location.href =
+          oauthUrl;
+      } else {
+        window.location.href =
+          oauthUrl;
+      }
 
       return;
     }
