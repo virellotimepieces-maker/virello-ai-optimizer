@@ -39,7 +39,7 @@ export async function GET(request: NextRequest) {
   const state = randomBytes(32).toString("hex");
 
   const redirectUri = new URL(
-    "/api/auth/callback",
+    "/api/auth/shopify/callback",
     request.url
   ).toString();
 
