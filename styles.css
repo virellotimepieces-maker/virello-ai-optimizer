@@ -182,6 +182,10 @@ textarea {
   gap: 22px;
 }
 
+/* =========================
+   MAIN PANEL
+========================= */
+
 .optimizer-panel {
   min-width: 0;
 
@@ -348,6 +352,189 @@ textarea {
   color: #202329;
   font-size: 19px;
   letter-spacing: -0.45px;
+}
+
+/* =========================
+   PLATFORM SELECTION
+========================= */
+
+.platform-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+
+.platform-card {
+  width: 100%;
+  min-height: 104px;
+
+  padding: 16px 20px;
+
+  display: flex;
+  align-items: center;
+  gap: 18px;
+
+  border: 1px solid #dfe3e7;
+  border-radius: 16px;
+
+  background: #ffffff;
+  color: #17191d;
+
+  text-align: left;
+
+  cursor: pointer;
+
+  appearance: none;
+  -webkit-appearance: none;
+
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease,
+    box-shadow 0.15s ease,
+    transform 0.15s ease;
+}
+
+.platform-card:hover {
+  border-color: #c4c9d0;
+  background: #fafbfc;
+}
+
+.platform-card:active {
+  transform: scale(0.995);
+}
+
+.platform-card.selected,
+.platform-card.active {
+  border-color: #aeb4bd;
+  background: #fafbfc;
+
+  box-shadow:
+    0 0 0 2px rgba(17, 19, 24, 0.035);
+}
+
+.platform-icon {
+  width: 58px;
+  height: 58px;
+
+  flex: 0 0 58px;
+
+  display: grid;
+  place-items: center;
+
+  border-radius: 14px;
+
+  background: #f1f2f4;
+  color: #17191d;
+
+  font-size: 17px;
+  font-weight: 900;
+}
+
+.platform-info {
+  min-width: 0;
+
+  flex: 1;
+
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.platform-info strong {
+  color: #181a1f;
+  font-size: 15px;
+  line-height: 1.2;
+  font-weight: 850;
+}
+
+.platform-info span {
+  color: #858b94;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.platform-check {
+  width: 38px;
+  height: 38px;
+
+  flex: 0 0 38px;
+
+  display: grid;
+  place-items: center;
+
+  border: 1.5px solid #d5d9de;
+  border-radius: 50%;
+
+  background: #ffffff;
+  color: transparent;
+
+  font-size: 16px;
+  font-weight: 900;
+
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease,
+    transform 0.15s ease;
+}
+
+.platform-check.selected,
+.platform-card.selected .platform-check,
+.platform-card.active .platform-check {
+  background: #111318;
+  border-color: #111318;
+  color: #ffffff;
+  transform: scale(1.02);
+}
+
+.connect-actions {
+  margin-top: 14px;
+
+  display: flex;
+  justify-content: flex-end;
+}
+
+.connect-actions .generate-button {
+  min-width: 150px;
+}
+
+/* =========================
+   WORKFLOW
+========================= */
+
+.flow-grid {
+  display: grid;
+  grid-template-columns:
+    repeat(4, minmax(0, 1fr));
+
+  gap: 12px;
+
+  margin-top: 18px;
+}
+
+.flow-card {
+  padding: 15px;
+
+  border: 1px solid #e0e3e7;
+  border-radius: 12px;
+
+  background: #fbfcfd;
+}
+
+.flow-card strong {
+  display: block;
+
+  color: #25282d;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.flow-card p {
+  margin: 8px 0 0;
+
+  color: #69707a;
+  font-size: 11px;
+  line-height: 1.55;
 }
 
 /* =========================
@@ -886,6 +1073,11 @@ textarea {
   .score-grid > .search-input:last-child {
     grid-column: 1 / -1;
   }
+
+  .flow-grid {
+    grid-template-columns:
+      repeat(2, minmax(0, 1fr));
+  }
 }
 
 /* =========================
@@ -913,6 +1105,8 @@ textarea {
     padding: 7px 10px;
     font-size: 8px;
   }
+
+  /* HERO */
 
   .hero-inner {
     width: calc(100% - 28px);
@@ -942,6 +1136,8 @@ textarea {
     line-height: 1.55;
   }
 
+  /* WORKSPACE */
+
   .workspace {
     width: calc(100% - 16px);
     padding: 9px 0 32px;
@@ -950,6 +1146,8 @@ textarea {
   .optimizer-panel {
     border-radius: 14px;
   }
+
+  /* HEADER */
 
   .selected-product {
     min-height: auto;
@@ -979,13 +1177,67 @@ textarea {
     font-size: 12px;
   }
 
-  .results {
-    padding: 12px;
-  }
+  /* PLATFORM */
 
   .content-card {
     padding: 11px;
     border-radius: 12px;
+  }
+
+  .platform-grid {
+    gap: 9px;
+  }
+
+  .platform-card {
+    min-height: 88px;
+
+    padding: 12px 14px;
+
+    gap: 12px;
+
+    border-radius: 13px;
+  }
+
+  .platform-icon {
+    width: 48px;
+    height: 48px;
+
+    flex-basis: 48px;
+
+    border-radius: 12px;
+
+    font-size: 15px;
+  }
+
+  .platform-info strong {
+    font-size: 14px;
+  }
+
+  .platform-info span {
+    font-size: 10px;
+  }
+
+  .platform-check {
+    width: 36px;
+    height: 36px;
+
+    flex-basis: 36px;
+
+    font-size: 15px;
+  }
+
+  .connect-actions {
+    margin-top: 10px;
+  }
+
+  .connect-actions .generate-button {
+    width: 100%;
+  }
+
+  /* RESULTS */
+
+  .results {
+    padding: 12px;
   }
 
   .result-field {
@@ -1014,6 +1266,8 @@ textarea {
     font-size: 13px;
   }
 
+  /* PRODUCT TYPE / BRAND / PRICE */
+
   .score-grid {
     grid-template-columns: 1fr;
     gap: 9px;
@@ -1035,6 +1289,8 @@ textarea {
   .score-grid > .search-input:last-child {
     grid-column: auto;
   }
+
+  /* SCORE */
 
   .score-overview {
     margin-bottom: 10px;
@@ -1070,8 +1326,15 @@ textarea {
     border-radius: 10px;
   }
 
+  /* CONTENT */
+
   .two-column,
   .analysis-grid {
+    grid-template-columns: 1fr;
+    gap: 9px;
+  }
+
+  .flow-grid {
     grid-template-columns: 1fr;
     gap: 9px;
   }
@@ -1169,6 +1432,23 @@ textarea {
   .content-card {
     padding: 9px;
   }
+
+  .platform-card {
+    min-height: 82px;
+    padding: 10px 11px;
+  }
+
+  .platform-icon {
+    width: 44px;
+    height: 44px;
+    flex-basis: 44px;
+  }
+
+  .platform-check {
+    width: 34px;
+    height: 34px;
+    flex-basis: 34px;
+  }
 }
 
 /* =========================
@@ -1190,249 +1470,3 @@ textarea {
     min-height: 34px;
   }
 }
-
-/* =========================================================
-   VIRELLO PLATFORM CONNECTION UI
-   Added for:
-   Shopify
-   WooCommerce
-   BigCommerce
-   Wix
-   Manual / Import
-========================================================= */
-
-.platform-grid {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 12px;
-  margin-top: 18px;
-}
-
-.platform-card {
-  width: 100%;
-  min-height: 82px;
-
-  padding: 16px 18px;
-
-  display: flex;
-  align-items: center;
-  gap: 15px;
-
-  border: 1px solid #dfe3e7;
-  border-radius: 14px;
-
-  background: #ffffff;
-  color: #17191d;
-
-  text-align: left;
-  cursor: pointer;
-
-  transition:
-    border-color 0.18s ease,
-    background 0.18s ease,
-    box-shadow 0.18s ease,
-    transform 0.18s ease;
-}
-
-.platform-card:hover {
-  border-color: #b9bec6;
-  background: #fafbfc;
-  transform: translateY(-1px);
-
-  box-shadow:
-    0 7px 18px rgba(15, 23, 42, 0.055);
-}
-
-.platform-card:active {
-  transform: translateY(0);
-}
-
-.platform-card.selected {
-  border-color: #15171b;
-  background: #f8f8f9;
-
-  box-shadow:
-    0 0 0 3px rgba(21, 23, 27, 0.07);
-}
-
-.platform-icon {
-  width: 48px;
-  height: 48px;
-
-  flex: 0 0 48px;
-
-  display: grid;
-  place-items: center;
-
-  border-radius: 12px;
-
-  background: #f1f3f5;
-  color: #17191d;
-
-  font-size: 16px;
-  font-weight: 900;
-}
-
-.platform-card.selected .platform-icon {
-  background: #15171b;
-  color: #ffffff;
-}
-
-.platform-info {
-  min-width: 0;
-  flex: 1;
-}
-
-.platform-info strong {
-  display: block;
-
-  color: #17191d;
-
-  font-size: 14px;
-  line-height: 1.25;
-  font-weight: 850;
-  letter-spacing: -0.2px;
-}
-
-.platform-info span {
-  display: block;
-
-  margin-top: 4px;
-
-  color: #7a818b;
-
-  font-size: 11px;
-  line-height: 1.45;
-}
-
-.platform-check {
-  width: 22px;
-  height: 22px;
-
-  flex: 0 0 22px;
-
-  display: grid;
-  place-items: center;
-
-  border: 1px solid #d7dbe0;
-  border-radius: 50%;
-
-  background: #ffffff;
-  color: transparent;
-
-  font-size: 11px;
-  font-weight: 900;
-}
-
-.platform-card.selected .platform-check {
-  border-color: #15171b;
-  background: #15171b;
-  color: #ffffff;
-}
-
-/* =========================
-   CONNECTION ACTION
-========================= */
-
-.connect-actions {
-  margin-top: 16px;
-
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.connect-button {
-  min-height: 46px;
-  padding: 0 20px;
-
-  border: 0;
-  border-radius: 11px;
-
-  background: #111318;
-  color: #ffffff;
-
-  font-size: 12px;
-  font-weight: 850;
-
-  cursor: pointer;
-
-  box-shadow:
-    0 7px 16px rgba(17, 19, 24, 0.14);
-
-  transition:
-    background 0.15s ease,
-    transform 0.15s ease;
-}
-
-.connect-button:hover {
-  background: #292d34;
-  transform: translateY(-1px);
-}
-
-.connect-button:active {
-  transform: translateY(0);
-}
-
-.connect-button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-  transform: none;
-}
-
-/* =========================
-   PLATFORM CONNECTION MOBILE
-========================= */
-
-@media (max-width: 640px) {
-  .platform-grid {
-    gap: 9px;
-    margin-top: 14px;
-  }
-
-  .platform-card {
-    min-height: 70px;
-    padding: 12px;
-
-    gap: 11px;
-
-    border-radius: 11px;
-  }
-
-  .platform-icon {
-    width: 40px;
-    height: 40px;
-
-    flex-basis: 40px;
-
-    border-radius: 10px;
-
-    font-size: 13px;
-  }
-
-  .platform-info strong {
-    font-size: 12px;
-  }
-
-  .platform-info span {
-    margin-top: 3px;
-    font-size: 9px;
-  }
-
-  .platform-check {
-    width: 20px;
-    height: 20px;
-    flex-basis: 20px;
-  }
-
-  .connect-actions {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .connect-button {
-    width: 100%;
-    min-height: 48px;
-  }
-  }
