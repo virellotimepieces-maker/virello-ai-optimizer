@@ -1,14 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createHmac, timingSafeEqual } from "crypto";
-
-function cleanShopDomain(value: string) {
-  return value
-    .trim()
-    .toLowerCase()
-    .replace(/^https?:\/\//, "")
-    .replace(/\/+$/, "")
-    .replace(/(\.myshopify\.com){2,}$/, ".myshopify.com");
-}
+import { cleanShopDomain } from "../../../../lib/shopify-domain";
 
 function verifyShopifyCallbackHmac(params: URLSearchParams, apiSecret: string) {
   const receivedHmac = params.get("hmac");
@@ -105,29 +97,6 @@ export async function GET(request: NextRequest) {
       return NextResponse.redirect(redirectUrl);
     }
 
-    const code = params.get("code") || "";
-    const state = params.get("state") || "";
-
-    if (!code || !shop || !state) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: "Shopify authorization response is incomplete.",
-        },
-        { status: 400 }
-      );
-    }
-
-    if (!/^([a-z0-9][a-z0-9-]*[a-z0-9]|[a-z0-9])\.myshopify\.com$/i.test(shop)) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: "Invalid Shopify store domain.",
-        },
-        { status: 400 }
-      );
-    }
-
     const apiKey = process.env.SHOPIFY_API_KEY;
     const apiSecret = process.env.SHOPIFY_API_SECRET;
 
@@ -146,6 +115,29 @@ export async function GET(request: NextRequest) {
         {
           success: false,
           error: "Invalid Shopify authorization signature.",
+        },
+        { status: 400 }
+      );
+    }
+
+    const code = params.get("code") || "";
+    const state = params.get("state") || "";
+
+    if (!code || !shop || !state) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Shopify authorization response is incomplete.",
+        },
+        { status: 400 }
+      );
+    }
+
+    if (!/^([a-z0-9][a-z0-9-]*[a-z0-9]|[a-z0-9])\.myshopify\.com$/i.test(shop)) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Invalid Shopify store domain.",
         },
         { status: 400 }
       );

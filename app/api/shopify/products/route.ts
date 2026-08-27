@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { resolveShopDomain } from "../../../lib/shopify-domain";
 
 const SHOPIFY_API_VERSION = "2026-07";
 
@@ -9,25 +10,6 @@ class ShopifyRequestError extends Error {
     super(message);
     this.status = status;
   }
-}
-
-function cleanShopDomain(value: string) {
-  return value
-    .trim()
-    .toLowerCase()
-    .replace(/^https?:\/\//i, "")
-    .replace(/\/+$/, "")
-    .replace(/(\.myshopify\.com){2,}$/, ".myshopify.com");
-}
-
-function isValidShopDomain(value: string) {
-  return /^([a-z0-9][a-z0-9-]*[a-z0-9]|[a-z0-9])\.myshopify\.com$/i.test(value);
-}
-
-function resolveShopDomain(value: string) {
-  const shop = cleanShopDomain(value);
-
-  return isValidShopDomain(shop) ? shop : "";
 }
 
 function getHeaderToken(request: NextRequest) {

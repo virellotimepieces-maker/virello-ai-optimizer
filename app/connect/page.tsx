@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { cleanShopDomain } from "../lib/shopify-domain";
 
 type Platform =
   | "shopify"
@@ -38,17 +39,9 @@ const platforms = [
   },
 ];
 
-function cleanShopDomain(value: string) {
-  return value
-    .trim()
-    .toLowerCase()
-    .replace(/^https?:\/\//, "")
-    .replace(/\/+$/, "")
-    .replace(
-      /(\.myshopify\.com){2,}$/,
-      ".myshopify.com"
-    );
-}
+const selectablePlatforms = new Set(
+  platforms.map((platform) => platform.id)
+);
 
 function readCookie(name: string) {
   if (typeof document === "undefined") {
@@ -112,13 +105,20 @@ export default function ConnectPage() {
       setShop(cleanedShop);
       setSelected("shopify");
     } else if (
-      platformParam === "shopify" ||
-      platformParam === "woocommerce" ||
-      platformParam === "bigcommerce" ||
-      platformParam === "wix" ||
-      platformParam === "manual"
+      platformParam &&
+      selectablePlatforms.has(
+        platformParam as Exclude<
+          Platform,
+          null
+        >
+      )
     ) {
-      setSelected(platformParam);
+      setSelected(
+        platformParam as Exclude<
+          Platform,
+          null
+        >
+      );
     }
 
     if (
