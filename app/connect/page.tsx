@@ -75,13 +75,6 @@ export default function ConnectPage() {
   const [checkoutLoading, setCheckoutLoading] =
     useState(false);
 
-  /*
-   * Check the Shopify OAuth callback.
-   *
-   * Expected successful callback:
-   *
-   * /connect?shop=STORE.myshopify.com&connected=1
-   */
   useEffect(() => {
     const params = new URLSearchParams(
       window.location.search
@@ -103,9 +96,6 @@ export default function ConnectPage() {
     const cleanedShop =
       cleanShopDomain(shopParam);
 
-    /*
-     * Successful Shopify connection.
-     */
     if (
       connectedParam === "1" &&
       isValidShopifyDomain(cleanedShop)
@@ -115,10 +105,6 @@ export default function ConnectPage() {
       setShop(cleanedShop);
       setSelected("shopify");
 
-      /*
-       * Remove OAuth parameters from the
-       * visible browser URL without reloading.
-       */
       window.history.replaceState(
         {},
         "",
@@ -128,9 +114,6 @@ export default function ConnectPage() {
       return;
     }
 
-    /*
-     * Shopify OAuth error.
-     */
     if (statusParam === "error") {
       setMessage(
         errorParam ||
@@ -146,10 +129,6 @@ export default function ConnectPage() {
       return;
     }
 
-    /*
-     * If a valid Shopify domain was supplied,
-     * keep it in the input.
-     */
     if (
       isValidShopifyDomain(cleanedShop)
     ) {
@@ -166,9 +145,6 @@ export default function ConnectPage() {
   const shopifyDomainIsValid =
     isValidShopifyDomain(cleanShop);
 
-  /*
-   * OAuth endpoint on our Vercel application.
-   */
   const shopifyOAuthUrl =
     shopifyDomainIsValid
       ? `/api/auth/shopify?shop=${encodeURIComponent(
@@ -186,22 +162,6 @@ export default function ConnectPage() {
       setShop("");
     }
   }
-
-  /*
-   * IMPORTANT:
-   *
-   * Do NOT use window.location.assign()
-   * here while inside Shopify Admin.
-   *
-   * Do NOT show a permanent "Opening Shopify..."
-   * loading state.
-   *
-   * The actual button below uses a normal
-   * top-level browser link with target="_blank".
-   *
-   * This allows Shopify authorization to open
-   * outside the embedded Virello/Shopify frame.
-   */
 
   async function startCheckout() {
     if (checkoutLoading) {
@@ -248,12 +208,6 @@ export default function ConnectPage() {
       setCheckoutLoading(false);
     }
   }
-
-  /*
-   * --------------------------------------------------
-   * CONNECTED STATE
-   * --------------------------------------------------
-   */
 
   if (connected) {
     return (
@@ -415,12 +369,6 @@ export default function ConnectPage() {
     );
   }
 
-  /*
-   * --------------------------------------------------
-   * CONNECT SCREEN
-   * --------------------------------------------------
-   */
-
   return (
     <main className="app-shell">
       <header className="topbar">
@@ -474,8 +422,6 @@ export default function ConnectPage() {
 
       <section className="workspace">
         <div className="workspace-grid">
-
-          {/* PLATFORM SELECTION */}
 
           <section className="content-card">
             <div className="step-label">
@@ -542,8 +488,6 @@ export default function ConnectPage() {
             </div>
           </section>
 
-          {/* SHOPIFY */}
-
           {selected === "shopify" && (
             <section className="content-card">
               <div className="step-label">
@@ -583,22 +527,8 @@ export default function ConnectPage() {
                 />
 
                 {shopifyDomainIsValid ? (
-                  /*
-                   * IMPORTANT:
-                   *
-                   * This is intentionally a normal
-                   * browser link.
-                   *
-                   * target="_blank" takes Shopify OAuth
-                   * OUTSIDE the embedded Shopify frame.
-                   *
-                   * No JavaScript loading state.
-                   * No window.location.assign().
-                   */
                   <a
                     href={shopifyOAuthUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
                     className="generate-button continue-button oauth-link"
                   >
                     Connect Store
@@ -622,14 +552,12 @@ export default function ConnectPage() {
 
               <p className="oauth-note">
                 Shopify authorization will open
-                outside the embedded Virello
-                window. After approval, Shopify
-                will return you to Virello.
+                from the Virello application.
+                After approval, Shopify will
+                return you to Virello.
               </p>
             </section>
           )}
-
-          {/* OTHER PLATFORMS */}
 
           {selected !== "shopify" && (
             <section className="content-card">
@@ -671,8 +599,6 @@ export default function ConnectPage() {
               )}
             </section>
           )}
-
-          {/* WORKFLOW */}
 
           <section className="content-card">
             <div className="step-label">
