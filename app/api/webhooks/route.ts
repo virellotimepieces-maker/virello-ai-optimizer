@@ -98,8 +98,6 @@ export async function POST(request: Request) {
       });
     }
 
-    JSON.parse(rawBody.toString("utf8"));
-
     return new NextResponse(null, {
       status: 200,
     });
