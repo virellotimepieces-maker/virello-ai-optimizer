@@ -45,7 +45,7 @@ function cleanShopDomain(value: string) {
     .replace(/^https?:\/\//, "")
     .replace(/\/+$/, "")
     .replace(
-      /\.myshopify\.com\.myshopify\.com$/,
+      /(\.myshopify\.com){2,}$/,
       ".myshopify.com"
     );
 }
@@ -77,6 +77,21 @@ export default function ConnectPage() {
     const shopParam =
       params.get("shop") || "";
 
+    const statusParam =
+      params.get("status");
+
+    const errorParam =
+      params.get("error_description") ||
+      params.get("error");
+
+    if (shopParam) {
+      const cleanedShop =
+        cleanShopDomain(shopParam);
+
+      setShop(cleanedShop);
+      setSelected("shopify");
+    }
+
     if (
       connectedParam === "1" &&
       shopParam
@@ -94,6 +109,13 @@ export default function ConnectPage() {
         "",
         "/connect"
       );
+    }
+
+    if (
+      statusParam === "error" &&
+      errorParam
+    ) {
+      setMessage(errorParam);
     }
   }, []);
 
@@ -155,14 +177,9 @@ export default function ConnectPage() {
       cleanShop
     );
 
-  /*
-   * IMPORTANT:
-   * Use the absolute Virello production URL.
-   * Do not use a relative /api/auth/shopify URL.
-   */
   const shopifyOAuthUrl =
     shopifyDomainIsValid
-      ? `https://virello-ai-optimizer.vercel.app/api/auth/shopify?shop=${encodeURIComponent(
+      ? `/api/auth/shopify?shop=${encodeURIComponent(
           cleanShop
         )}`
       : "";

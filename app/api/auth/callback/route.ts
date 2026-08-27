@@ -11,7 +11,7 @@ function cleanShopDomain(value: string) {
     .replace(/^https?:\/\//, "")
     .replace(/\/+$/, "")
     .replace(
-      /\.myshopify\.com\.myshopify\.com$/,
+      /(\.myshopify\.com){2,}$/,
       ".myshopify.com"
     );
 }

@@ -7,7 +7,10 @@ function cleanShopDomain(value: string) {
     .toLowerCase()
     .replace(/^https?:\/\//, "")
     .replace(/\/+$/, "")
-    .replace(/\.myshopify\.com\.myshopify\.com$/, ".myshopify.com");
+    .replace(
+      /(\.myshopify\.com){2,}$/,
+      ".myshopify.com"
+    );
 }
 
 function verifyOAuthState(
