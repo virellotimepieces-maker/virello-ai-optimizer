@@ -98,7 +98,7 @@ export async function GET(
       );
 
     /*
-     * Single canonical Shopify callback route.
+     * Canonical Shopify callback route.
      */
     const redirectUri = new URL(
       "/api/auth/shopify/callback",
