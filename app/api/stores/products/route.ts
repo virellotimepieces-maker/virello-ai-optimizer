@@ -73,7 +73,24 @@ export async function GET(request: NextRequest) {
       const shop =
         request.headers.get("x-shopify-shop");
 
-      if (!authorization && !sessionToken) {
+      const cookieHeader =
+        request.headers.get("cookie");
+
+      const hasCookieConnection =
+        Boolean(
+          request.cookies.get(
+            "virello_shopify_access_token"
+          )?.value &&
+            request.cookies.get(
+              "virello_shopify_shop"
+            )?.value
+        );
+
+      if (
+        !authorization &&
+        !sessionToken &&
+        !hasCookieConnection
+      ) {
         return NextResponse.json(
           {
             success: false,
@@ -113,6 +130,10 @@ export async function GET(request: NextRequest) {
           "x-shopify-shop",
           shop
         );
+      }
+
+      if (cookieHeader) {
+        headers.set("cookie", cookieHeader);
       }
 
       const origin =

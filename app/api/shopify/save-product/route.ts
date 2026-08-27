@@ -2,6 +2,25 @@ import { NextRequest, NextResponse } from "next/server";
 
 const SHOPIFY_API_VERSION = "2026-07";
 
+function cleanShopDomain(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/^https?:\/\//i, "")
+    .replace(/\/+$/, "")
+    .replace(/(\.myshopify\.com){2,}$/, ".myshopify.com");
+}
+
+function isValidShopDomain(value: string) {
+  return /^([a-z0-9][a-z0-9-]*[a-z0-9]|[a-z0-9])\.myshopify\.com$/i.test(value);
+}
+
+function resolveShopDomain(value: string) {
+  const shop = cleanShopDomain(value);
+
+  return isValidShopDomain(shop) ? shop : "";
+}
+
 function getToken(request: NextRequest) {
   return (
     request.headers
@@ -16,14 +35,14 @@ function getToken(request: NextRequest) {
 }
 
 function getShop(request: NextRequest, token: string) {
-  const headerShop = request.headers
-    .get("x-shopify-shop")
-    ?.trim();
+  const headerShop = resolveShopDomain(
+    request.headers
+      .get("x-shopify-shop")
+      ?.trim() || ""
+  );
 
   if (headerShop) {
-    return headerShop
-      .replace(/^https?:\/\//i, "")
-      .replace(/\/+$/, "");
+    return headerShop;
   }
 
   try {
@@ -41,7 +60,9 @@ function getShop(request: NextRequest, token: string) {
       return "";
     }
 
-    return new URL(payload.dest).hostname;
+    return resolveShopDomain(
+      new URL(payload.dest).hostname
+    );
   } catch {
     return "";
   }

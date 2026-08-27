@@ -89,6 +89,8 @@ export default function ConnectPage() {
     const params = new URLSearchParams(
       window.location.search
     );
+    const platformParam =
+      params.get("platform");
 
     const connectedParam =
       params.get("connected");
@@ -109,6 +111,14 @@ export default function ConnectPage() {
 
       setShop(cleanedShop);
       setSelected("shopify");
+    } else if (
+      platformParam === "shopify" ||
+      platformParam === "woocommerce" ||
+      platformParam === "bigcommerce" ||
+      platformParam === "wix" ||
+      platformParam === "manual"
+    ) {
+      setSelected(platformParam);
     }
 
     if (
