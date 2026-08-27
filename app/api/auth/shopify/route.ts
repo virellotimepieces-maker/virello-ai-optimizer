@@ -10,7 +10,7 @@ function cleanShopDomain(value: string) {
     .replace(/^https?:\/\//, "")
     .replace(/\/+$/, "")
     .replace(
-      /\.myshopify\.com\.myshopify\.com$/,
+      /(\.myshopify\.com){2,}$/,
       ".myshopify.com"
     );
 }
@@ -97,8 +97,13 @@ export async function GET(
         apiSecret
       );
 
-    const redirectUri =
-      "https://virello-ai-optimizer.vercel.app/api/auth/callback";
+    /*
+     * Single canonical Shopify callback route.
+     */
+    const redirectUri = new URL(
+      "/api/auth/shopify/callback",
+      request.nextUrl.origin
+    ).toString();
 
     const scopes =
       process.env.SHOPIFY_SCOPES ||
