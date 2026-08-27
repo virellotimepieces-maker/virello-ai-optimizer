@@ -280,6 +280,10 @@ export async function GET(
 
     /*
      * Store the Shopify access token.
+     *
+     * IMPORTANT:
+     * This remains HttpOnly so client-side
+     * JavaScript cannot read the access token.
      */
     result.cookies.set(
       "virello_shopify_access_token",
@@ -296,11 +300,19 @@ export async function GET(
       }
     );
 
+    /*
+     * Store the connected Shopify shop.
+     *
+     * IMPORTANT:
+     * This cookie must be readable by the
+     * connect page so the frontend can detect
+     * the persisted connected state.
+     */
     result.cookies.set(
       "virello_shopify_shop",
       shop,
       {
-        httpOnly: true,
+        httpOnly: false,
         secure:
           process.env.NODE_ENV ===
           "production",
