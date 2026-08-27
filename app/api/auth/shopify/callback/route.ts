@@ -1,58 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createHmac, timingSafeEqual } from "crypto";
-
-function cleanShopDomain(value: string) {
-  return value
-    .trim()
-    .toLowerCase()
-    .replace(/^https?:\/\//, "")
-    .replace(/\/+$/, "")
-    .replace(/\.myshopify\.com\.myshopify\.com$/, ".myshopify.com");
-}
-
-function verifyOAuthState(state: string, apiSecret: string) {
-  try {
-    const parts = state.split(".");
-
-    if (parts.length !== 2) {
-      return null;
-    }
-
-    const [encodedPayload, receivedSignature] = parts;
-
-    const expectedSignature = createHmac("sha256", apiSecret).update(encodedPayload).digest("base64url");
-
-    const receivedBuffer = Buffer.from(receivedSignature);
-    const expectedBuffer = Buffer.from(expectedSignature);
-
-    if (receivedBuffer.length !== expectedBuffer.length) {
-      return null;
-    }
-
-    if (!timingSafeEqual(receivedBuffer, expectedBuffer)) {
-      return null;
-    }
-
-    const payloadText = Buffer.from(encodedPayload, "base64url").toString("utf8");
-    const payload = JSON.parse(payloadText);
-
-    if (!payload || typeof payload.shop !== "string" || typeof payload.timestamp !== "number") {
-      return null;
-    }
-
-    const age = Date.now() - payload.timestamp;
-
-    if (age < 0 || age > 10 * 60 * 1000) {
-      return null;
-    }
-
-    return {
-      shop: cleanShopDomain(payload.shop),
-    };
-  } catch {
-    return null;
-  }
-}
+import {
+  SHOPIFY_ACCESS_TOKEN_COOKIE,
+  SHOPIFY_OAUTH_NONCE_COOKIE,
+  SHOPIFY_SHOP_COOKIE,
+  cleanShopDomain,
+  getShopifyRedirectUri,
+  isValidShopDomain,
+  verifyOAuthHmac,
+  verifyOAuthState,
+} from "../../../_lib/shopify";
 
 export async function GET(request: NextRequest) {
   try {
@@ -66,13 +22,14 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(
         {
           success: false,
-          error: "Shopify authorization response is incomplete.",
+          error:
+            "Shopify authorization response is incomplete.",
         },
         { status: 400 }
       );
     }
 
-    if (!/^([a-z0-9][a-z0-9-]*[a-z0-9]|[a-z0-9])\.myshopify\.com$/i.test(shop)) {
+    if (!isValidShopDomain(shop)) {
       return NextResponse.json(
         {
           success: false,
@@ -89,15 +46,45 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(
         {
           success: false,
-          error: "SHOPIFY_API_KEY or SHOPIFY_API_SECRET is missing in Vercel.",
+          error:
+            "SHOPIFY_API_KEY or SHOPIFY_API_SECRET is missing in Vercel.",
         },
         { status: 500 }
       );
     }
 
-    const stateData = verifyOAuthState(state, apiSecret);
+    if (!verifyOAuthHmac(params, apiSecret)) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Invalid Shopify OAuth HMAC.",
+        },
+        { status: 400 }
+      );
+    }
 
-    if (!stateData) {
+    const cookieNonce =
+      request.cookies.get(SHOPIFY_OAUTH_NONCE_COOKIE)
+        ?.value || "";
+
+    if (!cookieNonce) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Shopify OAuth state could not be verified.",
+        },
+        { status: 400 }
+      );
+    }
+
+    const stateData = verifyOAuthState(
+      state,
+      apiSecret,
+      cookieNonce
+    );
+
+    if (!stateData || stateData.shop !== shop) {
       return NextResponse.json(
         {
           success: false,
@@ -107,28 +94,23 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    if (stateData.shop !== shop) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: "Shopify OAuth store does not match the original store.",
+    const tokenResponse = await fetch(
+      `https://${shop}/admin/oauth/access_token`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type":
+            "application/x-www-form-urlencoded",
         },
-        { status: 400 }
-      );
-    }
-
-    const tokenResponse = await fetch(`https://${shop}/admin/oauth/access_token`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
-      body: new URLSearchParams({
-        client_id: apiKey,
-        client_secret: apiSecret,
-        code,
-      }).toString(),
-      cache: "no-store",
-    });
+        body: new URLSearchParams({
+          client_id: apiKey,
+          client_secret: apiSecret,
+          code,
+          redirect_uri: getShopifyRedirectUri(),
+        }).toString(),
+        cache: "no-store",
+      }
+    );
 
     const responseText = await tokenResponse.text();
 
@@ -137,11 +119,16 @@ export async function GET(request: NextRequest) {
     try {
       data = JSON.parse(responseText);
     } catch {
-      console.error("SHOPIFY_TOKEN_RESPONSE:", responseText);
+      console.error(
+        "SHOPIFY_TOKEN_RESPONSE:",
+        responseText
+      );
+
       return NextResponse.json(
         {
           success: false,
-          error: "Shopify returned an invalid authorization response.",
+          error:
+            "Shopify returned an invalid authorization response.",
         },
         { status: 502 }
       );
@@ -149,38 +136,60 @@ export async function GET(request: NextRequest) {
 
     if (!tokenResponse.ok || !data?.access_token) {
       console.error("SHOPIFY_TOKEN_ERROR:", data);
+
       return NextResponse.json(
         {
           success: false,
-          error: data?.error_description || data?.error || "Shopify authorization failed.",
+          error:
+            data?.error_description ||
+            data?.error ||
+            "Shopify authorization failed.",
         },
         { status: 400 }
       );
     }
 
-    const accessToken = data.access_token;
+    const redirectUrl = new URL(
+      "/connect",
+      request.url
+    );
 
-    const redirectUrl = new URL("/connect", request.url);
     redirectUrl.searchParams.set("shop", shop);
     redirectUrl.searchParams.set("connected", "1");
 
     const result = NextResponse.redirect(redirectUrl);
 
-    result.cookies.set("virello_shopify_access_token", accessToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      path: "/",
-      maxAge: 60 * 60 * 24 * 30,
-    });
+    result.cookies.set(
+      SHOPIFY_ACCESS_TOKEN_COOKIE,
+      data.access_token,
+      {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        path: "/",
+        maxAge: 60 * 60 * 24 * 30,
+      }
+    );
 
-    result.cookies.set("virello_shopify_shop", shop, {
+    result.cookies.set(SHOPIFY_SHOP_COOKIE, shop, {
       httpOnly: false,
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
       path: "/",
       maxAge: 60 * 60 * 24 * 30,
     });
+
+    result.cookies.set(
+      SHOPIFY_OAUTH_NONCE_COOKIE,
+      "",
+      {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        path: "/",
+        maxAge: 0,
+      }
+    );
 
     return result;
   } catch (error) {
@@ -189,7 +198,10 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(
       {
         success: false,
-        error: error instanceof Error ? error.message : "Unable to complete Shopify connection.",
+        error:
+          error instanceof Error
+            ? error.message
+            : "Unable to complete Shopify connection.",
       },
       { status: 500 }
     );

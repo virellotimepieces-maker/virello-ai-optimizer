@@ -1,36 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createHmac } from "crypto";
-
-function cleanShopDomain(value: string) {
-  return value
-    .trim()
-    .toLowerCase()
-    .replace(/^https?:\/\//, "")
-    .replace(/\/+$/, "")
-    .replace(/(\.myshopify\.com){2,}$/, ".myshopify.com");
-}
-
-function createOAuthState(shop: string, apiSecret: string) {
-  const payload = {
-    shop,
-    timestamp: Date.now(),
-  };
-
-  const encodedPayload = Buffer.from(JSON.stringify(payload)).toString("base64url");
-
-  const signature = createHmac("sha256", apiSecret).update(encodedPayload).digest("base64url");
-
-  return `${encodedPayload}.${signature}`;
-}
+import {
+  SHOPIFY_OAUTH_NONCE_COOKIE,
+  cleanShopDomain,
+  createOAuthState,
+  getShopifyRedirectUri,
+  isValidShopDomain,
+} from "../../_lib/shopify";
 
 export async function GET(request: NextRequest) {
   try {
-    const shop = cleanShopDomain(request.nextUrl.searchParams.get("shop") || "");
+    const shop = cleanShopDomain(
+      request.nextUrl.searchParams.get("shop") || ""
+    );
 
-    if (
-      !shop ||
-      !/^([a-z0-9][a-z0-9-]*[a-z0-9]|[a-z0-9])\.myshopify\.com$/i.test(shop)
-    ) {
+    if (!isValidShopDomain(shop)) {
       return NextResponse.json(
         {
           success: false,
@@ -47,36 +30,61 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(
         {
           success: false,
-          error: "SHOPIFY_API_KEY or SHOPIFY_API_SECRET is missing in Vercel.",
+          error:
+            "SHOPIFY_API_KEY or SHOPIFY_API_SECRET is missing in Vercel.",
         },
         { status: 500 }
       );
     }
 
-    const state = createOAuthState(shop, apiSecret);
+    const { state, nonce } = createOAuthState(
+      shop,
+      apiSecret
+    );
 
-    const redirectUri =
-      process.env.SHOPIFY_REDIRECT_URI ||
-      "https://virello-ai-optimizer.vercel.app/api/auth/shopify/callback";
+    const redirectUri = getShopifyRedirectUri();
 
-    const scopes = process.env.SHOPIFY_SCOPES || "read_products,write_products";
+    const scopes =
+      process.env.SHOPIFY_SCOPES ||
+      "read_products,write_products";
 
-    const params = new URLSearchParams();
-    params.set("client_id", apiKey);
-    params.set("scope", scopes);
-    params.set("redirect_uri", redirectUri);
-    params.set("state", state);
+    const params = new URLSearchParams({
+      client_id: apiKey,
+      scope: scopes,
+      redirect_uri: redirectUri,
+      state,
+    });
 
-    const authorizationUrl = `https://${shop}/admin/oauth/authorize?${params.toString()}`;
+    const authorizationUrl =
+      `https://${shop}/admin/oauth/authorize?${params.toString()}`;
 
-    return NextResponse.redirect(authorizationUrl);
+    const response = NextResponse.redirect(
+      authorizationUrl
+    );
+
+    response.cookies.set(
+      SHOPIFY_OAUTH_NONCE_COOKIE,
+      nonce,
+      {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        path: "/",
+        maxAge: 10 * 60,
+      }
+    );
+
+    return response;
   } catch (error) {
     console.error("SHOPIFY_OAUTH_START_ERROR:", error);
 
     return NextResponse.json(
       {
         success: false,
-        error: error instanceof Error ? error.message : "Unable to start Shopify authorization.",
+        error:
+          error instanceof Error
+            ? error.message
+            : "Unable to start Shopify authorization.",
       },
       { status: 500 }
     );
