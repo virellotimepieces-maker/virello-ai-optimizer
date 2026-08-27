@@ -5,7 +5,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 function verifyShopifyHmac(
-  body: string,
+  body: Buffer,
   hmacHeader: string | null
 ): boolean {
   const secret = process.env.SHOPIFY_API_SECRET;
@@ -14,42 +14,63 @@ function verifyShopifyHmac(
     return false;
   }
 
+  const normalizedHeader = hmacHeader.trim();
   const calculatedHmac = crypto
     .createHmac("sha256", secret)
-    .update(body, "utf8")
-    .digest();
+    .update(body)
+    .digest("base64");
 
-  const receivedHmac = Buffer.from(
-    hmacHeader,
-    "base64"
+  const receivedBuffer = Buffer.from(
+    normalizedHeader,
+    "utf8"
+  );
+  const calculatedBuffer = Buffer.from(
+    calculatedHmac,
+    "utf8"
   );
 
-  if (receivedHmac.length !== calculatedHmac.length) {
+  if (
+    receivedBuffer.length !==
+    calculatedBuffer.length
+  ) {
     return false;
   }
 
   return crypto.timingSafeEqual(
-    receivedHmac,
-    calculatedHmac
+    receivedBuffer,
+    calculatedBuffer
   );
 }
 
 export async function POST(request: Request) {
   try {
-    const body = await request.text();
+    const rawBody = Buffer.from(
+      await request.arrayBuffer()
+    );
 
     const hmacHeader = request.headers.get(
       "x-shopify-hmac-sha256"
     );
 
-    if (!verifyShopifyHmac(body, hmacHeader)) {
+    if (
+      !verifyShopifyHmac(
+        rawBody,
+        hmacHeader
+      )
+    ) {
       console.error(
         "Shopify webhook HMAC verification failed"
       );
 
-      return NextResponse.json(
-        { error: "Unauthorized" },
-        { status: 401 }
+      return new NextResponse(
+        "Unauthorized",
+        {
+          status: 401,
+          headers: {
+            "Content-Type":
+              "text/plain; charset=utf-8",
+          },
+        }
       );
     }
 
@@ -67,20 +88,21 @@ export async function POST(request: Request) {
       } from ${shop ?? "unknown"}`
     );
 
-    switch (topic) {
-      case "customers/data_request":
-      case "customers/redact":
-      case "shop/redact":
-        break;
-
-      default:
-        break;
+    if (
+      topic !== "customers/data_request" &&
+      topic !== "customers/redact" &&
+      topic !== "shop/redact"
+    ) {
+      return new NextResponse(null, {
+        status: 200,
+      });
     }
 
-    return NextResponse.json(
-      { success: true },
-      { status: 200 }
-    );
+    JSON.parse(rawBody.toString("utf8"));
+
+    return new NextResponse(null, {
+      status: 200,
+    });
   } catch (error) {
     console.error(
       "Webhook processing failed:",
