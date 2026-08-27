@@ -99,16 +99,6 @@ export default function ConnectPage() {
     const cleanedShop =
       cleanShopDomain(shopParam);
 
-    /*
-     * IMPORTANT:
-     * Shopify callback redirects here with:
-     *
-     * /connect?shop=STORE.myshopify.com&connected=1
-     *
-     * When that happens we immediately show the
-     * connected state instead of showing the
-     * domain-entry screen again.
-     */
     if (
       connectedParam === "1" &&
       isValidShopifyDomain(cleanedShop)
@@ -118,10 +108,6 @@ export default function ConnectPage() {
       setShop(cleanedShop);
       setSelected("shopify");
 
-      /*
-       * Remove OAuth query parameters from the
-       * browser URL without navigating/reloading.
-       */
       window.history.replaceState(
         {},
         "",
@@ -131,9 +117,6 @@ export default function ConnectPage() {
       return;
     }
 
-    /*
-     * If Shopify returned an error, display it.
-     */
     if (statusParam === "error") {
       setMessage(
         errorParam ||
@@ -152,11 +135,6 @@ export default function ConnectPage() {
       return;
     }
 
-    /*
-     * If a shop parameter exists but the
-     * connection isn't complete yet, keep it
-     * in the input.
-     */
     if (isValidShopifyDomain(cleanedShop)) {
       setShop(cleanedShop);
       setSelected("shopify");
@@ -201,14 +179,22 @@ export default function ConnectPage() {
     setMessage("");
 
     /*
-     * Use the current browser window.
-     * This prevents Shopify from opening the
-     * authorization flow inside the embedded
-     * Virello frame.
+     * IMPORTANT:
+     *
+     * Shopify Admin can load the Virello app
+     * inside an embedded context.
+     *
+     * OAuth authorization must be opened at
+     * the top-level browser window so Shopify
+     * does not block the response.
      */
-    window.location.assign(
-      shopifyOAuthUrl
-    );
+    if (window.top) {
+      window.top.location.href =
+        shopifyOAuthUrl;
+    } else {
+      window.location.href =
+        shopifyOAuthUrl;
+    }
   }
 
   async function startCheckout() {
@@ -259,12 +245,8 @@ export default function ConnectPage() {
    * --------------------------------------------------
    * CONNECTED STATE
    * --------------------------------------------------
-   *
-   * This is the important part.
-   *
-   * Once Shopify sends connected=1, the user will
-   * NOT see the platform/domain form again.
    */
+
   if (connected) {
     return (
       <main className="app-shell">
