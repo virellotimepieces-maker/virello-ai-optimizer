@@ -87,21 +87,15 @@ export async function GET(
       );
     }
 
-    /*
-     * Create a signed OAuth state.
-     * This matches the callback route.
-     */
     const state =
       createOAuthState(
         shop,
         apiSecret
       );
 
-    /*
-     * Canonical Shopify callback route.
-     */
+    // IMPORTANT: must match Shopify whitelisted URL exactly
     const redirectUri = new URL(
-      "/api/auth/shopify/callback",
+      "/api/auth/callback",
       request.nextUrl.origin
     ).toString();
 
