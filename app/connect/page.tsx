@@ -529,6 +529,8 @@ export default function ConnectPage() {
                 {shopifyDomainIsValid ? (
                   <a
                     href={shopifyOAuthUrl}
+                    target="_top"
+                    rel="noopener noreferrer"
                     className="generate-button continue-button oauth-link"
                   >
                     Connect Store
@@ -552,9 +554,9 @@ export default function ConnectPage() {
 
               <p className="oauth-note">
                 Shopify authorization will open
-                from the Virello application.
-                After approval, Shopify will
-                return you to Virello.
+                outside the embedded Virello
+                window. After approval, Shopify
+                will return you to Virello.
               </p>
             </section>
           )}
