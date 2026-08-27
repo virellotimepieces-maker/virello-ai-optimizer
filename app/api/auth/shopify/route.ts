@@ -23,6 +23,27 @@ function createOAuthState(shop: string, apiSecret: string) {
   return `${encodedPayload}.${signature}`;
 }
 
+function resolveAppOrigin(request: NextRequest) {
+  const configuredUrl =
+    process.env.SHOPIFY_APP_URL ||
+    process.env.NEXT_PUBLIC_APP_URL ||
+    process.env.APP_URL;
+
+  if (configuredUrl) {
+    const normalizedUrl = /^https?:\/\//i.test(configuredUrl)
+      ? configuredUrl
+      : `https://${configuredUrl}`;
+
+    try {
+      return new URL(normalizedUrl).origin;
+    } catch {
+      // Fall through to request origin.
+    }
+  }
+
+  return request.nextUrl.origin;
+}
+
 export async function GET(request: NextRequest) {
   try {
     const shop = cleanShopDomain(request.nextUrl.searchParams.get("shop") || "");
@@ -55,7 +76,10 @@ export async function GET(request: NextRequest) {
 
     const state = createOAuthState(shop, apiSecret);
 
-    const redirectUri = new URL("/api/auth/shopify/callback", request.nextUrl.origin).toString();
+    const redirectUri = new URL(
+      "/api/auth/shopify/callback",
+      resolveAppOrigin(request)
+    ).toString();
 
     const scopes = process.env.SHOPIFY_SCOPES || "read_products,write_products";
 

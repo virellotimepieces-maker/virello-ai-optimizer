@@ -7,7 +7,10 @@ function cleanShopDomain(value: string) {
     .toLowerCase()
     .replace(/^https?:\/\//, "")
     .replace(/\/+$/, "")
-    .replace(/\.myshopify\.com\.myshopify\.com$/, ".myshopify.com");
+    .replace(
+      /(\.myshopify\.com){2,}$/,
+      ".myshopify.com"
+    );
 }
 
 function verifyOAuthState(state: string, apiSecret: string) {
@@ -54,6 +57,54 @@ function verifyOAuthState(state: string, apiSecret: string) {
   }
 }
 
+function verifyShopifyCallbackHmac(
+  request: NextRequest,
+  apiSecret: string
+) {
+  const params = new URLSearchParams(
+    request.nextUrl.search
+  );
+
+  const hmac = params.get("hmac") || "";
+
+  if (!hmac) {
+    return false;
+  }
+
+  params.delete("hmac");
+  params.delete("signature");
+
+  const message = Array.from(
+    params.entries()
+  )
+    .sort(([keyA], [keyB]) =>
+      keyA.localeCompare(keyB)
+    )
+    .map(
+      ([key, value]) => `${key}=${value}`
+    )
+    .join("&");
+
+  const digest = createHmac(
+    "sha256",
+    apiSecret
+  )
+    .update(message)
+    .digest("hex");
+
+  const provided = Buffer.from(hmac, "utf8");
+  const expected = Buffer.from(
+    digest,
+    "utf8"
+  );
+
+  if (provided.length !== expected.length) {
+    return false;
+  }
+
+  return timingSafeEqual(provided, expected);
+}
+
 export async function GET(request: NextRequest) {
   try {
     const params = request.nextUrl.searchParams;
@@ -92,6 +143,22 @@ export async function GET(request: NextRequest) {
           error: "SHOPIFY_API_KEY or SHOPIFY_API_SECRET is missing in Vercel.",
         },
         { status: 500 }
+      );
+    }
+
+    if (
+      !verifyShopifyCallbackHmac(
+        request,
+        apiSecret
+      )
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Invalid Shopify OAuth callback signature.",
+        },
+        { status: 400 }
       );
     }
 
