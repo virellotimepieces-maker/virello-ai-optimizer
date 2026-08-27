@@ -201,7 +201,7 @@ export default function ConnectPage() {
 
   const shopifyOAuthUrl =
     shopifyDomainIsValid
-      ? `/api/auth/shopify?shop=${encodeURIComponent(
+      ? `https://virello-ai-optimizer.vercel.app/api/auth/shopify?shop=${encodeURIComponent(
           cleanShop
         )}`
       : "";
