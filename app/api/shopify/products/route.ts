@@ -108,6 +108,160 @@ async function exchangeToken(
   return data.access_token as string;
 }
 
+export async function GET(
+  request: NextRequest
+) {
+  try {
+    const cookieAccessToken =
+      request.cookies.get(
+        "virello_shopify_access_token"
+      )?.value || "";
+
+    const cookieShop =
+      request.cookies.get(
+        "virello_shopify_shop"
+      )?.value || "";
+
+    if (!cookieAccessToken || !cookieShop) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Shopify connection is missing. Please reconnect your Shopify store.",
+        },
+        { status: 401 }
+      );
+    }
+
+    const query = `
+      query GetProducts($first: Int!) {
+        products(first: $first) {
+          edges {
+            node {
+              id
+              title
+              description
+              productType
+              tags
+              status
+              vendor
+              featuredImage {
+                url
+                altText
+              }
+              images(first: 10) {
+                edges {
+                  node {
+                    url
+                    altText
+                  }
+                }
+              }
+              priceRangeV2 {
+                minVariantPrice {
+                  amount
+                  currencyCode
+                }
+              }
+            }
+          }
+        }
+      }
+    `;
+
+    const response = await fetch(
+      `https://${cookieShop}/admin/api/${SHOPIFY_API_VERSION}/graphql.json`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Shopify-Access-Token":
+            cookieAccessToken,
+        },
+        body: JSON.stringify({
+          query,
+          variables: { first: 250 },
+        }),
+        cache: "no-store",
+      }
+    );
+
+    const text = await response.text();
+
+    let data: any;
+
+    try {
+      data = JSON.parse(text);
+    } catch {
+      throw new Error(
+        `Shopify returned a non-JSON response (${response.status}).`
+      );
+    }
+
+    if (!response.ok) {
+      const httpMsg =
+        data?.error ||
+        data?.message ||
+        data?.errors?.[0]?.message ||
+        `Shopify API request failed (${response.status}).`;
+      throw new Error(httpMsg);
+    }
+
+    if (data?.errors?.length) {
+      throw new Error(
+        data.errors
+          .map((e: any) => e.message)
+          .join("; ")
+      );
+    }
+
+    const edges: any[] =
+      data?.data?.products?.edges ?? [];
+
+    const products = edges.map(
+      ({ node }: any) => ({
+        id: node.id,
+        title: node.title,
+        description: node.description,
+        productType: node.productType,
+        tags: node.tags,
+        status: node.status,
+        vendor: node.vendor,
+        price:
+          node.priceRangeV2
+            ?.minVariantPrice?.amount,
+        featuredImage:
+          node.featuredImage ?? null,
+        images:
+          node.images?.edges?.map(
+            (e: any) => e.node
+          ) ?? [],
+      })
+    );
+
+    return NextResponse.json({
+      success: true,
+      products,
+    });
+  } catch (error) {
+    console.error(
+      "SHOPIFY_GET_PRODUCTS_ERROR:",
+      error
+    );
+
+    return NextResponse.json(
+      {
+        success: false,
+        error:
+          error instanceof Error
+            ? error.message
+            : "Unable to load products from Shopify.",
+      },
+      { status: 500 }
+    );
+  }
+}
+
 export async function POST(
   request: NextRequest
 ) {
