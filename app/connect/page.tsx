@@ -78,9 +78,6 @@ export default function ConnectPage() {
   const [message, setMessage] =
     useState("");
 
-  const [connecting, setConnecting] =
-    useState(false);
-
   const [checkoutLoading, setCheckoutLoading] =
     useState(false);
 
@@ -158,6 +155,12 @@ export default function ConnectPage() {
       cleanShop
     );
 
+  /*
+   * SHOPIFY OAUTH URL
+   *
+   * This points to our server-side
+   * Shopify OAuth start route.
+   */
   const shopifyOAuthUrl =
     shopifyDomainIsValid
       ? `/api/auth/shopify?shop=${encodeURIComponent(
@@ -178,41 +181,40 @@ export default function ConnectPage() {
     }
   }
 
+  /*
+   * START SHOPIFY OAUTH
+   *
+   * IMPORTANT:
+   *
+   * Do NOT use:
+   * - fetch()
+   * - target="_blank"
+   * - router.push()
+   * - an iframe navigation
+   *
+   * Shopify authorization must begin
+   * from the top-level browser page.
+   */
   function connectShopify() {
     if (
-      connecting ||
       !shopifyDomainIsValid
     ) {
       return;
     }
 
-    setConnecting(true);
     setMessage("");
-
-    /*
-     * IMPORTANT:
-     *
-     * Shopify OAuth must run at the
-     * top-level browser window.
-     *
-     * Do not use target="_blank".
-     * Do not use fetch().
-     * Do not use router.push().
-     */
 
     const absoluteUrl =
       new URL(
-        shopifyOAuthUrl,
+        `/api/auth/shopify?shop=${encodeURIComponent(
+          cleanShop
+        )}`,
         window.location.origin
       ).toString();
 
-    if (window.top) {
-      window.top.location.href =
-        absoluteUrl;
-    } else {
-      window.location.href =
-        absoluteUrl;
-    }
+    window.location.assign(
+      absoluteUrl
+    );
   }
 
   async function startCheckout() {
@@ -378,6 +380,7 @@ export default function ConnectPage() {
                   <strong>
                     1. Connect
                   </strong>
+
                   <p>
                     Your Shopify store
                     is connected.
@@ -388,6 +391,7 @@ export default function ConnectPage() {
                   <strong>
                     2. Import
                   </strong>
+
                   <p>
                     Bring your product
                     information into
@@ -399,6 +403,7 @@ export default function ConnectPage() {
                   <strong>
                     3. Optimize
                   </strong>
+
                   <p>
                     Generate improved
                     product content
@@ -410,6 +415,7 @@ export default function ConnectPage() {
                   <strong>
                     4. Apply
                   </strong>
+
                   <p>
                     Send approved
                     content back to
@@ -608,16 +614,13 @@ export default function ConnectPage() {
                   type="button"
                   className="generate-button continue-button"
                   disabled={
-                    !shopifyDomainIsValid ||
-                    connecting
+                    !shopifyDomainIsValid
                   }
                   onClick={
                     connectShopify
                   }
                 >
-                  {connecting
-                    ? "Opening Shopify..."
-                    : "Connect Store"}
+                  Connect Store
                 </button>
               </div>
 
@@ -701,6 +704,7 @@ export default function ConnectPage() {
                 <strong>
                   1. Connect
                 </strong>
+
                 <p>
                   Connect your
                   ecommerce platform.
@@ -711,6 +715,7 @@ export default function ConnectPage() {
                 <strong>
                   2. Import
                 </strong>
+
                 <p>
                   Bring product
                   information into
@@ -722,6 +727,7 @@ export default function ConnectPage() {
                 <strong>
                   3. Optimize
                 </strong>
+
                 <p>
                   Generate improved
                   product content with
@@ -733,6 +739,7 @@ export default function ConnectPage() {
                 <strong>
                   4. Apply
                 </strong>
+
                 <p>
                   Send approved
                   content back to the
@@ -816,6 +823,10 @@ const styles = `
     white-space: nowrap;
   }
 
+  .subscribe-button:hover {
+    background: #292d34;
+  }
+
   .subscribe-button:disabled {
     opacity: 0.55;
     cursor: wait;
@@ -878,7 +889,9 @@ const styles = `
     border: 1px solid #e0e3e7;
     border-radius: 22px;
     background: #ffffff;
-    box-shadow: 0 12px 30px rgba(17, 19, 24, 0.04);
+    box-shadow:
+      0 12px 30px
+      rgba(17, 19, 24, 0.04);
   }
 
   .content-card h2 {
@@ -916,11 +929,21 @@ const styles = `
     gap: 20px;
     text-align: left;
     cursor: pointer;
+    transition:
+      border-color 0.15s ease,
+      box-shadow 0.15s ease,
+      background 0.15s ease;
+  }
+
+  .platform-card:hover {
+    border-color: #bfc4ca;
   }
 
   .platform-card.selected {
     border-color: #111318;
-    box-shadow: 0 8px 20px rgba(17, 19, 24, 0.06);
+    box-shadow:
+      0 8px 20px
+      rgba(17, 19, 24, 0.06);
   }
 
   .platform-icon {
@@ -995,7 +1018,13 @@ const styles = `
 
   .form-group input:focus {
     border-color: #111318;
-    box-shadow: 0 0 0 3px rgba(17, 19, 24, 0.08);
+    box-shadow:
+      0 0 0 3px
+      rgba(17, 19, 24, 0.08);
+  }
+
+  .form-group input::placeholder {
+    color: #9ca1a8;
   }
 
   .generate-button {
@@ -1009,6 +1038,10 @@ const styles = `
     font-weight: 850;
     cursor: pointer;
     text-decoration: none;
+  }
+
+  .generate-button:hover {
+    background: #292d34;
   }
 
   .generate-button:disabled {
@@ -1057,6 +1090,12 @@ const styles = `
     font-weight: 900;
   }
 
+  .success-card h2 {
+    margin: 12px 0 10px;
+    font-size: 28px;
+    letter-spacing: -0.03em;
+  }
+
   .success-card > p {
     color: #747a82;
     line-height: 1.6;
@@ -1096,7 +1135,8 @@ const styles = `
 
   .flow-grid {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns:
+      repeat(2, minmax(0, 1fr));
     gap: 12px;
   }
 
