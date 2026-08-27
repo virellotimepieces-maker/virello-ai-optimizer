@@ -55,7 +55,7 @@ export async function GET(request: NextRequest) {
 
     const state = createOAuthState(shop, apiSecret);
 
-    const redirectUri = new URL("/api/auth/shopify/callback", request.nextUrl.origin).toString();
+    const redirectUri = "https://virello-ai-optimizer.vercel.app/api/auth/shopify/callback";
 
     const scopes = process.env.SHOPIFY_SCOPES || "read_products,write_products";
 
