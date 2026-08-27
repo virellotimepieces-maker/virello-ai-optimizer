@@ -4,8 +4,14 @@ import crypto from "crypto";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+const REQUIRED_TOPICS = new Set([
+  "customers/data_request",
+  "customers/redact",
+  "shop/redact",
+]);
+
 function verifyShopifyHmac(
-  body: string,
+  rawBody: Buffer,
   hmacHeader: string | null
 ): boolean {
   const secret = process.env.SHOPIFY_API_SECRET;
@@ -16,7 +22,7 @@ function verifyShopifyHmac(
 
   const calculatedHmac = crypto
     .createHmac("sha256", secret)
-    .update(body, "utf8")
+    .update(rawBody)
     .digest();
 
   const receivedHmac = Buffer.from(
@@ -36,13 +42,15 @@ function verifyShopifyHmac(
 
 export async function POST(request: Request) {
   try {
-    const body = await request.text();
+    const rawBody = Buffer.from(
+      await request.arrayBuffer()
+    );
 
     const hmacHeader = request.headers.get(
       "x-shopify-hmac-sha256"
     );
 
-    if (!verifyShopifyHmac(body, hmacHeader)) {
+    if (!verifyShopifyHmac(rawBody, hmacHeader)) {
       console.error(
         "Shopify webhook HMAC verification failed"
       );
@@ -61,21 +69,31 @@ export async function POST(request: Request) {
       "x-shopify-shop-domain"
     );
 
+    let payload: any = null;
+
+    try {
+      payload = JSON.parse(rawBody.toString("utf8"));
+    } catch {
+      payload = null;
+    }
+
+    if (topic && REQUIRED_TOPICS.has(topic)) {
+      console.log(
+        `Processed compliance webhook ${topic} from ${shop ?? "unknown"}`,
+        payload?.id ? { id: payload.id } : undefined
+      );
+
+      return NextResponse.json(
+        { success: true },
+        { status: 200 }
+      );
+    }
+
     console.log(
       `Received verified Shopify webhook: ${
         topic ?? "unknown"
       } from ${shop ?? "unknown"}`
     );
-
-    switch (topic) {
-      case "customers/data_request":
-      case "customers/redact":
-      case "shop/redact":
-        break;
-
-      default:
-        break;
-    }
 
     return NextResponse.json(
       { success: true },

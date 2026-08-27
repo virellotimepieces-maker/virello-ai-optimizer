@@ -1,4 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
+import { ApiError } from "../../_lib/shopify";
+import {
+  authorizeSubscriberForAI,
+  clearSubscriberCookie,
+  setSubscriberCookie,
+} from "../../_lib/subscriber";
 
 export const runtime = "nodejs";
 
@@ -470,6 +476,11 @@ export async function POST(
   request: NextRequest
 ) {
   try {
+    const subscriber =
+      await authorizeSubscriberForAI(
+        request
+      );
+
     const apiKey =
       process.env.OPENAI_API_KEY;
 
@@ -969,7 +980,7 @@ Return the complete structured optimization.
               "application/json",
 
             Authorization:
-              `Bearer ${apiKey}`,
+              "Bearer " + apiKey,
           },
 
           body: JSON.stringify({
@@ -1361,11 +1372,12 @@ Return the complete structured optimization.
         ) / 5
       );
 
-    return NextResponse.json(
+    const response = NextResponse.json(
       {
         success: true,
         audience,
         result,
+        usage: subscriber.usage,
       },
       {
         status: 200,
@@ -1373,10 +1385,45 @@ Return the complete structured optimization.
         headers: {
           "Cache-Control":
             "no-store",
+          "X-Virello-Usage-Limit":
+            String(
+              subscriber.usage.limit
+            ),
+          "X-Virello-Usage-Used":
+            String(
+              subscriber.usage.used
+            ),
+          "X-Virello-Usage-Remaining":
+            String(
+              subscriber.usage.remaining
+            ),
         },
       }
     );
+
+    setSubscriberCookie(
+      response,
+      subscriber.cookieValue
+    );
+
+    return response;
   } catch (error) {
+    if (error instanceof ApiError) {
+      const response = NextResponse.json(
+        {
+          success: false,
+          error: error.message,
+        },
+        { status: error.status }
+      );
+
+      if (error.status === 401) {
+        clearSubscriberCookie(response);
+      }
+
+      return response;
+    }
+
     console.error(
       "Virello AI analysis error:",
       error

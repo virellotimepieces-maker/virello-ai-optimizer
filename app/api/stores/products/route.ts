@@ -7,13 +7,44 @@ type Platform =
   | "wix";
 
 function getPlatform(request: NextRequest) {
-  const value =
-    request.nextUrl.searchParams
-      .get("platform")
-      ?.trim()
-      .toLowerCase();
+  const value = request.nextUrl.searchParams
+    .get("platform")
+    ?.trim()
+    .toLowerCase();
 
   return value as Platform | null;
+}
+
+function forwardAuthHeaders(request: NextRequest) {
+  const headers = new Headers();
+
+  const authorization =
+    request.headers.get("authorization");
+
+  const sessionToken = request.headers.get(
+    "x-shopify-session-token"
+  );
+
+  const shop = request.headers.get("x-shopify-shop");
+  const cookie = request.headers.get("cookie");
+
+  if (authorization) {
+    headers.set("authorization", authorization);
+  }
+
+  if (sessionToken) {
+    headers.set("x-shopify-session-token", sessionToken);
+  }
+
+  if (shop) {
+    headers.set("x-shopify-shop", shop);
+  }
+
+  if (cookie) {
+    headers.set("cookie", cookie);
+  }
+
+  return headers;
 }
 
 export async function GET(request: NextRequest) {
@@ -53,104 +84,104 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    /*
-     * IMPORTANT:
-     *
-     * The existing Shopify product API is NOT changed.
-     * This universal endpoint only provides the platform
-     * layer that we will expand with additional connectors.
-     */
-
     if (platform === "shopify") {
-      const authorization =
-        request.headers.get("authorization");
+      const headers = forwardAuthHeaders(request);
+      const baseUrl = request.nextUrl.origin;
 
-      const sessionToken =
-        request.headers.get(
-          "x-shopify-session-token"
+      const products: any[] = [];
+      let cursor: string | null = null;
+      let hasNextPage = true;
+      let pages = 0;
+
+      while (hasNextPage && pages < 20) {
+        const url = new URL(
+          "/api/shopify/products",
+          baseUrl
         );
 
-      const shop =
-        request.headers.get("x-shopify-shop");
+        url.searchParams.set("limit", "250");
 
-      if (!authorization && !sessionToken) {
-        return NextResponse.json(
-          {
-            success: false,
-            platform: "shopify",
-            connected: false,
-            error:
-              "Shopify session token is required.",
-          },
-          {
-            status: 401,
-            headers: {
-              "X-Shopify-Retry-Invalid-Session-Request":
-                "1",
-            },
-          }
-        );
-      }
+        if (cursor) {
+          url.searchParams.set("cursor", cursor);
+        }
 
-      const headers = new Headers();
-
-      if (authorization) {
-        headers.set(
-          "authorization",
-          authorization
-        );
-      }
-
-      if (sessionToken) {
-        headers.set(
-          "x-shopify-session-token",
-          sessionToken
-        );
-      }
-
-      if (shop) {
-        headers.set(
-          "x-shopify-shop",
-          shop
-        );
-      }
-
-      const origin =
-        request.headers.get("origin") ||
-        new URL(request.url).origin;
-
-      const response = await fetch(
-        `${origin}/api/shopify/products`,
-        {
+        const response = await fetch(url.toString(), {
           method: "GET",
           headers,
           cache: "no-store",
-        }
-      );
+        });
 
-      const data = await response.json();
+        const data = await response.json();
+
+        if (!response.ok || !data?.success) {
+          const errorResponse = NextResponse.json(
+            {
+              success: false,
+              platform: "shopify",
+              connected: false,
+              error:
+                data?.error ||
+                "Unable to load Shopify products.",
+            },
+            {
+              status: response.status,
+              headers: {
+                "X-Virello-Platform": "shopify",
+              },
+            }
+          );
+
+          const retry = response.headers.get(
+            "X-Shopify-Retry-Invalid-Session-Request"
+          );
+
+          if (retry) {
+            errorResponse.headers.set(
+              "X-Shopify-Retry-Invalid-Session-Request",
+              retry
+            );
+          }
+
+          return errorResponse;
+        }
+
+        const pageProducts = Array.isArray(data.products)
+          ? data.products
+          : [];
+
+        products.push(...pageProducts);
+
+        hasNextPage = Boolean(
+          data?.pagination?.hasNextPage
+        );
+
+        cursor =
+          typeof data?.pagination?.endCursor === "string"
+            ? data.pagination.endCursor
+            : null;
+
+        pages += 1;
+      }
 
       return NextResponse.json(
         {
-          ...data,
+          success: true,
           platform: "shopify",
+          connected: true,
+          products,
+          pagination: {
+            hasNextPage,
+            endCursor: cursor,
+            pagesFetched: pages,
+          },
         },
         {
-          status: response.status,
           headers: {
             "X-Virello-Platform": "shopify",
           },
         }
       );
     }
-
-    /*
-     * These connectors are intentionally not connected yet.
-     *
-     * We will add their real authentication and product
-     * APIs one platform at a time without modifying the
-     * existing Shopify implementation.
-     */
 
     return NextResponse.json(
       {

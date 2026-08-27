@@ -1,88 +1,40 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import {
+  ApiError,
+} from "../../_lib/shopify";
+import {
+  buildSubscriberCookieValue,
+  clearSubscriberCookie,
+  createStripeCheckoutSession,
+  getCheckoutSubscription,
+  setSubscriberCookie,
+} from "../../_lib/subscriber";
 
-export async function POST(request: Request) {
+function getRequestOrigin(request: NextRequest): string {
+  return new URL(request.url).origin;
+}
+
+export async function POST(request: NextRequest) {
   try {
-    const secretKey = process.env.STRIPE_SECRET_KEY;
-    const priceId = process.env.STRIPE_PRICE_ID;
-
-    if (!secretKey) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: "STRIPE_SECRET_KEY is not configured.",
-        },
-        { status: 500 }
-      );
-    }
-
-    if (!priceId) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: "STRIPE_PRICE_ID is not configured.",
-        },
-        { status: 500 }
-      );
-    }
-
-    const origin =
-      request.headers.get("origin") ||
-      new URL(request.url).origin;
-
-    const body = new URLSearchParams();
-
-    body.append("mode", "subscription");
-    body.append("line_items[0][price]", priceId);
-    body.append("line_items[0][quantity]", "1");
-
-    body.append(
-      "success_url",
-      `${origin}/?checkout=success`
+    const checkoutUrl = await createStripeCheckoutSession(
+      getRequestOrigin(request)
     );
-
-    body.append(
-      "cancel_url",
-      `${origin}/?checkout=cancelled`
-    );
-
-    body.append(
-      "billing_address_collection",
-      "auto"
-    );
-
-    const response = await fetch(
-      "https://api.stripe.com/v1/checkout/sessions",
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${secretKey}`,
-          "Content-Type":
-            "application/x-www-form-urlencoded",
-        },
-        body,
-        cache: "no-store",
-      }
-    );
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            data?.error?.message ||
-            "Unable to create Stripe checkout session.",
-        },
-        { status: response.status }
-      );
-    }
 
     return NextResponse.json({
       success: true,
-      url: data.url,
+      url: checkoutUrl,
     });
   } catch (error) {
+    if (error instanceof ApiError) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: error.message,
+        },
+        { status: error.status }
+      );
+    }
+
     console.error("Stripe checkout error:", error);
 
     return NextResponse.json(
@@ -92,5 +44,56 @@ export async function POST(request: Request) {
       },
       { status: 500 }
     );
+  }
+}
+
+export async function GET(request: NextRequest) {
+  const sessionId =
+    request.nextUrl.searchParams.get("session_id") ||
+    "";
+
+  if (!sessionId) {
+    return NextResponse.redirect(
+      new URL("/?checkout=cancelled", request.url)
+    );
+  }
+
+  try {
+    const subscription = await getCheckoutSubscription(
+      sessionId
+    );
+
+    const cookieValue =
+      buildSubscriberCookieValue(subscription);
+
+    const redirectUrl = new URL(
+      "/?checkout=success",
+      request.url
+    );
+
+    const response = NextResponse.redirect(redirectUrl);
+
+    setSubscriberCookie(response, cookieValue);
+
+    return response;
+  } catch (error) {
+    const message =
+      error instanceof ApiError
+        ? error.message
+        : "Unable to verify subscription checkout.";
+
+    const redirectUrl = new URL(
+      "/connect",
+      request.url
+    );
+
+    redirectUrl.searchParams.set("status", "error");
+    redirectUrl.searchParams.set("error", message);
+
+    const response = NextResponse.redirect(redirectUrl);
+
+    clearSubscriberCookie(response);
+
+    return response;
   }
 }
