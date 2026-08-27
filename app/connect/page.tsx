@@ -529,7 +529,7 @@ export default function ConnectPage() {
                 {shopifyDomainIsValid ? (
                   <a
                     href={shopifyOAuthUrl}
-                    target="_top"
+                    target="_blank"
                     rel="noopener noreferrer"
                     className="generate-button continue-button oauth-link"
                   >
