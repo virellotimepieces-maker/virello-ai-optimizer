@@ -116,6 +116,28 @@ export default function ConnectPage() {
       errorParam
     ) {
       setMessage(errorParam);
+
+      const cleanedParams =
+        new URLSearchParams(
+          window.location.search
+        );
+
+      cleanedParams.delete("status");
+      cleanedParams.delete("error");
+      cleanedParams.delete(
+        "error_description"
+      );
+
+      const nextQuery =
+        cleanedParams.toString();
+
+      window.history.replaceState(
+        {},
+        "",
+        nextQuery
+          ? `/connect?${nextQuery}`
+          : "/connect"
+      );
     }
   }, []);
 
