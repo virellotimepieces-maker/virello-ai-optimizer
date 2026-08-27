@@ -138,11 +138,8 @@ export default function ConnectPage() {
           )
         );
 
-      const cookieToken = readCookie(
-        "virello_shopify_access_token"
-      );
-
-      if (cookieShop && cookieToken) {
+      // access token cookie is HttpOnly and cannot be read in client JS
+      if (cookieShop) {
         setConnected(true);
         setConnectedShop(cookieShop);
         setShop(cookieShop);
@@ -813,31 +810,7 @@ export default function ConnectPage() {
 
         </div>
 
-      </header>
-
-      <section className="hero">
-
-        <div className="hero-inner">
-
-          <div className="eyebrow">
-            CONNECT YOUR STORE
-          </div>
-
-          <h1>
-            Optimize products from
-            <span> any store.</span>
-          </h1>
-
-          <p>
-            Connect your ecommerce platform,
-            import your products, optimize them
-            with Virello AI, and prepare improved
-            listings for your store.
-          </p>
-
-        </div>
-
-      </section>
+      </ </section>
 
       <section className="workspace">
 
