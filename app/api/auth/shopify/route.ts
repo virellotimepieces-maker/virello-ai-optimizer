@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createHmac, randomBytes } from "crypto";
+import { randomBytes } from "crypto";
 
 function cleanShopDomain(value: string) {
   return value
     .trim()
     .toLowerCase()
     .replace(/^https?:\/\//, "")
+    .replace(/^www\./, "")
     .replace(/\/+$/, "")
     .replace(/(\.myshopify\.com){2,}$/, ".myshopify.com");
 }
@@ -14,28 +15,6 @@ function isValidShopDomain(shop: string) {
   return /^([a-z0-9][a-z0-9-]*[a-z0-9]|[a-z0-9])\.myshopify\.com$/i.test(
     shop
   );
-}
-
-function createOAuthState(shop: string, apiSecret: string) {
-  const payload = {
-    shop,
-    nonce: randomBytes(16).toString("hex"),
-    timestamp: Date.now(),
-  };
-
-  const encodedPayload = Buffer.from(
-    JSON.stringify(payload),
-    "utf8"
-  ).toString("base64url");
-
-  const signature = createHmac(
-    "sha256",
-    apiSecret
-  )
-    .update(encodedPayload)
-    .digest("base64url");
-
-  return `${encodedPayload}.${signature}`;
 }
 
 export async function GET(request: NextRequest) {
@@ -57,13 +36,8 @@ export async function GET(request: NextRequest) {
     }
 
     const apiKey = process.env.SHOPIFY_API_KEY;
-    const apiSecret = process.env.SHOPIFY_API_SECRET;
 
     if (!apiKey) {
-      console.error(
-        "SHOPIFY_API_KEY is missing."
-      );
-
       return NextResponse.json(
         {
           success: false,
@@ -74,20 +48,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    if (!apiSecret) {
-      console.error(
-        "SHOPIFY_API_SECRET is missing."
-      );
-
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "SHOPIFY_API_SECRET is missing in Vercel Environment Variables.",
-        },
-        { status: 500 }
-      );
-    }
+    const state = randomBytes(32).toString("hex");
 
     const redirectUri =
       process.env.SHOPIFY_REDIRECT_URI ||
@@ -97,21 +58,43 @@ export async function GET(request: NextRequest) {
       process.env.SHOPIFY_SCOPES ||
       "read_products,write_products";
 
-    const state = createOAuthState(
-      shop,
-      apiSecret
-    );
-
-    const params = new URLSearchParams();
-
-    params.set("client_id", apiKey);
-    params.set("scope", scopes);
-    params.set("redirect_uri", redirectUri);
-    params.set("state", state);
+    const params = new URLSearchParams({
+      client_id: apiKey,
+      scope: scopes,
+      redirect_uri: redirectUri,
+      state,
+    });
 
     const authorizationUrl =
-      `https://${shop}/admin/oauth/authorize?` +
-      params.toString();
+      `https://${shop}/admin/oauth/authorize?${params.toString()}`;
+
+    const response = NextResponse.redirect(
+      authorizationUrl
+    );
+
+    response.cookies.set(
+      "virello_shopify_oauth_state",
+      state,
+      {
+        httpOnly: true,
+        secure: true,
+        sameSite: "lax",
+        path: "/",
+        maxAge: 600,
+      }
+    );
+
+    response.cookies.set(
+      "virello_shopify_oauth_shop",
+      shop,
+      {
+        httpOnly: true,
+        secure: true,
+        sameSite: "lax",
+        path: "/",
+        maxAge: 600,
+      }
+    );
 
     console.log(
       "SHOPIFY_OAUTH_START",
@@ -122,9 +105,7 @@ export async function GET(request: NextRequest) {
       }
     );
 
-    return NextResponse.redirect(
-      authorizationUrl
-    );
+    return response;
   } catch (error) {
     console.error(
       "SHOPIFY_OAUTH_START_ERROR:",
