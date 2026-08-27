@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { resolveShopDomain } from "../../../lib/shopify-domain";
 
 const SHOPIFY_API_VERSION = "2026-07";
 
@@ -16,14 +17,14 @@ function getToken(request: NextRequest) {
 }
 
 function getShop(request: NextRequest, token: string) {
-  const headerShop = request.headers
-    .get("x-shopify-shop")
-    ?.trim();
+  const headerShop = resolveShopDomain(
+    request.headers
+      .get("x-shopify-shop")
+      ?.trim() || ""
+  );
 
   if (headerShop) {
-    return headerShop
-      .replace(/^https?:\/\//i, "")
-      .replace(/\/+$/, "");
+    return headerShop;
   }
 
   try {
@@ -41,7 +42,9 @@ function getShop(request: NextRequest, token: string) {
       return "";
     }
 
-    return new URL(payload.dest).hostname;
+    return resolveShopDomain(
+      new URL(payload.dest).hostname
+    );
   } catch {
     return "";
   }

@@ -1,14 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createHmac } from "crypto";
-
-function cleanShopDomain(value: string) {
-  return value
-    .trim()
-    .toLowerCase()
-    .replace(/^https?:\/\//, "")
-    .replace(/\/+$/, "")
-    .replace(/(\.myshopify\.com){2,}$/, ".myshopify.com");
-}
+import { cleanShopDomain } from "../../../lib/shopify-domain";
 
 function createOAuthState(shop: string, apiSecret: string) {
   const payload = {
