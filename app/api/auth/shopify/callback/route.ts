@@ -1,4 +1,7 @@
-import { NextRequest, NextResponse } from "next/server";
+import {
+  NextRequest,
+  NextResponse,
+} from "next/server";
 
 function cleanShopDomain(value: string) {
   return value
@@ -16,7 +19,9 @@ function isValidShopDomain(shop: string) {
   );
 }
 
-export async function GET(request: NextRequest) {
+export async function GET(
+  request: NextRequest
+) {
   try {
     const params =
       request.nextUrl.searchParams;
@@ -42,43 +47,62 @@ export async function GET(request: NextRequest) {
         "virello_shopify_oauth_shop"
       )?.value || "";
 
+    /*
+     * Check required OAuth values.
+     */
     if (!code || !shop || !state) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "Shopify authorization response is incomplete.",
-        },
-        { status: 400 }
+      return NextResponse.redirect(
+        new URL(
+          "/connect?status=error&error_description=" +
+            encodeURIComponent(
+              "Shopify authorization response is incomplete."
+            ),
+          "https://virello-ai-optimizer.vercel.app"
+        )
       );
     }
 
+    /*
+     * Validate Shopify domain.
+     */
     if (!isValidShopDomain(shop)) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "Invalid Shopify store domain.",
-        },
-        { status: 400 }
+      return NextResponse.redirect(
+        new URL(
+          "/connect?status=error&error_description=" +
+            encodeURIComponent(
+              "Invalid Shopify store domain."
+            ),
+          "https://virello-ai-optimizer.vercel.app"
+        )
       );
     }
 
-    if (!savedState || savedState !== state) {
+    /*
+     * Validate OAuth state.
+     */
+    if (
+      !savedState ||
+      savedState !== state
+    ) {
       console.error(
         "SHOPIFY_OAUTH_STATE_MISMATCH"
       );
 
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "Invalid Shopify OAuth state. Please start the connection again.",
-        },
-        { status: 400 }
+      return NextResponse.redirect(
+        new URL(
+          "/connect?status=error&error_description=" +
+            encodeURIComponent(
+              "Invalid Shopify OAuth state. Please start the connection again."
+            ),
+          "https://virello-ai-optimizer.vercel.app"
+        )
       );
     }
 
+    /*
+     * Validate the store against
+     * the store used to start OAuth.
+     */
     if (
       !savedShop ||
       savedShop !== shop
@@ -91,13 +115,14 @@ export async function GET(request: NextRequest) {
         }
       );
 
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "Shopify store does not match the original store.",
-        },
-        { status: 400 }
+      return NextResponse.redirect(
+        new URL(
+          "/connect?status=error&error_description=" +
+            encodeURIComponent(
+              "Shopify store does not match the original store."
+            ),
+          "https://virello-ai-optimizer.vercel.app"
+        )
       );
     }
 
@@ -107,17 +132,25 @@ export async function GET(request: NextRequest) {
     const apiSecret =
       process.env.SHOPIFY_API_SECRET;
 
-    if (!apiKey || !apiSecret) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "SHOPIFY_API_KEY or SHOPIFY_API_SECRET is missing in Vercel Environment Variables.",
-        },
-        { status: 500 }
+    if (
+      !apiKey ||
+      !apiSecret
+    ) {
+      return NextResponse.redirect(
+        new URL(
+          "/connect?status=error&error_description=" +
+            encodeURIComponent(
+              "SHOPIFY_API_KEY or SHOPIFY_API_SECRET is missing in Vercel Environment Variables."
+            ),
+          "https://virello-ai-optimizer.vercel.app"
+        )
       );
     }
 
+    /*
+     * Exchange authorization code
+     * for Shopify access token.
+     */
     const tokenResponse =
       await fetch(
         `https://${shop}/admin/oauth/access_token`,
@@ -151,16 +184,20 @@ export async function GET(request: NextRequest) {
         responseText
       );
 
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "Shopify returned an invalid authorization response.",
-        },
-        { status: 502 }
+      return NextResponse.redirect(
+        new URL(
+          "/connect?status=error&error_description=" +
+            encodeURIComponent(
+              "Shopify returned an invalid authorization response."
+            ),
+          "https://virello-ai-optimizer.vercel.app"
+        )
       );
     }
 
+    /*
+     * Check token response.
+     */
     if (
       !tokenResponse.ok ||
       !data?.access_token
@@ -170,21 +207,25 @@ export async function GET(request: NextRequest) {
         data
       );
 
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            data?.error_description ||
-            data?.error ||
-            "Shopify authorization failed.",
-        },
-        { status: 400 }
+      return NextResponse.redirect(
+        new URL(
+          "/connect?status=error&error_description=" +
+            encodeURIComponent(
+              data?.error_description ||
+                data?.error ||
+                "Shopify authorization failed."
+            ),
+          "https://virello-ai-optimizer.vercel.app"
+        )
       );
     }
 
     const accessToken =
       data.access_token;
 
+    /*
+     * Redirect back to Virello.
+     */
     const redirectUrl =
       new URL(
         "/connect",
@@ -201,12 +242,15 @@ export async function GET(request: NextRequest) {
       "1"
     );
 
-    const result =
+    const response =
       NextResponse.redirect(
         redirectUrl
       );
 
-    result.cookies.set(
+    /*
+     * Store Shopify access token.
+     */
+    response.cookies.set(
       "virello_shopify_access_token",
       accessToken,
       {
@@ -219,7 +263,10 @@ export async function GET(request: NextRequest) {
       }
     );
 
-    result.cookies.set(
+    /*
+     * Store connected shop.
+     */
+    response.cookies.set(
       "virello_shopify_shop",
       shop,
       {
@@ -232,12 +279,20 @@ export async function GET(request: NextRequest) {
       }
     );
 
-    result.cookies.delete(
+    /*
+     * Remove temporary OAuth cookies.
+     */
+    response.cookies.delete(
       "virello_shopify_oauth_state"
     );
 
-    result.cookies.delete(
+    response.cookies.delete(
       "virello_shopify_oauth_shop"
+    );
+
+    response.headers.set(
+      "Cache-Control",
+      "no-store, no-cache, must-revalidate"
     );
 
     console.log(
@@ -247,22 +302,23 @@ export async function GET(request: NextRequest) {
       }
     );
 
-    return result;
+    return response;
   } catch (error) {
     console.error(
       "SHOPIFY_CALLBACK_ERROR:",
       error
     );
 
-    return NextResponse.json(
-      {
-        success: false,
-        error:
-          error instanceof Error
-            ? error.message
-            : "Unable to complete Shopify connection.",
-      },
-      { status: 500 }
+    return NextResponse.redirect(
+      new URL(
+        "/connect?status=error&error_description=" +
+          encodeURIComponent(
+            error instanceof Error
+              ? error.message
+              : "Unable to complete Shopify connection."
+          ),
+        "https://virello-ai-optimizer.vercel.app"
+      )
     );
   }
 }
