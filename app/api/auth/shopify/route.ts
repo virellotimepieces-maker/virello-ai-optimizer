@@ -35,7 +35,8 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const apiKey = process.env.SHOPIFY_API_KEY;
+    const apiKey =
+      process.env.SHOPIFY_API_KEY;
 
     if (!apiKey) {
       return NextResponse.json(
@@ -48,7 +49,8 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const state = randomBytes(32).toString("hex");
+    const state =
+      randomBytes(32).toString("hex");
 
     const redirectUri =
       process.env.SHOPIFY_REDIRECT_URI ||
@@ -58,20 +60,25 @@ export async function GET(request: NextRequest) {
       process.env.SHOPIFY_SCOPES ||
       "read_products,write_products";
 
-    const params = new URLSearchParams({
-      client_id: apiKey,
-      scope: scopes,
-      redirect_uri: redirectUri,
-      state,
-    });
+    const params =
+      new URLSearchParams({
+        client_id: apiKey,
+        scope: scopes,
+        redirect_uri: redirectUri,
+        state,
+      });
 
     const authorizationUrl =
       `https://${shop}/admin/oauth/authorize?${params.toString()}`;
 
-    const response = NextResponse.redirect(
-      authorizationUrl
-    );
+    const response =
+      NextResponse.redirect(
+        authorizationUrl
+      );
 
+    /*
+     * OAuth state cookie
+     */
     response.cookies.set(
       "virello_shopify_oauth_state",
       state,
@@ -84,6 +91,9 @@ export async function GET(request: NextRequest) {
       }
     );
 
+    /*
+     * Original Shopify store cookie
+     */
     response.cookies.set(
       "virello_shopify_oauth_shop",
       shop,
@@ -94,6 +104,14 @@ export async function GET(request: NextRequest) {
         path: "/",
         maxAge: 600,
       }
+    );
+
+    /*
+     * Prevent caching of OAuth redirects.
+     */
+    response.headers.set(
+      "Cache-Control",
+      "no-store, no-cache, must-revalidate"
     );
 
     console.log(
