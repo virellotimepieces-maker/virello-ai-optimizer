@@ -50,6 +50,25 @@ function cleanShopDomain(value: string) {
     );
 }
 
+function readCookie(name: string) {
+  if (typeof document === "undefined") {
+    return "";
+  }
+
+  const escapedName = name.replace(
+    /([.$?*|{}()[\]\\/+^])/g,
+    "\\$1"
+  );
+
+  const match = document.cookie.match(
+    new RegExp(
+      `(?:^|; )${escapedName}=([^;]*)`
+    )
+  );
+
+  return match ? decodeURIComponent(match[1]) : "";
+}
+
 export default function ConnectPage() {
   const [selected, setSelected] =
     useState<Platform>("shopify");
@@ -109,6 +128,26 @@ export default function ConnectPage() {
         "",
         "/connect"
       );
+    } else {
+      // Fallback for embedded/iframe return flows where
+      // connected query params can be dropped by navigation.
+      const cookieShop =
+        cleanShopDomain(
+          readCookie(
+            "virello_shopify_shop"
+          )
+        );
+
+      const cookieToken = readCookie(
+        "virello_shopify_access_token"
+      );
+
+      if (cookieShop && cookieToken) {
+        setConnected(true);
+        setConnectedShop(cookieShop);
+        setShop(cookieShop);
+        setSelected("shopify");
+      }
     }
 
     if (
