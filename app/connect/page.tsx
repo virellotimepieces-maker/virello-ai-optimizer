@@ -245,9 +245,7 @@ export default function ConnectPage() {
   if (connected) {
     return (
       <main className="app-shell">
-
         <header className="topbar">
-
           <div>
             <div className="brand-small">
               VIRELLO AI
@@ -259,7 +257,6 @@ export default function ConnectPage() {
           </div>
 
           <div className="topbar-actions">
-
             <div className="shop-pill">
               Multi-Platform Ecommerce
             </div>
@@ -274,15 +271,11 @@ export default function ConnectPage() {
                 ? "Opening checkout..."
                 : "Subscribe to Virello"}
             </button>
-
           </div>
-
         </header>
 
         <section className="hero">
-
           <div className="hero-inner">
-
             <div className="eyebrow">
               SHOPIFY CONNECTED
             </div>
@@ -298,19 +291,13 @@ export default function ConnectPage() {
               You can continue to your Virello
               workspace.
             </p>
-
           </div>
-
         </section>
 
         <section className="workspace">
-
           <div className="workspace-grid">
-
             <section className="optimizer-panel">
-
               <section className="content-card success-card">
-
                 <div className="success-icon">
                   ✓
                 </div>
@@ -329,7 +316,6 @@ export default function ConnectPage() {
                 </p>
 
                 <div className="connected-store">
-
                   <span>
                     Connected store
                   </span>
@@ -337,11 +323,9 @@ export default function ConnectPage() {
                   <strong>
                     {connectedShop}
                   </strong>
-
                 </div>
 
                 <div className="connect-actions">
-
                   <a
                     href={`/?platform=shopify&connected=1`}
                     target="_top"
@@ -350,13 +334,10 @@ export default function ConnectPage() {
                   >
                     Continue to Virello
                   </a>
-
                 </div>
-
               </section>
 
               <section className="content-card">
-
                 <div className="step-label">
                   VIRELLO WORKFLOW
                 </div>
@@ -366,7 +347,6 @@ export default function ConnectPage() {
                 </h2>
 
                 <div className="flow-grid">
-
                   <div className="flow-card">
                     <strong>
                       1. Connect
@@ -410,19 +390,13 @@ export default function ConnectPage() {
                       to your store.
                     </p>
                   </div>
-
                 </div>
-
               </section>
-
             </section>
-
           </div>
-
         </section>
 
         <style jsx>{`
-
           * {
             box-sizing: border-box;
           }
@@ -721,8 +695,201 @@ export default function ConnectPage() {
             text-decoration: none;
           }
 
-          @media (max-width: 760px) {
+          .section-description {
+            margin: 0 0 24px;
 
+            color: #7a8088;
+
+            font-size: 16px;
+            line-height: 1.6;
+          }
+
+          .section-description strong {
+            color: #111318;
+          }
+
+          .platform-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+          }
+
+          .platform-card {
+            width: 100%;
+            min-height: 108px;
+
+            padding: 18px 20px;
+
+            border: 1px solid #e0e3e7;
+            border-radius: 18px;
+
+            background: #ffffff;
+
+            display: flex;
+            align-items: center;
+            gap: 20px;
+
+            text-align: left;
+
+            cursor: pointer;
+
+            transition:
+              border-color 0.15s ease,
+              box-shadow 0.15s ease,
+              background 0.15s ease;
+          }
+
+          .platform-card:hover {
+            border-color: #bfc4ca;
+          }
+
+          .platform-card.selected {
+            border-color: #aeb4bb;
+
+            box-shadow:
+              0 8px 20px
+              rgba(17, 19, 24, 0.06);
+          }
+
+          .platform-icon {
+            width: 56px;
+            height: 56px;
+
+            flex: 0 0 56px;
+
+            display: flex;
+            align-items: center;
+            justify-content: center;
+
+            border-radius: 15px;
+
+            background: #f1f2f4;
+
+            color: #111318;
+
+            font-size: 24px;
+            font-weight: 900;
+          }
+
+          .platform-info {
+            flex: 1;
+
+            min-width: 0;
+
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+          }
+
+          .platform-info strong {
+            color: #111318;
+            font-size: 18px;
+            font-weight: 850;
+          }
+
+          .platform-info span {
+            color: #858b93;
+            font-size: 14px;
+          }
+
+          .radio {
+            width: 32px;
+            height: 32px;
+
+            flex: 0 0 32px;
+
+            border: 2px solid #d5d8dc;
+            border-radius: 50%;
+
+            display: flex;
+            align-items: center;
+            justify-content: center;
+
+            color: #ffffff;
+
+            font-size: 16px;
+            font-weight: 900;
+          }
+
+          .selected-radio {
+            border-color: #111318;
+            background: #111318;
+          }
+
+          .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+          }
+
+          .form-group input {
+            width: 100%;
+
+            min-height: 56px;
+
+            padding: 0 18px;
+
+            border: 1px solid #d9dce0;
+            border-radius: 12px;
+
+            background: #ffffff;
+
+            color: #111318;
+
+            font-size: 16px;
+
+            outline: none;
+          }
+
+          .form-group input:focus {
+            border-color: #111318;
+
+            box-shadow:
+              0 0 0 3px
+              rgba(17, 19, 24, 0.08);
+          }
+
+          .form-group input::placeholder {
+            color: #9ca1a8;
+          }
+
+          .continue-button {
+            width: 100%;
+          }
+
+          .generate-button:disabled {
+            opacity: 0.45;
+            cursor: not-allowed;
+          }
+
+          .oauth-note {
+            margin: 14px 0 0;
+
+            color: #92979e;
+
+            font-size: 12px;
+            line-height: 1.5;
+
+            text-align: center;
+          }
+
+          .message {
+            margin-top: 16px;
+
+            padding: 14px 16px;
+
+            border: 1px solid #e1e4e8;
+            border-radius: 12px;
+
+            background: #f8f9fa;
+
+            color: #555b63;
+
+            font-size: 13px;
+            line-height: 1.5;
+          }
+
+          @media (max-width: 760px) {
             .topbar {
               padding: 16px;
               align-items: flex-start;
@@ -762,25 +929,43 @@ export default function ConnectPage() {
               border-radius: 18px;
             }
 
+            .content-card h2 {
+              font-size: 26px;
+            }
+
+            .platform-card {
+              min-height: 92px;
+              padding: 15px;
+              gap: 14px;
+            }
+
+            .platform-icon {
+              width: 50px;
+              height: 50px;
+              flex-basis: 50px;
+            }
+
+            .platform-info strong {
+              font-size: 16px;
+            }
+
+            .platform-info span {
+              font-size: 12px;
+            }
+
             .flow-grid {
               grid-template-columns: 1fr;
             }
-
           }
-
         `}</style>
-
       </main>
     );
   }
 
   return (
     <main className="app-shell">
-
       <header className="topbar">
-
         <div>
-
           <div className="brand-small">
             VIRELLO AI
           </div>
@@ -788,11 +973,9 @@ export default function ConnectPage() {
           <div className="brand-name">
             Virello AI Optimizer
           </div>
-
         </div>
 
         <div className="topbar-actions">
-
           <div className="shop-pill">
             Multi-Platform Ecommerce
           </div>
@@ -807,19 +990,13 @@ export default function ConnectPage() {
               ? "Opening checkout..."
               : "Subscribe to Virello"}
           </button>
-
         </div>
-
-      </ </section>
+      </header>
 
       <section className="workspace">
-
         <div className="workspace-grid">
-
           <section className="optimizer-panel">
-
             <section className="content-card">
-
               <div className="step-label">
                 STEP 1
               </div>
@@ -834,9 +1011,7 @@ export default function ConnectPage() {
               </p>
 
               <div className="platform-list">
-
                 {platforms.map((platform) => {
-
                   const isSelected =
                     selected === platform.id;
 
@@ -855,7 +1030,6 @@ export default function ConnectPage() {
                         )
                       }
                     >
-
                       <div className="platform-icon">
                         {platform.id ===
                         "shopify"
@@ -873,7 +1047,6 @@ export default function ConnectPage() {
                       </div>
 
                       <div className="platform-info">
-
                         <strong>
                           {platform.name}
                         </strong>
@@ -881,7 +1054,6 @@ export default function ConnectPage() {
                         <span>
                           {platform.description}
                         </span>
-
                       </div>
 
                       <div
@@ -895,19 +1067,14 @@ export default function ConnectPage() {
                           ? "✓"
                           : ""}
                       </div>
-
                     </button>
                   );
-
                 })}
-
               </div>
-
             </section>
 
             {selected === "shopify" && (
               <section className="content-card">
-
                 <div className="step-label">
                   SHOPIFY STORE
                 </div>
@@ -926,7 +1093,6 @@ export default function ConnectPage() {
                 </p>
 
                 <div className="form-group">
-
                   <input
                     type="text"
                     value={shop}
@@ -942,7 +1108,6 @@ export default function ConnectPage() {
                   />
 
                   {shopifyDomainIsValid ? (
-
                     <a
                       href={shopifyOAuthUrl}
                       target="_top"
@@ -951,9 +1116,7 @@ export default function ConnectPage() {
                     >
                       Continue
                     </a>
-
                   ) : (
-
                     <button
                       type="button"
                       className="generate-button continue-button"
@@ -961,9 +1124,7 @@ export default function ConnectPage() {
                     >
                       Continue
                     </button>
-
                   )}
-
                 </div>
 
                 {message && (
@@ -976,13 +1137,11 @@ export default function ConnectPage() {
                   Shopify authorization will open
                   in the main browser window.
                 </p>
-
               </section>
             )}
 
             {selected !== "shopify" && (
               <section className="content-card">
-
                 <div className="step-label">
                   VIRELLO
                 </div>
@@ -1004,12 +1163,10 @@ export default function ConnectPage() {
                   be available in your Virello
                   workspace.
                 </p>
-
               </section>
             )}
 
             <section className="content-card">
-
               <div className="step-label">
                 VIRELLO WORKFLOW
               </div>
@@ -1019,9 +1176,7 @@ export default function ConnectPage() {
               </h2>
 
               <div className="flow-grid">
-
                 <div className="flow-card">
-
                   <strong>
                     1. Connect
                   </strong>
@@ -1030,11 +1185,9 @@ export default function ConnectPage() {
                     Connect your ecommerce
                     platform.
                   </p>
-
                 </div>
 
                 <div className="flow-card">
-
                   <strong>
                     2. Import
                   </strong>
@@ -1043,11 +1196,9 @@ export default function ConnectPage() {
                     Bring product information
                     into Virello.
                   </p>
-
                 </div>
 
                 <div className="flow-card">
-
                   <strong>
                     3. Optimize
                   </strong>
@@ -1056,11 +1207,9 @@ export default function ConnectPage() {
                     Generate improved product
                     content with AI.
                   </p>
-
                 </div>
 
                 <div className="flow-card">
-
                   <strong>
                     4. Apply
                   </strong>
@@ -1069,21 +1218,14 @@ export default function ConnectPage() {
                     Send approved content back
                     to the store.
                   </p>
-
                 </div>
-
               </div>
-
             </section>
-
           </section>
-
         </div>
-
       </section>
 
       <style jsx>{`
-
         * {
           box-sizing: border-box;
         }
@@ -1148,10 +1290,6 @@ export default function ConnectPage() {
           font-weight: 850;
           cursor: pointer;
           white-space: nowrap;
-
-          box-shadow:
-            0 7px 16px
-            rgba(17, 19, 24, 0.15);
         }
 
         .subscribe-button:hover {
@@ -1184,7 +1322,7 @@ export default function ConnectPage() {
 
         .hero h1 {
           max-width: 850px;
-          margin: 18px 0 18px;
+          margin: 18px 0;
 
           font-size:
             clamp(42px, 7vw, 76px);
@@ -1229,10 +1367,6 @@ export default function ConnectPage() {
           border-radius: 22px;
 
           background: #ffffff;
-
-          box-shadow:
-            0 12px 30px
-            rgba(17, 19, 24, 0.04);
         }
 
         .content-card h2 {
@@ -1277,13 +1411,7 @@ export default function ConnectPage() {
           gap: 20px;
 
           text-align: left;
-
           cursor: pointer;
-
-          transition:
-            border-color 0.15s ease,
-            box-shadow 0.15s ease,
-            background 0.15s ease;
         }
 
         .platform-card:hover {
@@ -1292,10 +1420,6 @@ export default function ConnectPage() {
 
         .platform-card.selected {
           border-color: #aeb4bb;
-
-          box-shadow:
-            0 8px 20px
-            rgba(17, 19, 24, 0.06);
         }
 
         .platform-icon {
@@ -1311,7 +1435,6 @@ export default function ConnectPage() {
           border-radius: 15px;
 
           background: #f1f2f4;
-
           color: #111318;
 
           font-size: 24px;
@@ -1320,7 +1443,6 @@ export default function ConnectPage() {
 
         .platform-info {
           flex: 1;
-
           min-width: 0;
 
           display: flex;
@@ -1353,7 +1475,6 @@ export default function ConnectPage() {
           justify-content: center;
 
           color: #ffffff;
-
           font-size: 16px;
           font-weight: 900;
         }
@@ -1371,7 +1492,6 @@ export default function ConnectPage() {
 
         .form-group input {
           width: 100%;
-
           min-height: 56px;
 
           padding: 0 18px;
@@ -1380,20 +1500,14 @@ export default function ConnectPage() {
           border-radius: 12px;
 
           background: #ffffff;
-
           color: #111318;
 
           font-size: 16px;
-
           outline: none;
         }
 
         .form-group input:focus {
           border-color: #111318;
-
-          box-shadow:
-            0 0 0 3px
-            rgba(17, 19, 24, 0.08);
         }
 
         .form-group input::placeholder {
@@ -1406,7 +1520,6 @@ export default function ConnectPage() {
 
         .generate-button {
           min-height: 48px;
-
           padding: 0 24px;
 
           border: 0;
@@ -1577,7 +1690,6 @@ export default function ConnectPage() {
         }
 
         @media (max-width: 760px) {
-
           .topbar {
             padding: 16px;
             align-items: flex-start;
@@ -1644,11 +1756,8 @@ export default function ConnectPage() {
           .flow-grid {
             grid-template-columns: 1fr;
           }
-
         }
-
       `}</style>
-
     </main>
   );
 }
