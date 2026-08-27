@@ -7,20 +7,11 @@ application_url = "https://virello-ai-optimizer.vercel.app"
 embedded = false
 
 [access_scopes]
+
 scopes = "read_products,write_products"
 
 [auth]
+
 redirect_urls = [
   "https://virello-ai-optimizer.vercel.app/api/auth/shopify/callback"
 ]
-
-[webhooks]
-api_version = "2026-07"
-
-[[webhooks.subscriptions]]
-compliance_topics = [
-  "customers/data_request",
-  "customers/redact",
-  "shop/redact"
-]
-uri = "/api/webhooks"
