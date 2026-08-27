@@ -1,6 +1,15 @@
 import { createHmac, timingSafeEqual } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
-import { ApiError } from "./shopify";
+
+class ApiError extends Error {
+  status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+  }
+}
 
 export const SUBSCRIBER_COOKIE = "virello_subscriber";
 
@@ -64,9 +73,7 @@ function getStripeSecret(): string {
   return secret;
 }
 
-function getCookieSecret(
-  stripeSecret: string
-): string {
+function getCookieSecret(stripeSecret: string): string {
   return (
     process.env.SUBSCRIBER_COOKIE_SECRET ||
     stripeSecret
@@ -172,14 +179,6 @@ function decodeSubscriberPayload(
   }
 }
 
-function parseCheckoutFormBody(
-  body: URLSearchParams
-): string {
-  return body
-    .toString()
-    .replace(/%20/g, "+");
-}
-
 async function stripeRequest<T>(
   path: string,
   options: {
@@ -190,7 +189,7 @@ async function stripeRequest<T>(
   const secretKey = getStripeSecret();
 
   const headers: Record<string, string> = {
-    Authorization: "Bearer " + secretKey,
+    Authorization: `Bearer ${secretKey}`,
   };
 
   if (options.body) {
@@ -203,14 +202,23 @@ async function stripeRequest<T>(
     {
       method: options.method || "GET",
       headers,
-      body: options.body
-        ? parseCheckoutFormBody(options.body)
-        : undefined,
+      body: options.body?.toString(),
       cache: "no-store",
     }
   );
 
-  const data = await response.json();
+  const text = await response.text();
+
+  let data: any;
+
+  try {
+    data = JSON.parse(text);
+  } catch {
+    throw new ApiError(
+      `Stripe returned a non-JSON response (${response.status}).`,
+      502
+    );
+  }
 
   if (!response.ok) {
     throw new ApiError(
@@ -431,11 +439,7 @@ export async function getCheckoutSubscription(
 function updateUsageState(
   subscription: SubscriptionSnapshot,
   requestedCount: number
-): {
-  used: number;
-  limit: number;
-  remaining: number;
-} {
+): SubscriberUsage {
   const usageKey =
     `${subscription.subscriptionId}:${subscription.currentPeriodStart}`;
 
