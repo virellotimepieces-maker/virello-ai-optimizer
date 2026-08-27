@@ -72,12 +72,16 @@ export default function ConnectPage() {
   const [message, setMessage] =
     useState("");
 
-  const [loading, setLoading] =
-    useState(false);
-
   const [checkoutLoading, setCheckoutLoading] =
     useState(false);
 
+  /*
+   * Check the Shopify OAuth callback.
+   *
+   * Expected successful callback:
+   *
+   * /connect?shop=STORE.myshopify.com&connected=1
+   */
   useEffect(() => {
     const params = new URLSearchParams(
       window.location.search
@@ -99,6 +103,9 @@ export default function ConnectPage() {
     const cleanedShop =
       cleanShopDomain(shopParam);
 
+    /*
+     * Successful Shopify connection.
+     */
     if (
       connectedParam === "1" &&
       isValidShopifyDomain(cleanedShop)
@@ -107,6 +114,28 @@ export default function ConnectPage() {
       setConnectedShop(cleanedShop);
       setShop(cleanedShop);
       setSelected("shopify");
+
+      /*
+       * Remove OAuth parameters from the
+       * visible browser URL without reloading.
+       */
+      window.history.replaceState(
+        {},
+        "",
+        "/connect"
+      );
+
+      return;
+    }
+
+    /*
+     * Shopify OAuth error.
+     */
+    if (statusParam === "error") {
+      setMessage(
+        errorParam ||
+          "Shopify authorization was not completed."
+      );
 
       window.history.replaceState(
         {},
@@ -117,25 +146,13 @@ export default function ConnectPage() {
       return;
     }
 
-    if (statusParam === "error") {
-      setMessage(
-        errorParam ||
-          "Shopify authorization was not completed."
-      );
-
-      const cleanUrl =
-        window.location.pathname;
-
-      window.history.replaceState(
-        {},
-        "",
-        cleanUrl
-      );
-
-      return;
-    }
-
-    if (isValidShopifyDomain(cleanedShop)) {
+    /*
+     * If a valid Shopify domain was supplied,
+     * keep it in the input.
+     */
+    if (
+      isValidShopifyDomain(cleanedShop)
+    ) {
       setShop(cleanedShop);
       setSelected("shopify");
     }
@@ -149,6 +166,9 @@ export default function ConnectPage() {
   const shopifyDomainIsValid =
     isValidShopifyDomain(cleanShop);
 
+  /*
+   * OAuth endpoint on our Vercel application.
+   */
   const shopifyOAuthUrl =
     shopifyDomainIsValid
       ? `/api/auth/shopify?shop=${encodeURIComponent(
@@ -167,38 +187,26 @@ export default function ConnectPage() {
     }
   }
 
-  function startShopifyOAuth() {
-    if (!shopifyDomainIsValid) {
-      setMessage(
-        "Enter your Shopify .myshopify.com domain."
-      );
-      return;
-    }
-
-    setLoading(true);
-    setMessage("");
-
-    /*
-     * IMPORTANT:
-     *
-     * Shopify Admin can load the Virello app
-     * inside an embedded context.
-     *
-     * OAuth authorization must be opened at
-     * the top-level browser window so Shopify
-     * does not block the response.
-     */
-    if (window.top) {
-      window.top.location.href =
-        shopifyOAuthUrl;
-    } else {
-      window.location.href =
-        shopifyOAuthUrl;
-    }
-  }
+  /*
+   * IMPORTANT:
+   *
+   * Do NOT use window.location.assign()
+   * here while inside Shopify Admin.
+   *
+   * Do NOT show a permanent "Opening Shopify..."
+   * loading state.
+   *
+   * The actual button below uses a normal
+   * top-level browser link with target="_blank".
+   *
+   * This allows Shopify authorization to open
+   * outside the embedded Virello/Shopify frame.
+   */
 
   async function startCheckout() {
-    if (checkoutLoading) return;
+    if (checkoutLoading) {
+      return;
+    }
 
     setCheckoutLoading(true);
     setMessage("");
@@ -466,6 +474,9 @@ export default function ConnectPage() {
 
       <section className="workspace">
         <div className="workspace-grid">
+
+          {/* PLATFORM SELECTION */}
+
           <section className="content-card">
             <div className="step-label">
               STEP 1
@@ -531,6 +542,8 @@ export default function ConnectPage() {
             </div>
           </section>
 
+          {/* SHOPIFY */}
+
           {selected === "shopify" && (
             <section className="content-card">
               <div className="step-label">
@@ -561,31 +574,44 @@ export default function ConnectPage() {
                       event.target.value
                     );
                     setMessage("");
-                    setLoading(false);
                   }}
                   placeholder="mystore.myshopify.com"
                   autoComplete="off"
                   autoCapitalize="none"
                   autoCorrect="off"
                   spellCheck={false}
-                  disabled={loading}
                 />
 
-                <button
-                  type="button"
-                  className="generate-button continue-button"
-                  disabled={
-                    !shopifyDomainIsValid ||
-                    loading
-                  }
-                  onClick={
-                    startShopifyOAuth
-                  }
-                >
-                  {loading
-                    ? "Opening Shopify..."
-                    : "Connect Store"}
-                </button>
+                {shopifyDomainIsValid ? (
+                  /*
+                   * IMPORTANT:
+                   *
+                   * This is intentionally a normal
+                   * browser link.
+                   *
+                   * target="_blank" takes Shopify OAuth
+                   * OUTSIDE the embedded Shopify frame.
+                   *
+                   * No JavaScript loading state.
+                   * No window.location.assign().
+                   */
+                  <a
+                    href={shopifyOAuthUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="generate-button continue-button oauth-link"
+                  >
+                    Connect Store
+                  </a>
+                ) : (
+                  <button
+                    type="button"
+                    className="generate-button continue-button"
+                    disabled
+                  >
+                    Connect Store
+                  </button>
+                )}
               </div>
 
               {message && (
@@ -596,12 +622,14 @@ export default function ConnectPage() {
 
               <p className="oauth-note">
                 Shopify authorization will open
-                in your main browser. After
-                approval, Virello will return you
-                to the connected screen automatically.
+                outside the embedded Virello
+                window. After approval, Shopify
+                will return you to Virello.
               </p>
             </section>
           )}
+
+          {/* OTHER PLATFORMS */}
 
           {selected !== "shopify" && (
             <section className="content-card">
@@ -643,6 +671,8 @@ export default function ConnectPage() {
               )}
             </section>
           )}
+
+          {/* WORKFLOW */}
 
           <section className="content-card">
             <div className="step-label">
@@ -893,6 +923,11 @@ const styles = `
 
     text-align: left;
     cursor: pointer;
+
+    transition:
+      border-color 0.15s ease,
+      box-shadow 0.15s ease,
+      background 0.15s ease;
   }
 
   .platform-card:hover {
@@ -1035,6 +1070,13 @@ const styles = `
     width: 100%;
   }
 
+  .oauth-link {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-decoration: none;
+  }
+
   .oauth-note {
     margin: 14px 0 0;
 
@@ -1131,13 +1173,16 @@ const styles = `
 
   .connected-store strong {
     color: #111318;
+
     font-size: 16px;
+
     word-break: break-word;
   }
 
   .connect-actions {
     display: flex;
     justify-content: center;
+
     margin-top: 22px;
   }
 
