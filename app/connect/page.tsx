@@ -42,7 +42,8 @@ const platforms: {
   {
     id: "manual",
     name: "Manual / Import",
-    description: "Optimize products without connecting a store",
+    description:
+      "Optimize products without connecting a store",
     icon: "M",
   },
 ];
@@ -55,10 +56,15 @@ function cleanShopDomain(value: string): string {
     .replace(/^www\./, "")
     .replace(/\/+$/, "")
     .replace(/(\/.*)$/, "")
-    .replace(/(\.myshopify\.com){2,}$/, ".myshopify.com");
+    .replace(
+      /(\.myshopify\.com){2,}$/,
+      ".myshopify.com"
+    );
 }
 
-function isValidShopifyDomain(value: string): boolean {
+function isValidShopifyDomain(
+  value: string
+): boolean {
   return /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.myshopify\.com$/i.test(
     value
   );
@@ -169,6 +175,16 @@ export default function ConnectPage() {
     }
   }
 
+  /*
+   * START SHOPIFY OAUTH
+   *
+   * Shopify OAuth must leave the
+   * current embedded/frame context.
+   *
+   * Do not use fetch().
+   * Do not use an iframe.
+   * Do not use target="_blank".
+   */
   function connectShopify() {
     if (connecting) {
       return;
@@ -189,22 +205,24 @@ export default function ConnectPage() {
     setConnecting(true);
     setMessage("");
 
-    const oauthUrl =
+    const absoluteUrl = new URL(
       `/api/auth/shopify?shop=${encodeURIComponent(
         cleaned
-      )}`;
+      )}`,
+      window.location.origin
+    ).toString();
 
     /*
-     * Shopify OAuth must be started
-     * with a normal browser navigation.
-     *
-     * Do NOT use fetch().
-     * Do NOT use an iframe.
-     * Do NOT use target="_blank".
+     * Force OAuth to open at the
+     * top-level browser window.
      */
-    window.location.assign(
-      oauthUrl
-    );
+    if (window.top) {
+      window.top.location.href =
+        absoluteUrl;
+    } else {
+      window.location.href =
+        absoluteUrl;
+    }
   }
 
   async function startCheckout() {
