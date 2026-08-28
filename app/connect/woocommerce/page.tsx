@@ -216,10 +216,10 @@ export default function WooCommerceConnectPage() {
               </a>
 
               <a
-                href="/"
+                href="/woocommerce"
                 className="button primary"
               >
-                Continue to Virello
+                Continue to WooCommerce
               </a>
             </div>
           </section>
@@ -438,7 +438,8 @@ export default function WooCommerceConnectPage() {
               are sent only to Virello's
               WooCommerce connection
               endpoint and are stored
-              separately from Shopify.
+              separately from other
+              platform connections.
             </p>
           </section>
 
