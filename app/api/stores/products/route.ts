@@ -62,6 +62,16 @@ export async function GET(request: NextRequest) {
      */
 
     if (platform === "shopify") {
+      const cookieAccessToken =
+        request.cookies.get(
+          "virello_shopify_access_token"
+        )?.value || "";
+
+      const cookieShop =
+        request.cookies.get(
+          "virello_shopify_shop"
+        )?.value || "";
+
       const authorization =
         request.headers.get("authorization");
 
@@ -73,14 +83,19 @@ export async function GET(request: NextRequest) {
       const shop =
         request.headers.get("x-shopify-shop");
 
-      if (!authorization && !sessionToken) {
+      if (
+        !cookieAccessToken &&
+        !cookieShop &&
+        !authorization &&
+        !sessionToken
+      ) {
         return NextResponse.json(
           {
             success: false,
             platform: "shopify",
             connected: false,
             error:
-              "Shopify session token is required.",
+              "Shopify connection is missing. Please reconnect your Shopify store.",
           },
           {
             status: 401,
@@ -118,6 +133,13 @@ export async function GET(request: NextRequest) {
       const origin =
         request.headers.get("origin") ||
         new URL(request.url).origin;
+
+      const cookieHeader =
+        request.headers.get("cookie") || "";
+
+      if (cookieHeader) {
+        headers.set("cookie", cookieHeader);
+      }
 
       const response = await fetch(
         `${origin}/api/shopify/products`,
