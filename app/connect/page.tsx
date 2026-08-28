@@ -91,16 +91,12 @@ export default function ConnectPage() {
 
   /*
    * HANDLE SHOPIFY OAUTH RETURN
-   *
-   * This effect runs after Shopify redirects
-   * the browser back to /connect.
-   *
-   * Important:
-   * Always reset "connecting" first so the
-   * button can never remain stuck after a
-   * browser navigation or OAuth return.
    */
   useEffect(() => {
+    /*
+     * Always clear the local loading state
+     * when the page loads again after OAuth.
+     */
     setConnecting(false);
 
     const params = new URLSearchParams(
@@ -137,10 +133,6 @@ export default function ConnectPage() {
       setMessage("");
       setConnected(true);
 
-      /*
-       * Remove OAuth query parameters only
-       * after React has received them.
-       */
       window.history.replaceState(
         {},
         document.title,
@@ -170,8 +162,7 @@ export default function ConnectPage() {
     }
 
     /*
-     * If Shopify returned a valid shop without
-     * connected=1, keep it in the input.
+     * VALID SHOP RETURN
      */
     if (
       isValidShopifyDomain(cleanedShop)
@@ -205,11 +196,9 @@ export default function ConnectPage() {
   /*
    * START SHOPIFY OAUTH
    *
-   * IMPORTANT:
-   * Use normal browser navigation.
-   * Do not use fetch().
-   * Do not use iframe.
-   * Do not use target="_blank".
+   * Shopify authorization must happen at the
+   * top-level browser window, not inside the
+   * Shopify Admin iframe/context.
    */
   function connectShopify() {
     if (connecting) {
@@ -241,15 +230,26 @@ export default function ConnectPage() {
       cleaned
     );
 
+    const url =
+      oauthUrl.toString();
+
     /*
-     * Full browser navigation.
-     *
-     * This avoids leaving the React page in a
-     * fetch/loading state while OAuth happens.
+     * If Virello is running inside a Shopify
+     * Admin iframe, force the OAuth navigation
+     * to the top-level browser window.
      */
-    window.location.assign(
-      oauthUrl.toString()
-    );
+    if (
+      window.top &&
+      window.top !== window
+    ) {
+      window.top.location.href = url;
+      return;
+    }
+
+    /*
+     * Normal standalone browser fallback.
+     */
+    window.location.href = url;
   }
 
   async function startCheckout() {
