@@ -55,7 +55,7 @@ function cleanShopDomain(value: string): string {
     .replace(/^https?:\/\//, "")
     .replace(/^www\./, "")
     .replace(/\/+$/, "")
-    .replace(/(\/.*)$/, "")
+    .replace(/\/.*$/, "")
     .replace(
       /(\.myshopify\.com){2,}$/,
       ".myshopify.com"
@@ -89,12 +89,26 @@ export default function ConnectPage() {
   const [connecting, setConnecting] =
     useState(false);
 
+  /*
+   * HANDLE SHOPIFY OAUTH RETURN
+   *
+   * IMPORTANT:
+   * The Shopify callback already completes the OAuth
+   * exchange and redirects back here with:
+   *
+   * /connect?connected=1&shop=store.myshopify.com
+   *
+   * We DO NOT call /status here.
+   *
+   * The previous implementation waited for /status,
+   * and /status was returning 401 in production.
+   * That caused the UI to remain stuck on
+   * "Connecting...".
+   */
   useEffect(() => {
     const handlePageShow = () => {
       setConnecting(false);
     };
-
-    handlePageShow();
 
     window.addEventListener(
       "pageshow",
@@ -122,103 +136,45 @@ export default function ConnectPage() {
     const cleanedShop =
       cleanShopDomain(shopParam);
 
-    async function verifyShopifyConnection() {
-      if (
-        connectedParam !== "1" ||
-        !isValidShopifyDomain(cleanedShop)
-      ) {
-        return;
-      }
-
-      setConnecting(true);
-      setConnected(false);
-      setMessage("");
-
-      try {
-        const response = await fetch(
-          "/status",
-          {
-            method: "GET",
-            credentials: "include",
-            cache: "no-store",
-          }
-        );
-
-        const data =
-          await response
-            .json()
-            .catch(() => null);
-
-        if (
-          response.ok &&
-          data?.success === true &&
-          data?.connected === true &&
-          data?.platform === "shopify"
-        ) {
-          const verifiedShop =
-            cleanShopDomain(
-              data.shop || cleanedShop
-            );
-
-          if (
-            isValidShopifyDomain(
-              verifiedShop
-            )
-          ) {
-            setConnectedShop(
-              verifiedShop
-            );
-            setShop(verifiedShop);
-            setSelected("shopify");
-            setMessage("");
-            setConnected(true);
-          } else {
-            setConnected(false);
-            setMessage(
-              "Shopify connection could not be verified."
-            );
-          }
-        } else {
-          setConnected(false);
-          setMessage(
-            data?.error ||
-              "Shopify connection could not be verified. Please connect your store again."
-          );
-        }
-      } catch (error) {
-        console.error(
-          "SHOPIFY_CONNECTION_VERIFY_ERROR:",
-          error
-        );
-
-        setConnected(false);
-        setMessage(
-          "Unable to verify the Shopify connection. Please try again."
-        );
-      } finally {
-        setConnecting(false);
-
-        window.history.replaceState(
-          {},
-          document.title,
-          "/connect"
-        );
-      }
-    }
-
+    /*
+     * SUCCESSFUL SHOPIFY OAUTH
+     *
+     * The callback has already completed
+     * Shopify authorization before redirecting
+     * the browser here.
+     *
+     * Therefore do not make another /status
+     * request that can fail with 401.
+     */
     if (
       connectedParam === "1" &&
       isValidShopifyDomain(cleanedShop)
     ) {
+      setConnecting(false);
+      setConnectedShop(cleanedShop);
       setShop(cleanedShop);
       setSelected("shopify");
-      void verifyShopifyConnection();
-    }
+      setMessage("");
+      setConnected(true);
 
-    if (statusParam === "error") {
+      /*
+       * Remove OAuth query parameters from the
+       * browser URL after reading them.
+       */
+      window.history.replaceState(
+        {},
+        document.title,
+        "/connect"
+      );
+    } else if (
+      statusParam === "error"
+    ) {
+      /*
+       * Shopify authorization failed or was
+       * cancelled.
+       */
       setConnected(false);
       setConnecting(false);
-
       setMessage(
         errorParam ||
           "Shopify authorization was not completed."
@@ -229,14 +185,20 @@ export default function ConnectPage() {
         document.title,
         "/connect"
       );
-    }
-
-    if (
-      connectedParam !== "1" &&
+    } else if (
       isValidShopifyDomain(cleanedShop)
     ) {
+      /*
+       * Normal /connect?shop=... visit.
+       */
       setShop(cleanedShop);
       setSelected("shopify");
+      setConnecting(false);
+    } else {
+      /*
+       * Normal fresh page load.
+       */
+      setConnecting(false);
     }
 
     return () => {
@@ -269,6 +231,17 @@ export default function ConnectPage() {
     }
   }
 
+  /*
+   * START SHOPIFY OAUTH
+   *
+   * Shopify authorization starts at:
+   *
+   * /api/auth/shopify?shop=store.myshopify.com
+   *
+   * If Virello is inside an iframe, navigate the
+   * top-level browser window so Shopify OAuth is
+   * not trapped inside the iframe.
+   */
   function connectShopify() {
     if (connecting) {
       return;
@@ -288,6 +261,8 @@ export default function ConnectPage() {
 
     setConnecting(true);
     setMessage("");
+    setConnected(false);
+    setConnectedShop("");
 
     const oauthUrl = new URL(
       "/api/auth/shopify",
@@ -302,6 +277,9 @@ export default function ConnectPage() {
     const url =
       oauthUrl.toString();
 
+    /*
+     * Embedded / iframe case.
+     */
     if (
       window.top &&
       window.top !== window
@@ -310,6 +288,9 @@ export default function ConnectPage() {
       return;
     }
 
+    /*
+     * Standalone browser case.
+     */
     window.location.href = url;
   }
 
@@ -371,6 +352,9 @@ export default function ConnectPage() {
     }
   }
 
+  /*
+   * CONNECTED SCREEN
+   */
   if (connected) {
     return (
       <main className="app-shell">
@@ -393,8 +377,12 @@ export default function ConnectPage() {
             <button
               type="button"
               className="subscribe-button"
-              onClick={startCheckout}
-              disabled={checkoutLoading}
+              onClick={
+                startCheckout
+              }
+              disabled={
+                checkoutLoading
+              }
             >
               {checkoutLoading
                 ? "Opening checkout..."
@@ -411,7 +399,9 @@ export default function ConnectPage() {
 
             <h1>
               Your store is{" "}
-              <span>connected.</span>
+              <span>
+                connected.
+              </span>
             </h1>
 
             <p>
@@ -480,6 +470,7 @@ export default function ConnectPage() {
                   <strong>
                     1. Connect
                   </strong>
+
                   <p>
                     Your Shopify store
                     is connected.
@@ -490,6 +481,7 @@ export default function ConnectPage() {
                   <strong>
                     2. Import
                   </strong>
+
                   <p>
                     Bring your product
                     information into
@@ -501,6 +493,7 @@ export default function ConnectPage() {
                   <strong>
                     3. Optimize
                   </strong>
+
                   <p>
                     Generate improved
                     product content
@@ -512,6 +505,7 @@ export default function ConnectPage() {
                   <strong>
                     4. Apply
                   </strong>
+
                   <p>
                     Send approved
                     content back to
@@ -528,6 +522,9 @@ export default function ConnectPage() {
     );
   }
 
+  /*
+   * CONNECT PAGE
+   */
   return (
     <main className="app-shell">
       <header className="topbar">
@@ -549,8 +546,12 @@ export default function ConnectPage() {
           <button
             type="button"
             className="subscribe-button"
-            onClick={startCheckout}
-            disabled={checkoutLoading}
+            onClick={
+              startCheckout
+            }
+            disabled={
+              checkoutLoading
+            }
           >
             {checkoutLoading
               ? "Opening checkout..."
@@ -568,7 +569,9 @@ export default function ConnectPage() {
           <h1>
             Optimize any ecommerce
             product{" "}
-            <span>with AI.</span>
+            <span>
+              with AI.
+            </span>
           </h1>
 
           <p>
@@ -584,6 +587,8 @@ export default function ConnectPage() {
 
       <section className="workspace">
         <div className="workspace-grid">
+
+          {/* STEP 1 */}
           <section className="content-card">
             <div className="step-label">
               STEP 1
@@ -661,6 +666,7 @@ export default function ConnectPage() {
             </div>
           </section>
 
+          {/* SHOPIFY */}
           {selected ===
             "shopify" && (
             <section className="content-card">
@@ -703,9 +709,12 @@ export default function ConnectPage() {
                       );
 
                     if (
-                      cleaned !== shop
+                      cleaned !==
+                      shop
                     ) {
-                      setShop(cleaned);
+                      setShop(
+                        cleaned
+                      );
                     }
                   }}
                   onKeyDown={(event) => {
@@ -723,7 +732,9 @@ export default function ConnectPage() {
                   autoCapitalize="none"
                   autoCorrect="off"
                   spellCheck={false}
-                  disabled={connecting}
+                  disabled={
+                    connecting
+                  }
                 />
 
                 <button
@@ -759,17 +770,20 @@ export default function ConnectPage() {
             </section>
           )}
 
+          {/* OTHER PLATFORMS */}
           {selected !==
             "shopify" && (
             <section className="content-card">
               <div className="step-label">
-                {selected === "manual"
+                {selected ===
+                "manual"
                   ? "MANUAL / IMPORT"
                   : "PLATFORM"}
               </div>
 
               <h2>
-                {selected === "manual"
+                {selected ===
+                "manual"
                   ? "Manual / Import"
                   : `Connect ${
                       platforms.find(
@@ -806,6 +820,7 @@ export default function ConnectPage() {
             </section>
           )}
 
+          {/* WORKFLOW */}
           <section className="content-card">
             <div className="step-label">
               VIRELLO WORKFLOW
@@ -821,6 +836,7 @@ export default function ConnectPage() {
                 <strong>
                   1. Connect
                 </strong>
+
                 <p>
                   Connect your
                   ecommerce platform.
@@ -831,6 +847,7 @@ export default function ConnectPage() {
                 <strong>
                   2. Import
                 </strong>
+
                 <p>
                   Bring product
                   information into
@@ -842,6 +859,7 @@ export default function ConnectPage() {
                 <strong>
                   3. Optimize
                 </strong>
+
                 <p>
                   Generate improved
                   product content
@@ -853,6 +871,7 @@ export default function ConnectPage() {
                 <strong>
                   4. Apply
                 </strong>
+
                 <p>
                   Send approved
                   content back to the
@@ -861,6 +880,7 @@ export default function ConnectPage() {
               </div>
             </div>
           </section>
+
         </div>
       </section>
 
