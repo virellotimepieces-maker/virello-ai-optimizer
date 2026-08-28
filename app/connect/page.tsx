@@ -9,55 +9,57 @@ type Platform =
   | "wix"
   | "manual";
 
-const platforms = [
+const platforms: {
+  id: Platform;
+  name: string;
+  description: string;
+  icon: string;
+}[] = [
   {
-    id: "shopify" as const,
+    id: "shopify",
     name: "Shopify",
     description: "Connect your Shopify store",
     icon: "S",
   },
   {
-    id: "woocommerce" as const,
+    id: "woocommerce",
     name: "WooCommerce",
     description: "Connect your WooCommerce store",
     icon: "W",
   },
   {
-    id: "bigcommerce" as const,
+    id: "bigcommerce",
     name: "BigCommerce",
     description: "Connect your BigCommerce store",
     icon: "B",
   },
   {
-    id: "wix" as const,
+    id: "wix",
     name: "Wix",
     description: "Connect your Wix store",
     icon: "W",
   },
   {
-    id: "manual" as const,
+    id: "manual",
     name: "Manual / Import",
-    description:
-      "Optimize products without connecting a store",
+    description: "Optimize products without connecting a store",
     icon: "M",
   },
 ];
 
-function cleanShopDomain(value: string) {
+function cleanShopDomain(value: string): string {
   return value
     .trim()
     .toLowerCase()
     .replace(/^https?:\/\//, "")
     .replace(/^www\./, "")
     .replace(/\/+$/, "")
-    .replace(
-      /(\.myshopify\.com){2,}$/,
-      ".myshopify.com"
-    );
+    .replace(/(\/.*)$/, "")
+    .replace(/(\.myshopify\.com){2,}$/, ".myshopify.com");
 }
 
-function isValidShopifyDomain(value: string) {
-  return /^([a-z0-9][a-z0-9-]*[a-z0-9]|[a-z0-9])\.myshopify\.com$/i.test(
+function isValidShopifyDomain(value: string): boolean {
+  return /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.myshopify\.com$/i.test(
     value
   );
 }
@@ -81,6 +83,9 @@ export default function ConnectPage() {
   const [checkoutLoading, setCheckoutLoading] =
     useState(false);
 
+  const [connecting, setConnecting] =
+    useState(false);
+
   useEffect(() => {
     const params = new URLSearchParams(
       window.location.search
@@ -97,7 +102,8 @@ export default function ConnectPage() {
 
     const errorParam =
       params.get("error_description") ||
-      params.get("error");
+      params.get("error") ||
+      "";
 
     const cleanedShop =
       cleanShopDomain(shopParam);
@@ -110,10 +116,11 @@ export default function ConnectPage() {
       setConnectedShop(cleanedShop);
       setShop(cleanedShop);
       setSelected("shopify");
+      setMessage("");
 
       window.history.replaceState(
         {},
-        "",
+        document.title,
         "/connect"
       );
 
@@ -128,7 +135,7 @@ export default function ConnectPage() {
 
       window.history.replaceState(
         {},
-        "",
+        document.title,
         "/connect"
       );
 
@@ -151,18 +158,6 @@ export default function ConnectPage() {
   const shopifyDomainIsValid =
     isValidShopifyDomain(cleanShop);
 
-  /*
-   * SHOPIFY OAUTH URL
-   *
-   * Server-side OAuth route.
-   */
-  const shopifyOAuthUrl =
-    shopifyDomainIsValid
-      ? `/api/auth/shopify?shop=${encodeURIComponent(
-          cleanShop
-        )}`
-      : "";
-
   function selectPlatform(
     platform: Platform
   ) {
@@ -174,43 +169,42 @@ export default function ConnectPage() {
     }
   }
 
-  /*
-   * START SHOPIFY OAUTH
-   *
-   * Shopify OAuth must start from the
-   * top-level browser window.
-   *
-   * Do not use fetch().
-   * Do not use an iframe.
-   * Do not use target="_blank".
-   */
   function connectShopify() {
-    if (!shopifyDomainIsValid) {
+    if (connecting) {
+      return;
+    }
+
+    const cleaned =
+      cleanShopDomain(shop);
+
+    if (
+      !isValidShopifyDomain(cleaned)
+    ) {
       setMessage(
         "Enter a valid Shopify .myshopify.com domain."
       );
       return;
     }
 
+    setConnecting(true);
     setMessage("");
 
-    const absoluteUrl = new URL(
+    const oauthUrl =
       `/api/auth/shopify?shop=${encodeURIComponent(
-        cleanShop
-      )}`,
-      window.location.origin
-    ).toString();
+        cleaned
+      )}`;
 
     /*
-     * Force a top-level navigation.
+     * Shopify OAuth must be started
+     * with a normal browser navigation.
+     *
+     * Do NOT use fetch().
+     * Do NOT use an iframe.
+     * Do NOT use target="_blank".
      */
-    if (window.top) {
-      window.top.location.href =
-        absoluteUrl;
-    } else {
-      window.location.href =
-        absoluteUrl;
-    }
+    window.location.assign(
+      oauthUrl
+    );
   }
 
   async function startCheckout() {
@@ -231,19 +225,28 @@ export default function ConnectPage() {
               "Content-Type":
                 "application/json",
             },
+            credentials: "include",
           }
         );
 
       const data =
-        await response.json();
+        await response
+          .json()
+          .catch(() => null);
+
+      if (!response.ok) {
+        throw new Error(
+          data?.error ||
+            "Unable to start subscription checkout."
+        );
+      }
 
       if (
-        !response.ok ||
-        !data.success ||
-        !data.url
+        !data?.success ||
+        !data?.url
       ) {
         throw new Error(
-          data.error ||
+          data?.error ||
             "Unable to start subscription checkout."
         );
       }
@@ -308,9 +311,8 @@ export default function ConnectPage() {
             </div>
 
             <h1>
-              Your store is
+              Your store is{" "}
               <span>
-                {" "}
                 connected.
               </span>
             </h1>
@@ -479,8 +481,10 @@ export default function ConnectPage() {
 
           <h1>
             Optimize any ecommerce
-            product
-            <span> with AI.</span>
+            product{" "}
+            <span>
+              with AI.
+            </span>
           </h1>
 
           <p>
@@ -611,24 +615,55 @@ export default function ConnectPage() {
                     );
                     setMessage("");
                   }}
+                  onBlur={() => {
+                    const cleaned =
+                      cleanShopDomain(
+                        shop
+                      );
+
+                    if (
+                      cleaned !==
+                      shop
+                    ) {
+                      setShop(
+                        cleaned
+                      );
+                    }
+                  }}
+                  onKeyDown={(event) => {
+                    if (
+                      event.key ===
+                        "Enter" &&
+                      shopifyDomainIsValid &&
+                      !connecting
+                    ) {
+                      connectShopify();
+                    }
+                  }}
                   placeholder="mystore.myshopify.com"
                   autoComplete="off"
                   autoCapitalize="none"
                   autoCorrect="off"
                   spellCheck={false}
+                  disabled={
+                    connecting
+                  }
                 />
 
                 <button
                   type="button"
                   className="generate-button continue-button"
                   disabled={
-                    !shopifyDomainIsValid
+                    !shopifyDomainIsValid ||
+                    connecting
                   }
                   onClick={
                     connectShopify
                   }
                 >
-                  Connect Store
+                  {connecting
+                    ? "Connecting..."
+                    : "Connect Store"}
                 </button>
               </div>
 
@@ -640,11 +675,10 @@ export default function ConnectPage() {
 
               <p className="oauth-note">
                 Shopify authorization
-                will open in the
-                top-level browser
-                window. After approval,
-                Shopify will return
-                you to Virello.
+                will open in this
+                browser window. After
+                approval, Shopify will
+                return you to Virello.
               </p>
             </section>
           )}
@@ -669,7 +703,8 @@ export default function ConnectPage() {
                         (item) =>
                           item.id ===
                           selected
-                      )?.name
+                      )?.name ||
+                      selected
                     }`}
               </h2>
 
@@ -740,8 +775,8 @@ export default function ConnectPage() {
 
                 <p>
                   Generate improved
-                  product content with
-                  AI.
+                  product content
+                  with AI.
                 </p>
               </div>
 
@@ -1035,6 +1070,10 @@ const styles = `
 
   .form-group input::placeholder {
     color: #9ca1a8;
+  }
+
+  .form-group input:disabled {
+    opacity: 0.55;
   }
 
   .generate-button {
