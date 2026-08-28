@@ -91,13 +91,25 @@ export default function ConnectPage() {
 
   /*
    * HANDLE SHOPIFY OAUTH RETURN
+   *
+   * IMPORTANT:
+   * Reset the connecting state both when the
+   * component mounts and when the browser restores
+   * this page from its back-forward cache.
    */
   useEffect(() => {
-    /*
-     * Always clear the local loading state
-     * when the page loads again after OAuth.
-     */
-    setConnecting(false);
+    const handlePageShow = () => {
+      setConnecting(false);
+    };
+
+    // Normal page load
+    handlePageShow();
+
+    // Browser bfcache / history restoration
+    window.addEventListener(
+      "pageshow",
+      handlePageShow
+    );
 
     const params = new URLSearchParams(
       window.location.search
@@ -139,7 +151,12 @@ export default function ConnectPage() {
         "/connect"
       );
 
-      return;
+      return () => {
+        window.removeEventListener(
+          "pageshow",
+          handlePageShow
+        );
+      };
     }
 
     /*
@@ -158,7 +175,12 @@ export default function ConnectPage() {
         "/connect"
       );
 
-      return;
+      return () => {
+        window.removeEventListener(
+          "pageshow",
+          handlePageShow
+        );
+      };
     }
 
     /*
@@ -170,6 +192,13 @@ export default function ConnectPage() {
       setShop(cleanedShop);
       setSelected("shopify");
     }
+
+    return () => {
+      window.removeEventListener(
+        "pageshow",
+        handlePageShow
+      );
+    };
   }, []);
 
   const cleanShop = useMemo(
@@ -186,10 +215,13 @@ export default function ConnectPage() {
     setSelected(platform);
     setMessage("");
 
+    // Always clear connection state when
+    // changing away from Shopify.
     if (platform !== "shopify") {
       setShop("");
       setConnected(false);
       setConnectedShop("");
+      setConnecting(false);
     }
   }
 
@@ -235,7 +267,7 @@ export default function ConnectPage() {
 
     /*
      * If Virello is running inside a Shopify
-     * Admin iframe, force the OAuth navigation
+     * Admin iframe, force OAuth navigation
      * to the top-level browser window.
      */
     if (
@@ -659,6 +691,7 @@ export default function ConnectPage() {
                         .value
                     );
                     setMessage("");
+                    setConnecting(false);
                   }}
                   onBlur={() => {
                     const cleaned =
