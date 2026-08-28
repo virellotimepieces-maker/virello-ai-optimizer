@@ -1,28 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
-
-type Platform =
-  | "shopify"
-  | "woocommerce"
-  | "bigcommerce"
-  | "wix";
-
-type EcommerceProduct = {
-  id: string;
-  title: string;
-  description?: string;
-  productType?: string;
-  tags?: string[];
-  status?: string;
-  vendor?: string;
-  price?: string;
-  images?: {
-    url: string;
-    altText?: string | null;
-  }[];
-  featuredImage?: string | null;
-};
+import { useState } from "react";
 
 type AIResult = {
   analysis?: {
@@ -58,28 +36,6 @@ type AIResult = {
   reasoning?: string;
 };
 
-const platforms: {
-  value: Platform;
-  label: string;
-}[] = [
-  {
-    value: "shopify",
-    label: "Shopify",
-  },
-  {
-    value: "woocommerce",
-    label: "WooCommerce",
-  },
-  {
-    value: "bigcommerce",
-    label: "BigCommerce",
-  },
-  {
-    value: "wix",
-    label: "Wix",
-  },
-];
-
 export default function Home() {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -96,30 +52,9 @@ export default function Home() {
   const [checkoutLoading, setCheckoutLoading] =
     useState(false);
 
-  const [productsLoading, setProductsLoading] =
-    useState(false);
-
-  const [products, setProducts] =
-    useState<EcommerceProduct[]>([]);
-
-  const [selectedProductId, setSelectedProductId] =
-    useState("");
-
-  const [platform, setPlatform] =
-    useState<Platform>("shopify");
-
-  const [storeConnected, setStoreConnected] =
-    useState(false);
-
   const [error, setError] =
     useState("");
 
-  const [productMessage, setProductMessage] =
-    useState("");
-
-  /*
-   * CHECKOUT
-   */
   async function startCheckout() {
     setCheckoutLoading(true);
     setError("");
@@ -157,112 +92,10 @@ export default function Home() {
     }
   }
 
-  /*
-   * CONNECT STORE
-   *
-   * The existing /app/connect route remains
-   * responsible for the actual platform connection.
-   */
-  function connectStore() {
-    setError("");
-    setProductMessage("");
-
-    window.location.href =
-      `/connect?platform=${platform}`;
-  }
-
-  /*
-   * LOAD PRODUCTS
-   *
-   * Uses the universal products endpoint:
-   *
-   * /api/stores/products?platform=...
-   */
-  async function loadProducts() {
-    setProductsLoading(true);
-    setError("");
-    setProductMessage("");
-
-    try {
-      const response = await fetch(
-        `/api/stores/products?platform=${platform}`,
-        {
-          method: "GET",
-          cache: "no-store",
-        }
-      );
-
-      const data = await response.json();
-
-      if (
-        !response.ok ||
-        !data.success
-      ) {
-        throw new Error(
-          data.error ||
-            `Unable to load ${platform} products.`
-        );
-      }
-
-      const loadedProducts =
-        Array.isArray(data.products)
-          ? data.products
-          : [];
-
-      setProducts(loadedProducts);
-      setStoreConnected(true);
-
-      if (!loadedProducts.length) {
-        setProductMessage(
-          "No products were returned from the connected store."
-        );
-      } else {
-        setProductMessage(
-          `${loadedProducts.length} products loaded.`
-        );
-      }
-    } catch (err) {
-      setStoreConnected(false);
-
-      setError(
-        err instanceof Error
-          ? err.message
-          : `Unable to load ${platform} products.`
-      );
-    } finally {
-      setProductsLoading(false);
-    }
-  }
-
-  /*
-   * WHEN A PRODUCT IS SELECTED
-   */
-  function selectProduct(
-    product: EcommerceProduct
-  ) {
-    setSelectedProductId(product.id);
-
-    setTitle(product.title || "");
-    setDescription(
-      product.description || ""
-    );
-    setProductType(
-      product.productType || ""
-    );
-    setVendor(product.vendor || "");
-    setPrice(product.price || "");
-
-    setResult(null);
-    setError("");
-  }
-
-  /*
-   * OPTIMIZE PRODUCT
-   */
   async function optimize() {
     if (!title.trim()) {
       setError(
-        "Select a product or enter a product title first."
+        "Enter a product title first."
       );
       return;
     }
@@ -289,9 +122,6 @@ export default function Home() {
                 productType.trim(),
               vendor: vendor.trim(),
               price: price.trim(),
-              platform,
-              productId:
-                selectedProductId || null,
             },
           }),
         }
@@ -321,9 +151,6 @@ export default function Home() {
     }
   }
 
-  /*
-   * COPY
-   */
   async function copyText(
     value?: string
   ) {
@@ -352,36 +179,6 @@ export default function Home() {
       : "";
   }
 
-  /*
-   * LOAD PRODUCTS AFTER PAGE LOAD
-   *
-   * This does not force Shopify.
-   * It only attempts to load the selected
-   * platform when the user has a connection.
-   */
-  useEffect(() => {
-    const params =
-      new URLSearchParams(
-        window.location.search
-      );
-
-    const connectedPlatform =
-      params.get("platform");
-
-    if (
-      connectedPlatform === "shopify" ||
-      connectedPlatform ===
-        "woocommerce" ||
-      connectedPlatform ===
-        "bigcommerce" ||
-      connectedPlatform === "wix"
-    ) {
-      setPlatform(
-        connectedPlatform
-      );
-    }
-  }, []);
-
   return (
     <main className="app-shell">
 
@@ -407,12 +204,8 @@ export default function Home() {
           <button
             type="button"
             className="subscribe-button"
-            onClick={
-              startCheckout
-            }
-            disabled={
-              checkoutLoading
-            }
+            onClick={startCheckout}
+            disabled={checkoutLoading}
           >
             {checkoutLoading
               ? "Opening checkout..."
@@ -433,16 +226,14 @@ export default function Home() {
           </div>
 
           <h1>
-            Optimize any ecommerce
-            product{" "}
+            Optimize any ecommerce product{" "}
             <span>with AI.</span>
           </h1>
 
           <p>
-            Create stronger product
-            listings, SEO copy and
-            conversion-focused content
-            for ecommerce and
+            Create stronger product listings,
+            SEO copy and conversion-focused
+            content for ecommerce and
             dropshipping businesses.
           </p>
 
@@ -457,209 +248,6 @@ export default function Home() {
 
           <section className="optimizer-panel">
 
-            {/* STORE CONNECTION */}
-            <div className="content-card">
-
-              <div className="step-label">
-                CONNECT YOUR STORE
-              </div>
-
-              <h2>
-                Import your ecommerce
-                products
-              </h2>
-
-              <p>
-                Connect your store and
-                bring your existing
-                products into Virello.
-              </p>
-
-              <div
-                className="score-grid"
-                style={{
-                  marginTop: "20px",
-                }}
-              >
-
-                <select
-                  className="search-input"
-                  value={platform}
-                  onChange={(e) =>
-                    setPlatform(
-                      e.target
-                        .value as Platform
-                    )
-                  }
-                >
-                  {platforms.map(
-                    (item) => (
-                      <option
-                        key={
-                          item.value
-                        }
-                        value={
-                          item.value
-                        }
-                      >
-                        {item.label}
-                      </option>
-                    )
-                  )}
-                </select>
-
-                <button
-                  type="button"
-                  className="generate-button"
-                  onClick={
-                    connectStore
-                  }
-                >
-                  Connect Store
-                </button>
-
-              </div>
-
-              <button
-                type="button"
-                className="small-button"
-                onClick={
-                  loadProducts
-                }
-                disabled={
-                  productsLoading
-                }
-                style={{
-                  marginTop: "15px",
-                }}
-              >
-                {productsLoading
-                  ? "Loading products..."
-                  : `Load ${platforms.find(
-                      (item) =>
-                        item.value ===
-                        platform
-                    )?.label || "Store"} Products`}
-              </button>
-
-              {productMessage && (
-                <div
-                  className="alert"
-                  style={{
-                    marginTop: "15px",
-                  }}
-                >
-                  {productMessage}
-                </div>
-              )}
-
-            </div>
-
-            {/* PRODUCT LIST */}
-            {products.length >
-              0 && (
-              <div className="content-card">
-
-                <div className="step-label">
-                  YOUR PRODUCTS
-                </div>
-
-                <h2>
-                  Select a product
-                </h2>
-
-                <p>
-                  Choose a product to
-                  automatically fill the
-                  optimizer.
-                </p>
-
-                <div
-                  style={{
-                    display: "grid",
-                    gap: "12px",
-                    marginTop: "20px",
-                  }}
-                >
-
-                  {products.map(
-                    (product) => (
-                      <button
-                        type="button"
-                        key={
-                          product.id
-                        }
-                        onClick={() =>
-                          selectProduct(
-                            product
-                          )
-                        }
-                        style={{
-                          width:
-                            "100%",
-                          textAlign:
-                            "left",
-                          padding:
-                            "16px",
-                          border:
-                            selectedProductId ===
-                            product.id
-                              ? "2px solid #111"
-                              : "1px solid #ddd",
-                          borderRadius:
-                            "12px",
-                          background:
-                            selectedProductId ===
-                            product.id
-                              ? "#f5f5f5"
-                              : "#fff",
-                          cursor:
-                            "pointer",
-                        }}
-                      >
-
-                        <strong>
-                          {product.title ||
-                            "Untitled product"}
-                        </strong>
-
-                        {product.vendor && (
-                          <div
-                            style={{
-                              marginTop:
-                                "5px",
-                              fontSize:
-                                "13px",
-                              opacity:
-                                0.65,
-                            }}
-                          >
-                            {product.vendor}
-                          </div>
-                        )}
-
-                        {product.price && (
-                          <div
-                            style={{
-                              marginTop:
-                                "5px",
-                              fontSize:
-                                "14px",
-                            }}
-                          >
-                            {product.price}
-                          </div>
-                        )}
-
-                      </button>
-                    )
-                  )}
-
-                </div>
-
-              </div>
-            )}
-
             {/* PRODUCT HEADER */}
             <div className="selected-product">
 
@@ -670,14 +258,11 @@ export default function Home() {
                 </div>
 
                 <h2>
-                  Tell Virello about
-                  your product
+                  Tell Virello about your product
                 </h2>
 
                 <p>
-                  Select an imported
-                  product or add your
-                  product details below.
+                  Add your product details below.
                 </p>
 
               </div>
@@ -685,9 +270,7 @@ export default function Home() {
               <button
                 type="button"
                 className="generate-button"
-                onClick={
-                  optimize
-                }
+                onClick={optimize}
                 disabled={loading}
               >
                 {loading
@@ -713,9 +296,11 @@ export default function Home() {
                 <div className="result-field">
 
                   <div className="field-header">
+
                     <label>
                       Product title *
                     </label>
+
                   </div>
 
                   <input
@@ -735,17 +320,16 @@ export default function Home() {
                 <div className="result-field">
 
                   <div className="field-header">
+
                     <label>
-                      Description
-                      (optional)
+                      Description (optional)
                     </label>
+
                   </div>
 
                   <textarea
                     className="search-input"
-                    value={
-                      description
-                    }
+                    value={description}
                     onChange={(e) =>
                       setDescription(
                         e.target.value
@@ -761,9 +345,7 @@ export default function Home() {
 
                   <input
                     className="search-input"
-                    value={
-                      productType
-                    }
+                    value={productType}
                     onChange={(e) =>
                       setProductType(
                         e.target.value
@@ -812,17 +394,13 @@ export default function Home() {
                       </div>
 
                       <h2>
-                        Product
-                        optimization
-                        score
+                        Product optimization score
                       </h2>
 
                       <p>
-                        Based on listing
-                        quality, SEO,
-                        clarity and
-                        conversion
-                        potential.
+                        Based on listing quality,
+                        SEO, clarity and
+                        conversion potential.
                       </p>
 
                     </div>
@@ -830,11 +408,7 @@ export default function Home() {
                     <div className="overall-score">
 
                       <strong>
-                        {
-                          result.score
-                            ?.overall ??
-                          0
-                        }
+                        {result.score?.overall ?? 0}
                       </strong>
 
                       <span>
@@ -851,23 +425,19 @@ export default function Home() {
                     {[
                       [
                         "Title",
-                        result.score
-                          ?.title,
+                        result.score?.title,
                       ],
                       [
                         "Description",
-                        result.score
-                          ?.description,
+                        result.score?.description,
                       ],
                       [
                         "SEO",
-                        result.score
-                          ?.seo,
+                        result.score?.seo,
                       ],
                       [
                         "Clarity",
-                        result.score
-                          ?.productClarity,
+                        result.score?.productClarity,
                       ],
                       [
                         "Conversion",
@@ -875,10 +445,7 @@ export default function Home() {
                           ?.conversionPotential,
                       ],
                     ].map(
-                      ([
-                        label,
-                        value,
-                      ]) => {
+                      ([label, value]) => {
 
                         const score =
                           typeof value ===
@@ -889,9 +456,7 @@ export default function Home() {
                         return (
                           <div
                             className="score-card"
-                            key={String(
-                              label
-                            )}
+                            key={String(label)}
                           >
 
                             <div className="score-header">
@@ -901,8 +466,7 @@ export default function Home() {
                               </span>
 
                               <strong>
-                                {score}
-                                /100
+                                {score}/100
                               </strong>
 
                             </div>
@@ -933,13 +497,11 @@ export default function Home() {
                       <div>
 
                         <div className="step-label">
-                          OPTIMIZED
-                          LISTING
+                          OPTIMIZED LISTING
                         </div>
 
                         <h2>
-                          Ready-to-use
-                          content
+                          Ready-to-use content
                         </h2>
 
                       </div>
@@ -972,12 +534,10 @@ export default function Home() {
                       </div>
 
                       <div className="field-value">
-                        {
-                          result
-                            .optimization
-                            ?.title ||
-                          "No output"
-                        }
+                        {result
+                          .optimization
+                          ?.title ||
+                          "No output"}
                       </div>
 
                     </div>
@@ -1008,12 +568,10 @@ export default function Home() {
                       </div>
 
                       <div className="field-value">
-                        {
-                          result
-                            .optimization
-                            ?.productType ||
-                          "No output"
-                        }
+                        {result
+                          .optimization
+                          ?.productType ||
+                          "No output"}
                       </div>
 
                     </div>
@@ -1024,8 +582,7 @@ export default function Home() {
                       <div className="field-header">
 
                         <label>
-                          Product
-                          description
+                          Product description
                         </label>
 
                         <button
@@ -1045,12 +602,10 @@ export default function Home() {
                       </div>
 
                       <div className="field-value multiline">
-                        {
-                          result
-                            .optimization
-                            ?.description ||
-                          "No output"
-                        }
+                        {result
+                          .optimization
+                          ?.description ||
+                          "No output"}
                       </div>
 
                     </div>
@@ -1143,13 +698,11 @@ export default function Home() {
                         <div className="field-actions">
 
                           <span className="character-count">
-                            {
-                              result
-                                .optimization
-                                ?.seoTitle
-                                ?.length ??
-                              0
-                            }
+                            {result
+                              .optimization
+                              ?.seoTitle
+                              ?.length ??
+                              0}
                             /50
                           </span>
 
@@ -1172,12 +725,10 @@ export default function Home() {
                       </div>
 
                       <div className="field-value">
-                        {
-                          result
-                            .optimization
-                            ?.seoTitle ||
-                          "No output"
-                        }
+                        {result
+                          .optimization
+                          ?.seoTitle ||
+                          "No output"}
                       </div>
 
                     </div>
@@ -1188,20 +739,17 @@ export default function Home() {
                       <div className="field-header">
 
                         <label>
-                          Meta
-                          description
+                          Meta description
                         </label>
 
                         <div className="field-actions">
 
                           <span className="character-count">
-                            {
-                              result
-                                .optimization
-                                ?.metaDescription
-                                ?.length ??
-                              0
-                            }
+                            {result
+                              .optimization
+                              ?.metaDescription
+                              ?.length ??
+                              0}
                             /150
                           </span>
 
@@ -1224,12 +772,10 @@ export default function Home() {
                       </div>
 
                       <div className="field-value multiline">
-                        {
-                          result
-                            .optimization
-                            ?.metaDescription ||
-                          "No output"
-                        }
+                        {result
+                          .optimization
+                          ?.metaDescription ||
+                          "No output"}
                       </div>
 
                     </div>
@@ -1261,19 +807,15 @@ export default function Home() {
                       </div>
 
                       <div className="field-value multiline">
-                        {
-                          result
-                            .optimization
-                            ?.tags
-                            ?.length
-                            ? result
-                                .optimization
-                                .tags
-                                .join(
-                                  ", "
-                                )
-                            : "No output"
-                        }
+                        {result
+                          .optimization
+                          ?.tags
+                          ?.length
+                          ? result
+                              .optimization
+                              .tags
+                              .join(", ")
+                          : "No output"}
                       </div>
 
                     </div>
@@ -1316,8 +858,7 @@ export default function Home() {
                         <div className="analysis-block">
 
                           <strong>
-                            Purchase
-                            motivation
+                            Purchase motivation
                           </strong>
 
                           <p>
@@ -1337,8 +878,7 @@ export default function Home() {
                         <div className="analysis-block">
 
                           <strong>
-                            Strongest
-                            features
+                            Strongest features
                           </strong>
 
                           <ul>
@@ -1402,8 +942,7 @@ export default function Home() {
                         <div className="analysis-block">
 
                           <strong>
-                            Missing
-                            information
+                            Missing information
                           </strong>
 
                           <ul>
@@ -1435,8 +974,7 @@ export default function Home() {
                         <div className="analysis-block">
 
                           <strong>
-                            SEO
-                            opportunities
+                            SEO opportunities
                           </strong>
 
                           <ul>
@@ -1468,8 +1006,7 @@ export default function Home() {
                         <div className="analysis-block">
 
                           <strong>
-                            Conversion
-                            opportunities
+                            Conversion opportunities
                           </strong>
 
                           <ul>
@@ -1507,9 +1044,7 @@ export default function Home() {
                       </div>
 
                       <p className="reasoning-text">
-                        {
-                          result.reasoning
-                        }
+                        {result.reasoning}
                       </p>
 
                     </div>
@@ -1528,4 +1063,4 @@ export default function Home() {
 
     </main>
   );
-                            }
+}
