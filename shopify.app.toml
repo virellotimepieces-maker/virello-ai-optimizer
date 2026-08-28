@@ -6,6 +6,8 @@ application_url = "https://virello-ai-optimizer.vercel.app"
 
 embedded = false
 
+use_legacy_install_flow = true
+
 [access_scopes]
 
 scopes = "read_products,write_products"
