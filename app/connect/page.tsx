@@ -62,9 +62,7 @@ function cleanShopDomain(value: string): string {
     );
 }
 
-function isValidShopifyDomain(
-  value: string
-): boolean {
+function isValidShopifyDomain(value: string): boolean {
   return /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.myshopify\.com$/i.test(
     value
   );
@@ -74,8 +72,7 @@ export default function ConnectPage() {
   const [selected, setSelected] =
     useState<Platform>("shopify");
 
-  const [shop, setShop] =
-    useState("");
+  const [shop, setShop] = useState("");
 
   const [connectedShop, setConnectedShop] =
     useState("");
@@ -92,7 +89,20 @@ export default function ConnectPage() {
   const [connecting, setConnecting] =
     useState(false);
 
+  /*
+   * HANDLE SHOPIFY OAUTH RETURN
+   *
+   * This effect runs after Shopify redirects
+   * the browser back to /connect.
+   *
+   * Important:
+   * Always reset "connecting" first so the
+   * button can never remain stuck after a
+   * browser navigation or OAuth return.
+   */
   useEffect(() => {
+    setConnecting(false);
+
     const params = new URLSearchParams(
       window.location.search
     );
@@ -114,16 +124,23 @@ export default function ConnectPage() {
     const cleanedShop =
       cleanShopDomain(shopParam);
 
+    /*
+     * SUCCESS
+     */
     if (
       connectedParam === "1" &&
       isValidShopifyDomain(cleanedShop)
     ) {
-      setConnected(true);
       setConnectedShop(cleanedShop);
       setShop(cleanedShop);
       setSelected("shopify");
       setMessage("");
+      setConnected(true);
 
+      /*
+       * Remove OAuth query parameters only
+       * after React has received them.
+       */
       window.history.replaceState(
         {},
         document.title,
@@ -133,7 +150,11 @@ export default function ConnectPage() {
       return;
     }
 
+    /*
+     * ERROR
+     */
     if (statusParam === "error") {
+      setConnected(false);
       setMessage(
         errorParam ||
           "Shopify authorization was not completed."
@@ -148,6 +169,10 @@ export default function ConnectPage() {
       return;
     }
 
+    /*
+     * If Shopify returned a valid shop without
+     * connected=1, keep it in the input.
+     */
     if (
       isValidShopifyDomain(cleanedShop)
     ) {
@@ -172,17 +197,18 @@ export default function ConnectPage() {
 
     if (platform !== "shopify") {
       setShop("");
+      setConnected(false);
+      setConnectedShop("");
     }
   }
 
   /*
    * START SHOPIFY OAUTH
    *
-   * Shopify OAuth must leave the
-   * current embedded/frame context.
-   *
+   * IMPORTANT:
+   * Use normal browser navigation.
    * Do not use fetch().
-   * Do not use an iframe.
+   * Do not use iframe.
    * Do not use target="_blank".
    */
   function connectShopify() {
@@ -205,24 +231,25 @@ export default function ConnectPage() {
     setConnecting(true);
     setMessage("");
 
-    const absoluteUrl = new URL(
-      `/api/auth/shopify?shop=${encodeURIComponent(
-        cleaned
-      )}`,
+    const oauthUrl = new URL(
+      "/api/auth/shopify",
       window.location.origin
-    ).toString();
+    );
+
+    oauthUrl.searchParams.set(
+      "shop",
+      cleaned
+    );
 
     /*
-     * Force OAuth to open at the
-     * top-level browser window.
+     * Full browser navigation.
+     *
+     * This avoids leaving the React page in a
+     * fetch/loading state while OAuth happens.
      */
-    if (window.top) {
-      window.top.location.href =
-        absoluteUrl;
-    } else {
-      window.location.href =
-        absoluteUrl;
-    }
+    window.location.assign(
+      oauthUrl.toString()
+    );
   }
 
   async function startCheckout() {
