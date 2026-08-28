@@ -92,29 +92,25 @@ export default function ConnectPage() {
   /*
    * HANDLE SHOPIFY OAUTH RETURN
    *
-   * IMPORTANT:
-   * The Shopify callback already completes the OAuth
-   * exchange and redirects back here with:
+   * The Shopify callback performs the OAuth
+   * token exchange on the server and then
+   * redirects back to:
    *
    * /connect?connected=1&shop=store.myshopify.com
    *
-   * We DO NOT call /status here.
+   * IMPORTANT:
    *
-   * The previous implementation waited for /status,
-   * and /status was returning 401 in production.
-   * That caused the UI to remain stuck on
-   * "Connecting...".
+   * We do NOT call /status here.
+   *
+   * The previous implementation called /status
+   * after OAuth. In production that endpoint
+   * could return 401 and leave the UI stuck
+   * on "Connecting...".
+   *
+   * The callback itself is the source of truth
+   * for a successful OAuth return.
    */
   useEffect(() => {
-    const handlePageShow = () => {
-      setConnecting(false);
-    };
-
-    window.addEventListener(
-      "pageshow",
-      handlePageShow
-    );
-
     const params = new URLSearchParams(
       window.location.search
     );
@@ -138,13 +134,6 @@ export default function ConnectPage() {
 
     /*
      * SUCCESSFUL SHOPIFY OAUTH
-     *
-     * The callback has already completed
-     * Shopify authorization before redirecting
-     * the browser here.
-     *
-     * Therefore do not make another /status
-     * request that can fail with 401.
      */
     if (
       connectedParam === "1" &&
@@ -158,23 +147,25 @@ export default function ConnectPage() {
       setConnected(true);
 
       /*
-       * Remove OAuth query parameters from the
-       * browser URL after reading them.
+       * Remove OAuth parameters from
+       * the browser URL.
        */
       window.history.replaceState(
         {},
         document.title,
         "/connect"
       );
-    } else if (
-      statusParam === "error"
-    ) {
-      /*
-       * Shopify authorization failed or was
-       * cancelled.
-       */
+
+      return;
+    }
+
+    /*
+     * SHOPIFY OAUTH ERROR
+     */
+    if (statusParam === "error") {
       setConnected(false);
       setConnecting(false);
+
       setMessage(
         errorParam ||
           "Shopify authorization was not completed."
@@ -185,21 +176,37 @@ export default function ConnectPage() {
         document.title,
         "/connect"
       );
-    } else if (
+
+      return;
+    }
+
+    /*
+     * NORMAL /connect?shop=...
+     */
+    if (
       isValidShopifyDomain(cleanedShop)
     ) {
-      /*
-       * Normal /connect?shop=... visit.
-       */
       setShop(cleanedShop);
       setSelected("shopify");
-      setConnecting(false);
-    } else {
-      /*
-       * Normal fresh page load.
-       */
-      setConnecting(false);
     }
+
+    setConnecting(false);
+  }, []);
+
+  /*
+   * Also make sure browser back/forward
+   * navigation never leaves the button
+   * permanently stuck.
+   */
+  useEffect(() => {
+    const handlePageShow = () => {
+      setConnecting(false);
+    };
+
+    window.addEventListener(
+      "pageshow",
+      handlePageShow
+    );
 
     return () => {
       window.removeEventListener(
@@ -233,14 +240,6 @@ export default function ConnectPage() {
 
   /*
    * START SHOPIFY OAUTH
-   *
-   * Shopify authorization starts at:
-   *
-   * /api/auth/shopify?shop=store.myshopify.com
-   *
-   * If Virello is inside an iframe, navigate the
-   * top-level browser window so Shopify OAuth is
-   * not trapped inside the iframe.
    */
   function connectShopify() {
     if (connecting) {
@@ -278,7 +277,9 @@ export default function ConnectPage() {
       oauthUrl.toString();
 
     /*
-     * Embedded / iframe case.
+     * If Virello is running inside an iframe,
+     * Shopify OAuth must use the top-level
+     * browser window.
      */
     if (
       window.top &&
@@ -289,11 +290,14 @@ export default function ConnectPage() {
     }
 
     /*
-     * Standalone browser case.
+     * Normal standalone browser.
      */
     window.location.href = url;
   }
 
+  /*
+   * STRIPE CHECKOUT
+   */
   async function startCheckout() {
     if (checkoutLoading) {
       return;
@@ -313,6 +317,7 @@ export default function ConnectPage() {
                 "application/json",
             },
             credentials: "include",
+            cache: "no-store",
           }
         );
 
@@ -354,6 +359,10 @@ export default function ConnectPage() {
 
   /*
    * CONNECTED SCREEN
+   *
+   * This screen is rendered immediately
+   * after the OAuth callback returns with
+   * connected=1.
    */
   if (connected) {
     return (
@@ -377,9 +386,7 @@ export default function ConnectPage() {
             <button
               type="button"
               className="subscribe-button"
-              onClick={
-                startCheckout
-              }
+              onClick={startCheckout}
               disabled={
                 checkoutLoading
               }
@@ -546,9 +553,7 @@ export default function ConnectPage() {
           <button
             type="button"
             className="subscribe-button"
-            onClick={
-              startCheckout
-            }
+            onClick={startCheckout}
             disabled={
               checkoutLoading
             }
@@ -589,6 +594,7 @@ export default function ConnectPage() {
         <div className="workspace-grid">
 
           {/* STEP 1 */}
+
           <section className="content-card">
             <div className="step-label">
               STEP 1
@@ -667,6 +673,7 @@ export default function ConnectPage() {
           </section>
 
           {/* SHOPIFY */}
+
           {selected ===
             "shopify" && (
             <section className="content-card">
@@ -771,6 +778,7 @@ export default function ConnectPage() {
           )}
 
           {/* OTHER PLATFORMS */}
+
           {selected !==
             "shopify" && (
             <section className="content-card">
@@ -821,6 +829,7 @@ export default function ConnectPage() {
           )}
 
           {/* WORKFLOW */}
+
           <section className="content-card">
             <div className="step-label">
               VIRELLO WORKFLOW
@@ -1192,6 +1201,17 @@ const styles = `
     width: 100%;
   }
 
+  .message {
+    margin-top: 16px;
+    padding: 14px 16px;
+    border: 1px solid #e0e3e7;
+    border-radius: 12px;
+    background: #f7f8f9;
+    color: #555b63;
+    font-size: 14px;
+    line-height: 1.5;
+  }
+
   .oauth-note {
     margin: 14px 0 0;
     color: #92979e;
@@ -1200,160 +1220,163 @@ const styles = `
     text-align: center;
   }
 
-  .message {
-    margin-top: 16px;
-    padding: 14px 16px;
-    border: 1px solid #e1e4e8;
-    border-radius: 12px;
-    background: #f8f9fa;
-    color: #555b63;
-    font-size: 13px;
-    line-height: 1.5;
-  }
-
   .success-card {
     text-align: center;
   }
 
   .success-icon {
-    width: 66px;
-    height: 66px;
-    margin: 0 auto 22px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    width: 64px;
+    height: 64px;
+    margin: 0 auto 20px;
     border-radius: 50%;
     background: #111318;
     color: #ffffff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     font-size: 30px;
     font-weight: 900;
   }
 
-  .success-card h2 {
-    margin: 12px 0 10px;
-    font-size: 28px;
-    letter-spacing: -0.03em;
+  .success-card .step-label {
+    text-align: center;
   }
 
-  .success-card > p {
-    color: #747a82;
+  .success-card h2 {
+    margin-top: 14px;
+  }
+
+  .success-card p {
+    max-width: 600px;
+    margin: 0 auto;
+    color: #7a8088;
+    font-size: 16px;
     line-height: 1.6;
   }
 
   .connected-store {
-    margin: 24px auto;
+    max-width: 520px;
+    margin: 28px auto;
     padding: 18px 20px;
-    max-width: 480px;
-    border: 1px solid #e2e4e8;
+    border: 1px solid #e0e3e7;
     border-radius: 14px;
-    background: #f8f9fa;
+    background: #f7f8f9;
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 7px;
   }
 
   .connected-store span {
-    color: #8a9098;
+    color: #8b9199;
     font-size: 11px;
-    font-weight: 700;
+    font-weight: 800;
+    letter-spacing: 0.1em;
     text-transform: uppercase;
-    letter-spacing: 0.08em;
   }
 
   .connected-store strong {
     color: #111318;
-    font-size: 16px;
-    word-break: break-word;
+    font-size: 17px;
   }
 
   .connect-actions {
     display: flex;
     justify-content: center;
-    margin-top: 22px;
   }
 
   .flow-grid {
     display: grid;
     grid-template-columns:
-      repeat(2, minmax(0, 1fr));
+      repeat(4, minmax(0, 1fr));
     gap: 12px;
+    margin-top: 24px;
   }
 
   .flow-card {
+    min-height: 150px;
     padding: 20px;
-    border: 1px solid #e2e4e8;
+    border: 1px solid #e0e3e7;
     border-radius: 16px;
-    background: #fafbfc;
+    background: #fafafa;
   }
 
   .flow-card strong {
     display: block;
+    margin-bottom: 10px;
     color: #111318;
     font-size: 15px;
-    font-weight: 850;
   }
 
   .flow-card p {
-    margin: 9px 0 0;
-    color: #7a8088;
+    margin: 0;
+    color: #81878f;
     font-size: 13px;
     line-height: 1.55;
   }
 
-  @media (max-width: 760px) {
+  @media (max-width: 800px) {
     .topbar {
-      padding: 16px;
       align-items: flex-start;
+      flex-direction: column;
     }
 
     .topbar-actions {
-      flex-direction: column;
-      align-items: flex-end;
-    }
-
-    .shop-pill {
-      display: none;
-    }
-
-    .brand-name {
-      font-size: 17px;
+      width: 100%;
+      justify-content: space-between;
     }
 
     .hero-inner {
-      padding: 52px 20px 48px;
+      padding:
+        55px 20px
+        50px;
+    }
+
+    .workspace {
+      padding: 18px;
+    }
+
+    .content-card {
+      padding: 24px;
+    }
+
+    .flow-grid {
+      grid-template-columns:
+        repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  @media (max-width: 520px) {
+    .topbar {
+      padding: 16px 18px;
+    }
+
+    .topbar-actions {
+      align-items: stretch;
+      flex-direction: column;
+    }
+
+    .shop-pill {
+      text-align: center;
     }
 
     .hero h1 {
-      font-size: 48px;
+      font-size: 46px;
     }
 
     .hero p {
       font-size: 16px;
     }
 
-    .workspace {
-      padding: 16px;
-    }
-
-    .content-card {
-      padding: 22px;
-      border-radius: 18px;
-    }
-
-    .content-card h2 {
-      font-size: 26px;
-    }
-
     .platform-card {
-      min-height: 92px;
+      gap: 12px;
       padding: 15px;
-      gap: 14px;
     }
 
     .platform-icon {
-      width: 50px;
-      height: 50px;
-      flex-basis: 50px;
+      width: 48px;
+      height: 48px;
+      flex-basis: 48px;
+      font-size: 20px;
     }
 
     .platform-info strong {
