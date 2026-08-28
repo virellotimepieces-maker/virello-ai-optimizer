@@ -1,182 +1,221 @@
 import { NextRequest, NextResponse } from "next/server";
 
-type Platform =
-  | "shopify"
-  | "woocommerce"
-  | "bigcommerce"
-  | "wix";
+const SHOPIFY_API_VERSION = "2026-07";
+const SHOPIFY_MYSHOPIFY_SUFFIX = ".myshopify.com";
 
-function getPlatform(request: NextRequest) {
-  const value =
-    request.nextUrl.searchParams
-      .get("platform")
-      ?.trim()
-      .toLowerCase();
+function normalizeShop(value: string) {
+  const raw = value.trim().toLowerCase();
 
-  return value as Platform | null;
+  if (!raw) {
+    return "";
+  }
+
+  try {
+    const withProtocol = /^https?:\/\//i.test(raw)
+      ? raw
+      : `https://${raw}`;
+
+    const url = new URL(withProtocol);
+    const hostname = url.hostname
+      .toLowerCase()
+      .replace(/^www\./, "");
+
+    if (
+      !hostname.endsWith(SHOPIFY_MYSHOPIFY_SUFFIX) ||
+      hostname === SHOPIFY_MYSHOPIFY_SUFFIX
+    ) {
+      return "";
+    }
+
+    return hostname;
+  } catch {
+    return "";
+  }
+}
+
+function errorResponse(message: string, status: number) {
+  return NextResponse.json(
+    {
+      success: false,
+      connected: false,
+      error: message,
+    },
+    {
+      status,
+      headers: {
+        "Cache-Control": "no-store, no-cache, must-revalidate",
+      },
+    }
+  );
 }
 
 export async function GET(request: NextRequest) {
   try {
-    const platform = getPlatform(request);
+    const accessToken =
+      request.cookies
+        .get("virello_shopify_access_token")
+        ?.value?.trim() || "";
 
-    if (!platform) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: "Ecommerce platform is required.",
-          supportedPlatforms: [
-            "shopify",
-            "woocommerce",
-            "bigcommerce",
-            "wix",
-          ],
-        },
-        { status: 400 }
+    const shopCookie =
+      request.cookies
+        .get("virello_shopify_shop")
+        ?.value?.trim() || "";
+
+    const shop = normalizeShop(shopCookie);
+
+    if (!accessToken || !shop) {
+      return errorResponse(
+        "Shopify connection is missing. Please connect your store again.",
+        401
       );
     }
 
-    if (
-      ![
-        "shopify",
-        "woocommerce",
-        "bigcommerce",
-        "wix",
-      ].includes(platform)
-    ) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: `Unsupported ecommerce platform: ${platform}`,
-        },
-        { status: 400 }
-      );
-    }
-
-    /*
-     * IMPORTANT:
-     *
-     * The existing Shopify product API is NOT changed.
-     * This universal endpoint only provides the platform
-     * layer that we will expand with additional connectors.
-     */
-
-    if (platform === "shopify") {
-      const authorization =
-        request.headers.get("authorization");
-
-      const sessionToken =
-        request.headers.get(
-          "x-shopify-session-token"
-        );
-
-      const shop =
-        request.headers.get("x-shopify-shop");
-
-      if (!authorization && !sessionToken) {
-        return NextResponse.json(
-          {
-            success: false,
-            platform: "shopify",
-            connected: false,
-            error:
-              "Shopify session token is required.",
-          },
-          {
-            status: 401,
-            headers: {
-              "X-Shopify-Retry-Invalid-Session-Request":
-                "1",
-            },
+    const query = `
+      query GetProducts {
+        products(first: 100) {
+          nodes {
+            id
+            title
+            descriptionHtml
+            productType
+            vendor
+            status
+            tags
+            variants(first: 1) {
+              nodes {
+                price
+              }
+            }
           }
-        );
-      }
-
-      const headers = new Headers();
-
-      if (authorization) {
-        headers.set(
-          "authorization",
-          authorization
-        );
-      }
-
-      if (sessionToken) {
-        headers.set(
-          "x-shopify-session-token",
-          sessionToken
-        );
-      }
-
-      if (shop) {
-        headers.set(
-          "x-shopify-shop",
-          shop
-        );
-      }
-
-      const origin =
-        request.headers.get("origin") ||
-        new URL(request.url).origin;
-
-      const response = await fetch(
-        `${origin}/api/shopify/products`,
-        {
-          method: "GET",
-          headers,
-          cache: "no-store",
         }
-      );
+      }
+    `;
 
-      const data = await response.json();
-
-      return NextResponse.json(
-        {
-          ...data,
-          platform: "shopify",
+    const response = await fetch(
+      `https://${shop}/admin/api/${SHOPIFY_API_VERSION}/graphql.json`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Shopify-Access-Token": accessToken,
         },
-        {
-          status: response.status,
-          headers: {
-            "X-Virello-Platform": "shopify",
-          },
-        }
+        body: JSON.stringify({
+          query,
+        }),
+        cache: "no-store",
+      }
+    );
+
+    const text = await response.text();
+
+    let data: unknown;
+
+    try {
+      data = JSON.parse(text);
+    } catch {
+      return errorResponse(
+        `Shopify returned an invalid response (${response.status}).`,
+        502
       );
     }
 
-    /*
-     * These connectors are intentionally not connected yet.
-     *
-     * We will add their real authentication and product
-     * APIs one platform at a time without modifying the
-     * existing Shopify implementation.
-     */
+    const result = data as {
+      errors?: Array<{
+        message?: string;
+      }>;
+      data?: {
+        products?: {
+          nodes?: Array<{
+            id?: string;
+            title?: string;
+            descriptionHtml?: string;
+            productType?: string;
+            vendor?: string;
+            status?: string;
+            tags?: string[];
+            variants?: {
+              nodes?: Array<{
+                price?: string;
+              }>;
+            };
+          }>;
+        };
+      };
+    };
+
+    if (!response.ok) {
+      return errorResponse(
+        result.errors?.[0]?.message ||
+          `Shopify API request failed (${response.status}).`,
+        response.status
+      );
+    }
+
+    if (result.errors?.length) {
+      return errorResponse(
+        result.errors
+          .map(
+            (error) =>
+              error.message || "Shopify GraphQL error."
+          )
+          .join("; "),
+        502
+      );
+    }
+
+    const nodes = result.data?.products?.nodes || [];
+
+    const products = nodes
+      .filter(
+        (product) =>
+          typeof product.id === "string" &&
+          product.id.length > 0
+      )
+      .map((product) => ({
+        id: product.id,
+        title: product.title || "",
+        description:
+          product.descriptionHtml || "",
+        productType:
+          product.productType || "",
+        vendor: product.vendor || "",
+        price:
+          product.variants?.nodes?.[0]?.price || "",
+        status:
+          product.status || "",
+        tags: Array.isArray(product.tags)
+          ? product.tags
+          : [],
+      }));
 
     return NextResponse.json(
       {
-        success: false,
-        platform,
-        connected: false,
-        error:
-          `${platform} connector is not connected yet.`,
+        success: true,
+        connected: true,
+        platform: "shopify",
+        shop,
+        count: products.length,
+        products,
       },
-      { status: 501 }
+      {
+        headers: {
+          "Cache-Control":
+            "no-store, no-cache, must-revalidate",
+          "X-Virello-Platform": "shopify",
+        },
+      }
     );
   } catch (error) {
     console.error(
-      "UNIVERSAL_PRODUCTS_ERROR:",
+      "SHOPIFY_PRODUCTS_GET_ERROR:",
       error
     );
 
-    return NextResponse.json(
-      {
-        success: false,
-        error:
-          error instanceof Error
-            ? error.message
-            : "Unable to load ecommerce products.",
-      },
-      { status: 500 }
+    return errorResponse(
+      error instanceof Error
+        ? error.message
+        : "Unable to load Shopify products.",
+      500
     );
   }
 }
