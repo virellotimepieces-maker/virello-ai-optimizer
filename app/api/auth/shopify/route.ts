@@ -17,6 +17,20 @@ function isValidShopDomain(shop: string) {
   );
 }
 
+function getShopifyRedirectUri(request: NextRequest) {
+  const configured =
+    process.env.SHOPIFY_REDIRECT_URI?.trim();
+
+  if (configured) {
+    return configured;
+  }
+
+  return new URL(
+    "/api/auth/shopify/callback",
+    request.nextUrl.origin
+  ).toString();
+}
+
 export async function GET(request: NextRequest) {
   try {
     const rawShop =
@@ -53,8 +67,7 @@ export async function GET(request: NextRequest) {
       randomBytes(32).toString("hex");
 
     const redirectUri =
-      process.env.SHOPIFY_REDIRECT_URI ||
-      "https://virello-ai-optimizer.vercel.app/api/auth/shopify/callback";
+      getShopifyRedirectUri(request);
 
     const scopes =
       process.env.SHOPIFY_SCOPES ||
@@ -77,7 +90,7 @@ export async function GET(request: NextRequest) {
       );
 
     /*
-     * OAuth state cookie
+     * OAuth state
      */
     response.cookies.set(
       "virello_shopify_oauth_state",
@@ -92,7 +105,7 @@ export async function GET(request: NextRequest) {
     );
 
     /*
-     * Original Shopify store cookie
+     * Store used to start OAuth
      */
     response.cookies.set(
       "virello_shopify_oauth_shop",
@@ -107,8 +120,24 @@ export async function GET(request: NextRequest) {
     );
 
     /*
-     * Prevent caching of OAuth redirects.
+     * Remember the Virello origin that
+     * started the connection.
+     *
+     * This lets the callback return to
+     * the same production domain.
      */
+    response.cookies.set(
+      "virello_return_origin",
+      request.nextUrl.origin,
+      {
+        httpOnly: true,
+        secure: true,
+        sameSite: "lax",
+        path: "/",
+        maxAge: 600,
+      }
+    );
+
     response.headers.set(
       "Cache-Control",
       "no-store, no-cache, must-revalidate"
@@ -120,6 +149,7 @@ export async function GET(request: NextRequest) {
         shop,
         redirectUri,
         scopes,
+        origin: request.nextUrl.origin,
       }
     );
 
