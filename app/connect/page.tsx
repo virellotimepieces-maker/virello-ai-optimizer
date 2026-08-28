@@ -1,6 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import {
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 
 type Platform =
   | "shopify"
@@ -18,25 +22,29 @@ const platforms: {
   {
     id: "shopify",
     name: "Shopify",
-    description: "Connect your Shopify store",
+    description:
+      "Connect your Shopify store",
     icon: "S",
   },
   {
     id: "woocommerce",
     name: "WooCommerce",
-    description: "Connect your WooCommerce store",
+    description:
+      "Connect your WooCommerce store",
     icon: "W",
   },
   {
     id: "bigcommerce",
     name: "BigCommerce",
-    description: "Connect your BigCommerce store",
+    description:
+      "Connect your BigCommerce store",
     icon: "B",
   },
   {
     id: "wix",
     name: "Wix",
-    description: "Connect your Wix store",
+    description:
+      "Connect your Wix store",
     icon: "W",
   },
   {
@@ -48,7 +56,9 @@ const platforms: {
   },
 ];
 
-function cleanShopDomain(value: string): string {
+function cleanShopDomain(
+  value: string
+): string {
   return value
     .trim()
     .toLowerCase()
@@ -62,7 +72,9 @@ function cleanShopDomain(value: string): string {
     );
 }
 
-function isValidShopifyDomain(value: string): boolean {
+function isValidShopifyDomain(
+  value: string
+): boolean {
   return /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.myshopify\.com$/i.test(
     value
   );
@@ -72,7 +84,8 @@ export default function ConnectPage() {
   const [selected, setSelected] =
     useState<Platform>("shopify");
 
-  const [shop, setShop] = useState("");
+  const [shop, setShop] =
+    useState("");
 
   const [connectedShop, setConnectedShop] =
     useState("");
@@ -89,31 +102,109 @@ export default function ConnectPage() {
   const [connecting, setConnecting] =
     useState(false);
 
+  const [checkingConnection, setCheckingConnection] =
+    useState(true);
+
+  /*
+   * CHECK EXISTING SHOPIFY SESSION
+   *
+   * The server is the source of truth.
+   * We do not rely only on ?connected=1.
+   */
+  useEffect(() => {
+    let cancelled = false;
+
+    async function checkConnection() {
+      try {
+        const response = await fetch(
+          "/status",
+          {
+            method: "GET",
+            credentials: "include",
+            cache: "no-store",
+          }
+        );
+
+        const data =
+          await response
+            .json()
+            .catch(() => null);
+
+        if (cancelled) {
+          return;
+        }
+
+        if (
+          response.ok &&
+          data?.success === true &&
+          data?.connected === true &&
+          data?.platform ===
+            "shopify"
+        ) {
+          const verifiedShop =
+            cleanShopDomain(
+              data.shop || ""
+            );
+
+          if (
+            isValidShopifyDomain(
+              verifiedShop
+            )
+          ) {
+            setConnectedShop(
+              verifiedShop
+            );
+            setShop(verifiedShop);
+            setSelected("shopify");
+            setConnected(true);
+            setConnecting(false);
+            setMessage("");
+
+            return;
+          }
+        }
+
+        setConnected(false);
+        setConnectedShop("");
+      } catch (error) {
+        console.error(
+          "SHOPIFY_CONNECTION_CHECK_ERROR:",
+          error
+        );
+
+        if (!cancelled) {
+          setConnected(false);
+          setConnectedShop("");
+        }
+      } finally {
+        if (!cancelled) {
+          setCheckingConnection(false);
+          setConnecting(false);
+        }
+      }
+    }
+
+    void checkConnection();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   /*
    * HANDLE SHOPIFY OAUTH RETURN
    *
-   * The Shopify callback performs the OAuth
-   * token exchange on the server and then
-   * redirects back to:
+   * After OAuth callback:
    *
-   * /connect?connected=1&shop=store.myshopify.com
+   * /connect?connected=1&shop=...
    *
-   * IMPORTANT:
-   *
-   * We do NOT call /status here.
-   *
-   * The previous implementation called /status
-   * after OAuth. In production that endpoint
-   * could return 401 and leave the UI stuck
-   * on "Connecting...".
-   *
-   * The callback itself is the source of truth
-   * for a successful OAuth return.
+   * We verify the server session again.
    */
   useEffect(() => {
-    const params = new URLSearchParams(
-      window.location.search
-    );
+    const params =
+      new URLSearchParams(
+        window.location.search
+      );
 
     const connectedParam =
       params.get("connected");
@@ -125,46 +216,135 @@ export default function ConnectPage() {
       params.get("status");
 
     const errorParam =
-      params.get("error_description") ||
+      params.get(
+        "error_description"
+      ) ||
       params.get("error") ||
       "";
 
     const cleanedShop =
       cleanShopDomain(shopParam);
 
-    /*
-     * SUCCESSFUL SHOPIFY OAUTH
-     */
     if (
       connectedParam === "1" &&
-      isValidShopifyDomain(cleanedShop)
+      isValidShopifyDomain(
+        cleanedShop
+      )
     ) {
-      setConnecting(false);
-      setConnectedShop(cleanedShop);
       setShop(cleanedShop);
       setSelected("shopify");
-      setMessage("");
-      setConnected(true);
+      setConnecting(false);
 
       /*
-       * Remove OAuth parameters from
-       * the browser URL.
+       * The callback has already
+       * saved the HTTP-only session.
+       *
+       * Ask /status to confirm it.
        */
-      window.history.replaceState(
-        {},
-        document.title,
-        "/connect"
-      );
+      async function verifyReturnedConnection() {
+        try {
+          const response =
+            await fetch(
+              "/status",
+              {
+                method: "GET",
+                credentials:
+                  "include",
+                cache: "no-store",
+              }
+            );
+
+          const data =
+            await response
+              .json()
+              .catch(() => null);
+
+          if (
+            response.ok &&
+            data?.success ===
+              true &&
+            data?.connected ===
+              true &&
+            data?.platform ===
+              "shopify"
+          ) {
+            const verifiedShop =
+              cleanShopDomain(
+                data.shop ||
+                  cleanedShop
+              );
+
+            if (
+              isValidShopifyDomain(
+                verifiedShop
+              )
+            ) {
+              setConnectedShop(
+                verifiedShop
+              );
+              setShop(
+                verifiedShop
+              );
+              setConnected(true);
+              setConnecting(false);
+              setMessage("");
+
+              window.history.replaceState(
+                {},
+                document.title,
+                "/connect"
+              );
+
+              return;
+            }
+          }
+
+          setConnected(false);
+          setConnecting(false);
+          setMessage(
+            data?.error ||
+              "Shopify authorization completed, but the connection could not be verified."
+          );
+
+          window.history.replaceState(
+            {},
+            document.title,
+            "/connect"
+          );
+        } catch (error) {
+          console.error(
+            "SHOPIFY_RETURN_VERIFY_ERROR:",
+            error
+          );
+
+          setConnected(false);
+          setConnecting(false);
+          setMessage(
+            "Shopify authorization completed, but the connection could not be verified."
+          );
+
+          window.history.replaceState(
+            {},
+            document.title,
+            "/connect"
+          );
+        }
+      }
+
+      void verifyReturnedConnection();
 
       return;
     }
 
     /*
-     * SHOPIFY OAUTH ERROR
+     * OAuth error
      */
-    if (statusParam === "error") {
+    if (
+      statusParam === "error"
+    ) {
       setConnected(false);
       setConnecting(false);
+      setCheckingConnection(false);
 
       setMessage(
         errorParam ||
@@ -181,22 +361,20 @@ export default function ConnectPage() {
     }
 
     /*
-     * NORMAL /connect?shop=...
+     * Normal /connect?shop=...
      */
     if (
-      isValidShopifyDomain(cleanedShop)
+      isValidShopifyDomain(
+        cleanedShop
+      )
     ) {
       setShop(cleanedShop);
       setSelected("shopify");
     }
-
-    setConnecting(false);
   }, []);
 
   /*
-   * Also make sure browser back/forward
-   * navigation never leaves the button
-   * permanently stuck.
+   * Browser back/forward cache.
    */
   useEffect(() => {
     const handlePageShow = () => {
@@ -217,12 +395,15 @@ export default function ConnectPage() {
   }, []);
 
   const cleanShop = useMemo(
-    () => cleanShopDomain(shop),
+    () =>
+      cleanShopDomain(shop),
     [shop]
   );
 
   const shopifyDomainIsValid =
-    isValidShopifyDomain(cleanShop);
+    isValidShopifyDomain(
+      cleanShop
+    );
 
   function selectPlatform(
     platform: Platform
@@ -230,7 +411,9 @@ export default function ConnectPage() {
     setSelected(platform);
     setMessage("");
 
-    if (platform !== "shopify") {
+    if (
+      platform !== "shopify"
+    ) {
       setShop("");
       setConnected(false);
       setConnectedShop("");
@@ -238,9 +421,6 @@ export default function ConnectPage() {
     }
   }
 
-  /*
-   * START SHOPIFY OAUTH
-   */
   function connectShopify() {
     if (connecting) {
       return;
@@ -250,7 +430,9 @@ export default function ConnectPage() {
       cleanShopDomain(shop);
 
     if (
-      !isValidShopifyDomain(cleaned)
+      !isValidShopifyDomain(
+        cleaned
+      )
     ) {
       setMessage(
         "Enter a valid Shopify .myshopify.com domain."
@@ -259,14 +441,15 @@ export default function ConnectPage() {
     }
 
     setConnecting(true);
-    setMessage("");
     setConnected(false);
     setConnectedShop("");
+    setMessage("");
 
-    const oauthUrl = new URL(
-      "/api/auth/shopify",
-      window.location.origin
-    );
+    const oauthUrl =
+      new URL(
+        "/api/auth/shopify",
+        window.location.origin
+      );
 
     oauthUrl.searchParams.set(
       "shop",
@@ -277,27 +460,23 @@ export default function ConnectPage() {
       oauthUrl.toString();
 
     /*
-     * If Virello is running inside an iframe,
-     * Shopify OAuth must use the top-level
-     * browser window.
+     * Standalone app:
+     * always perform OAuth in
+     * the top-level browser window.
      */
     if (
       window.top &&
       window.top !== window
     ) {
-      window.top.location.href = url;
+      window.top.location.href =
+        url;
       return;
     }
 
-    /*
-     * Normal standalone browser.
-     */
-    window.location.href = url;
+    window.location.href =
+      url;
   }
 
-  /*
-   * STRIPE CHECKOUT
-   */
   async function startCheckout() {
     if (checkoutLoading) {
       return;
@@ -316,7 +495,8 @@ export default function ConnectPage() {
               "Content-Type":
                 "application/json",
             },
-            credentials: "include",
+            credentials:
+              "include",
             cache: "no-store",
           }
         );
@@ -358,11 +538,30 @@ export default function ConnectPage() {
   }
 
   /*
+   * Initial session check.
+   */
+  if (checkingConnection) {
+    return (
+      <main className="app-shell">
+        <div className="loading-screen">
+          <div className="loading-card">
+            <div className="loading-spinner" />
+            <strong>
+              Checking connection...
+            </strong>
+            <span>
+              Please wait.
+            </span>
+          </div>
+        </div>
+
+        <style jsx>{styles}</style>
+      </main>
+    );
+  }
+
+  /*
    * CONNECTED SCREEN
-   *
-   * This screen is rendered immediately
-   * after the OAuth callback returns with
-   * connected=1.
    */
   if (connected) {
     return (
@@ -386,7 +585,9 @@ export default function ConnectPage() {
             <button
               type="button"
               className="subscribe-button"
-              onClick={startCheckout}
+              onClick={
+                startCheckout
+              }
               disabled={
                 checkoutLoading
               }
@@ -477,7 +678,6 @@ export default function ConnectPage() {
                   <strong>
                     1. Connect
                   </strong>
-
                   <p>
                     Your Shopify store
                     is connected.
@@ -488,7 +688,6 @@ export default function ConnectPage() {
                   <strong>
                     2. Import
                   </strong>
-
                   <p>
                     Bring your product
                     information into
@@ -500,7 +699,6 @@ export default function ConnectPage() {
                   <strong>
                     3. Optimize
                   </strong>
-
                   <p>
                     Generate improved
                     product content
@@ -512,7 +710,6 @@ export default function ConnectPage() {
                   <strong>
                     4. Apply
                   </strong>
-
                   <p>
                     Send approved
                     content back to
@@ -553,7 +750,9 @@ export default function ConnectPage() {
           <button
             type="button"
             className="subscribe-button"
-            onClick={startCheckout}
+            onClick={
+              startCheckout
+            }
             disabled={
               checkoutLoading
             }
@@ -592,9 +791,6 @@ export default function ConnectPage() {
 
       <section className="workspace">
         <div className="workspace-grid">
-
-          {/* STEP 1 */}
-
           <section className="content-card">
             <div className="step-label">
               STEP 1
@@ -672,8 +868,6 @@ export default function ConnectPage() {
             </div>
           </section>
 
-          {/* SHOPIFY */}
-
           {selected ===
             "shopify" && (
             <section className="content-card">
@@ -704,7 +898,8 @@ export default function ConnectPage() {
                   value={shop}
                   onChange={(event) => {
                     setShop(
-                      event.target.value
+                      event.target
+                        .value
                     );
                     setMessage("");
                     setConnecting(false);
@@ -777,8 +972,6 @@ export default function ConnectPage() {
             </section>
           )}
 
-          {/* OTHER PLATFORMS */}
-
           {selected !==
             "shopify" && (
             <section className="content-card">
@@ -828,8 +1021,6 @@ export default function ConnectPage() {
             </section>
           )}
 
-          {/* WORKFLOW */}
-
           <section className="content-card">
             <div className="step-label">
               VIRELLO WORKFLOW
@@ -845,7 +1036,6 @@ export default function ConnectPage() {
                 <strong>
                   1. Connect
                 </strong>
-
                 <p>
                   Connect your
                   ecommerce platform.
@@ -856,7 +1046,6 @@ export default function ConnectPage() {
                 <strong>
                   2. Import
                 </strong>
-
                 <p>
                   Bring product
                   information into
@@ -868,7 +1057,6 @@ export default function ConnectPage() {
                 <strong>
                   3. Optimize
                 </strong>
-
                 <p>
                   Generate improved
                   product content
@@ -880,7 +1068,6 @@ export default function ConnectPage() {
                 <strong>
                   4. Apply
                 </strong>
-
                 <p>
                   Send approved
                   content back to the
@@ -889,7 +1076,6 @@ export default function ConnectPage() {
               </div>
             </div>
           </section>
-
         </div>
       </section>
 
@@ -907,6 +1093,56 @@ const styles = `
     min-height: 100vh;
     background: #f4f5f7;
     color: #111318;
+  }
+
+  .loading-screen {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+  }
+
+  .loading-card {
+    width: min(100%, 360px);
+    padding: 32px;
+    border: 1px solid #e0e3e7;
+    border-radius: 20px;
+    background: #ffffff;
+    box-shadow:
+      0 12px 30px
+      rgba(17, 19, 24, 0.06);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    text-align: center;
+  }
+
+  .loading-card strong {
+    font-size: 16px;
+  }
+
+  .loading-card span {
+    color: #81878f;
+    font-size: 13px;
+  }
+
+  .loading-spinner {
+    width: 30px;
+    height: 30px;
+    margin-bottom: 8px;
+    border: 3px solid #e2e4e8;
+    border-top-color: #111318;
+    border-radius: 50%;
+    animation:
+      virello-spin 0.8s linear infinite;
+  }
+
+  @keyframes virello-spin {
+    to {
+      transform: rotate(360deg);
+    }
   }
 
   .topbar {
@@ -1072,8 +1308,7 @@ const styles = `
     cursor: pointer;
     transition:
       border-color 0.15s ease,
-      box-shadow 0.15s ease,
-      background 0.15s ease;
+      box-shadow 0.15s ease;
   }
 
   .platform-card:hover {
