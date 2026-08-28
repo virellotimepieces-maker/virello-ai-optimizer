@@ -82,10 +82,9 @@ export default function ConnectPage() {
     useState(false);
 
   useEffect(() => {
-    const params =
-      new URLSearchParams(
-        window.location.search
-      );
+    const params = new URLSearchParams(
+      window.location.search
+    );
 
     const connectedParam =
       params.get("connected");
@@ -144,22 +143,18 @@ export default function ConnectPage() {
     }
   }, []);
 
-  const cleanShop =
-    useMemo(
-      () => cleanShopDomain(shop),
-      [shop]
-    );
+  const cleanShop = useMemo(
+    () => cleanShopDomain(shop),
+    [shop]
+  );
 
   const shopifyDomainIsValid =
-    isValidShopifyDomain(
-      cleanShop
-    );
+    isValidShopifyDomain(cleanShop);
 
   /*
    * SHOPIFY OAUTH URL
    *
-   * This points to our server-side
-   * Shopify OAuth start route.
+   * Server-side OAuth route.
    */
   const shopifyOAuthUrl =
     shopifyDomainIsValid
@@ -174,9 +169,7 @@ export default function ConnectPage() {
     setSelected(platform);
     setMessage("");
 
-    if (
-      platform !== "shopify"
-    ) {
+    if (platform !== "shopify") {
       setShop("");
     }
   }
@@ -184,37 +177,40 @@ export default function ConnectPage() {
   /*
    * START SHOPIFY OAUTH
    *
-   * IMPORTANT:
+   * Shopify OAuth must start from the
+   * top-level browser window.
    *
-   * Do NOT use:
-   * - fetch()
-   * - target="_blank"
-   * - router.push()
-   * - an iframe navigation
-   *
-   * Shopify authorization must begin
-   * from the top-level browser page.
+   * Do not use fetch().
+   * Do not use an iframe.
+   * Do not use target="_blank".
    */
   function connectShopify() {
-    if (
-      !shopifyDomainIsValid
-    ) {
+    if (!shopifyDomainIsValid) {
+      setMessage(
+        "Enter a valid Shopify .myshopify.com domain."
+      );
       return;
     }
 
     setMessage("");
 
-    const absoluteUrl =
-      new URL(
-        `/api/auth/shopify?shop=${encodeURIComponent(
-          cleanShop
-        )}`,
-        window.location.origin
-      ).toString();
+    const absoluteUrl = new URL(
+      `/api/auth/shopify?shop=${encodeURIComponent(
+        cleanShop
+      )}`,
+      window.location.origin
+    ).toString();
 
-    window.location.assign(
-      absoluteUrl
-    );
+    /*
+     * Force a top-level navigation.
+     */
+    if (window.top) {
+      window.top.location.href =
+        absoluteUrl;
+    } else {
+      window.location.href =
+        absoluteUrl;
+    }
   }
 
   async function startCheckout() {
@@ -266,6 +262,9 @@ export default function ConnectPage() {
     }
   }
 
+  /*
+   * CONNECTED SCREEN
+   */
   if (connected) {
     return (
       <main className="app-shell">
@@ -288,7 +287,9 @@ export default function ConnectPage() {
             <button
               type="button"
               className="subscribe-button"
-              onClick={startCheckout}
+              onClick={
+                startCheckout
+              }
               disabled={
                 checkoutLoading
               }
@@ -432,6 +433,9 @@ export default function ConnectPage() {
     );
   }
 
+  /*
+   * CONNECT PAGE
+   */
   return (
     <main className="app-shell">
       <header className="topbar">
@@ -453,7 +457,9 @@ export default function ConnectPage() {
           <button
             type="button"
             className="subscribe-button"
-            onClick={startCheckout}
+            onClick={
+              startCheckout
+            }
             disabled={
               checkoutLoading
             }
@@ -491,6 +497,7 @@ export default function ConnectPage() {
       <section className="workspace">
         <div className="workspace-grid">
 
+          {/* STEP 1 */}
           <section className="content-card">
             <div className="step-label">
               STEP 1
@@ -568,6 +575,7 @@ export default function ConnectPage() {
             </div>
           </section>
 
+          {/* SHOPIFY */}
           {selected ===
             "shopify" && (
             <section className="content-card">
@@ -641,6 +649,7 @@ export default function ConnectPage() {
             </section>
           )}
 
+          {/* OTHER PLATFORMS */}
           {selected !==
             "shopify" && (
             <section className="content-card">
@@ -689,6 +698,7 @@ export default function ConnectPage() {
             </section>
           )}
 
+          {/* WORKFLOW */}
           <section className="content-card">
             <div className="step-label">
               VIRELLO WORKFLOW
@@ -1038,6 +1048,9 @@ const styles = `
     font-weight: 850;
     cursor: pointer;
     text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
   }
 
   .generate-button:hover {
