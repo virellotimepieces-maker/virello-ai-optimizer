@@ -1106,8 +1106,6 @@ textarea {
     font-size: 8px;
   }
 
-  /* HERO */
-
   .hero-inner {
     width: calc(100% - 28px);
     padding: 27px 0 25px;
@@ -1136,8 +1134,6 @@ textarea {
     line-height: 1.55;
   }
 
-  /* WORKSPACE */
-
   .workspace {
     width: calc(100% - 16px);
     padding: 9px 0 32px;
@@ -1146,8 +1142,6 @@ textarea {
   .optimizer-panel {
     border-radius: 14px;
   }
-
-  /* HEADER */
 
   .selected-product {
     min-height: auto;
@@ -1176,8 +1170,6 @@ textarea {
 
     font-size: 12px;
   }
-
-  /* PLATFORM */
 
   .content-card {
     padding: 11px;
@@ -1234,8 +1226,6 @@ textarea {
     width: 100%;
   }
 
-  /* RESULTS */
-
   .results {
     padding: 12px;
   }
@@ -1266,8 +1256,6 @@ textarea {
     font-size: 13px;
   }
 
-  /* PRODUCT TYPE / BRAND / PRICE */
-
   .score-grid {
     grid-template-columns: 1fr;
     gap: 9px;
@@ -1289,8 +1277,6 @@ textarea {
   .score-grid > .search-input:last-child {
     grid-column: auto;
   }
-
-  /* SCORE */
 
   .score-overview {
     margin-bottom: 10px;
@@ -1325,8 +1311,6 @@ textarea {
     padding: 11px;
     border-radius: 10px;
   }
-
-  /* CONTENT */
 
   .two-column,
   .analysis-grid {
@@ -1468,5 +1452,250 @@ textarea {
 
   .small-button {
     min-height: 34px;
+  }
+}
+
+/* =========================================================
+   FINAL MOBILE TYPOGRAPHY — COMPACT
+   Keeps the existing layout/functionality.
+   Only reduces oversized text and excessive spacing.
+========================================================= */
+
+@media (max-width: 640px) {
+  /* TOP BAR */
+
+  .brand-small {
+    font-size: 6px;
+    letter-spacing: 0.16em;
+  }
+
+  .brand-name {
+    font-size: 13px;
+    line-height: 1.1;
+    letter-spacing: -0.25px;
+  }
+
+  .shop-pill {
+    font-size: 8px;
+    padding: 6px 9px;
+  }
+
+  /* HERO */
+
+  .eyebrow,
+  .step-label {
+    font-size: 7px;
+    letter-spacing: 0.11em;
+  }
+
+  .hero h1 {
+    font-size: clamp(28px, 8.2vw, 35px);
+    line-height: 1.03;
+    letter-spacing: -1.45px;
+    margin: 9px 0 10px;
+  }
+
+  .hero p {
+    font-size: 11px;
+    line-height: 1.5;
+  }
+
+  .hero-inner {
+    padding-top: 23px;
+    padding-bottom: 21px;
+  }
+
+  /* CARDS */
+
+  .content-card {
+    padding: 10px;
+  }
+
+  .selected-product h2 {
+    font-size: 16px;
+    letter-spacing: -0.3px;
+  }
+
+  .selected-product p {
+    font-size: 10px;
+  }
+
+  /* BUTTONS */
+
+  .generate-button,
+  .save-button {
+    font-size: 11px;
+    min-height: 46px;
+  }
+
+  .small-button {
+    min-height: 32px;
+    font-size: 9px;
+    padding: 0 9px;
+  }
+
+  /* FORM */
+
+  .field-header {
+    min-height: 35px;
+    padding: 6px 8px;
+  }
+
+  .field-header label {
+    font-size: 7px;
+    letter-spacing: 0.06em;
+  }
+
+  .content-card .result-field input.search-input {
+    min-height: 46px;
+    padding: 10px;
+    font-size: 12px;
+  }
+
+  .content-card .result-field textarea.search-input {
+    min-height: 105px;
+    padding: 10px;
+    font-size: 12px;
+    line-height: 1.5;
+  }
+
+  .field-value {
+    min-height: 42px;
+    padding: 10px;
+    font-size: 11px;
+    line-height: 1.5;
+  }
+
+  .field-value.multiline {
+    min-height: 75px;
+  }
+
+  /* PRODUCT INPUTS */
+
+  .score-grid > .search-input {
+    height: 46px;
+    min-height: 46px;
+    padding: 0 10px;
+    font-size: 12px;
+  }
+
+  /* SCORE */
+
+  .score-overview {
+    padding: 13px;
+    gap: 9px;
+  }
+
+  .score-overview h2 {
+    font-size: 16px;
+    letter-spacing: -0.3px;
+  }
+
+  .score-overview p {
+    font-size: 9px;
+  }
+
+  .overall-score strong {
+    font-size: 36px;
+    letter-spacing: -1.8px;
+  }
+
+  .overall-score span {
+    font-size: 10px;
+  }
+
+  .score-card {
+    padding: 10px;
+  }
+
+  .score-header {
+    margin-bottom: 7px;
+  }
+
+  .score-header span,
+  .score-header strong {
+    font-size: 9px;
+  }
+
+  .score-track {
+    height: 5px;
+  }
+
+  /* PLATFORM */
+
+  .platform-info strong {
+    font-size: 13px;
+  }
+
+  .platform-info span {
+    font-size: 9px;
+  }
+
+  /* EMPTY / ANALYSIS */
+
+  .empty-result h2 {
+    font-size: 17px;
+  }
+
+  .empty-result p {
+    font-size: 10px;
+  }
+
+  .mini-card h3,
+  .analysis-card h3,
+  .reasoning-card h3 {
+    font-size: 11px;
+  }
+
+  .mini-card li,
+  .analysis-card li,
+  .analysis-card p,
+  .reasoning-card p {
+    font-size: 10px;
+  }
+}
+
+/* =========================
+   EXTRA SMALL PHONES
+========================= */
+
+@media (max-width: 380px) {
+  .brand-name {
+    font-size: 12px;
+  }
+
+  .hero h1 {
+    font-size: 27px;
+    letter-spacing: -1.25px;
+  }
+
+  .hero p {
+    font-size: 10.5px;
+  }
+
+  .content-card {
+    padding: 8px;
+  }
+
+  .selected-product h2 {
+    font-size: 15px;
+  }
+
+  .generate-button,
+  .save-button {
+    font-size: 10px;
+  }
+
+  .field-value {
+    font-size: 10.5px;
+  }
+
+  .content-card .result-field input.search-input,
+  .content-card .result-field textarea.search-input {
+    font-size: 11px;
+  }
+
+  .score-grid > .search-input {
+    font-size: 11px;
   }
 }
