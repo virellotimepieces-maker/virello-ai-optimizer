@@ -62,56 +62,26 @@ export async function GET(request: NextRequest) {
      */
 
     if (platform === "shopify") {
-      const authorization =
-        request.headers.get("authorization");
+      const cookieAccessToken =
+        request.cookies.get(
+          "virello_shopify_access_token"
+        )?.value || "";
 
-      const sessionToken =
-        request.headers.get(
-          "x-shopify-session-token"
-        );
+      const cookieShop =
+        request.cookies.get(
+          "virello_shopify_shop"
+        )?.value || "";
 
-      const shop =
-        request.headers.get("x-shopify-shop");
-
-      if (!authorization && !sessionToken) {
+      if (!cookieAccessToken || !cookieShop) {
         return NextResponse.json(
           {
             success: false,
             platform: "shopify",
             connected: false,
             error:
-              "Shopify session token is required.",
+              "Shopify connection is missing. Please reconnect your store.",
           },
-          {
-            status: 401,
-            headers: {
-              "X-Shopify-Retry-Invalid-Session-Request":
-                "1",
-            },
-          }
-        );
-      }
-
-      const headers = new Headers();
-
-      if (authorization) {
-        headers.set(
-          "authorization",
-          authorization
-        );
-      }
-
-      if (sessionToken) {
-        headers.set(
-          "x-shopify-session-token",
-          sessionToken
-        );
-      }
-
-      if (shop) {
-        headers.set(
-          "x-shopify-shop",
-          shop
+          { status: 401 }
         );
       }
 
@@ -123,7 +93,12 @@ export async function GET(request: NextRequest) {
         `${origin}/api/shopify/products`,
         {
           method: "GET",
-          headers,
+          headers: {
+            cookie: [
+              `virello_shopify_access_token=${encodeURIComponent(cookieAccessToken)}`,
+              `virello_shopify_shop=${encodeURIComponent(cookieShop)}`,
+            ].join("; "),
+          },
           cache: "no-store",
         }
       );
