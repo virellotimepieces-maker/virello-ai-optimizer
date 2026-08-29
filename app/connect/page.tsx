@@ -2,17 +2,6 @@
 
 import { useEffect, useState } from "react";
 
-type Product = {
-  id: string;
-  title: string;
-  description?: string;
-  productType?: string;
-  vendor?: string;
-  price?: string;
-  status?: string;
-  tags?: string[];
-};
-
 type ConnectionStatus = {
   success?: boolean;
   connected?: boolean;
@@ -21,86 +10,104 @@ type ConnectionStatus = {
   error?: string;
 };
 
-type AIResult = {
-  analysis?: {
-    targetCustomer?: string;
-    purchaseMotivation?: string;
-    strongestFeatures?: string[];
-    weaknesses?: string[];
-    missingInformation?: string[];
-    seoOpportunities?: string[];
-    conversionOpportunities?: string[];
-  };
-  score?: {
-    title?: number;
-    description?: number;
-    seo?: number;
-    productClarity?: number;
-    conversionPotential?: number;
-    overall?: number;
-  };
-  optimization?: {
-    title?: string;
-    productType?: string;
-    description?: string;
-    features?: string[];
-    specifications?: string[];
-    seoTitle?: string;
-    metaDescription?: string;
-    tags?: string[];
-  };
-  reasoning?: string;
+type Product = {
+  id: string | number;
+  title: string;
+  price?: string | number;
+  image?: string;
 };
 
-export default function Home() {
-  const [products, setProducts] = useState<Product[]>([]);
-  const [selectedProductId, setSelectedProductId] =
-    useState("");
+type Optimization = {
+  title: number;
+  description: number;
+  seo: number;
+  clarity: number;
+  conversion: number;
+};
 
-  const [title, setTitle] = useState("");
-  const [description, setDescription] =
-    useState("");
+const fallbackProducts: Product[] = [
+  {
+    id: "1",
+    title: "Luxury Chronograph Watch",
+    price: "$199.00",
+  },
+  {
+    id: "2",
+    title: "Premium Automatic Watch",
+    price: "$249.00",
+  },
+  {
+    id: "3",
+    title: "Classic Leather Watch",
+    price: "$159.00",
+  },
+  {
+    id: "4",
+    title: "Stainless Steel Watch",
+    price: "$189.00",
+  },
+  {
+    id: "5",
+    title: "Business Quartz Watch",
+    price: "$129.00",
+  },
+];
+
+export default function HomePage() {
+  const [status, setStatus] =
+    useState<ConnectionStatus | null>(null);
+
+  const [loading, setLoading] = useState(true);
+  const [connecting, setConnecting] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [optimizing, setOptimizing] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  const [products, setProducts] =
+    useState<Product[]>(fallbackProducts);
+
+  const [selectedProduct, setSelectedProduct] =
+    useState<Product | null>(fallbackProducts[0]);
+
+  const [productTitle, setProductTitle] = useState(
+    fallbackProducts[0].title
+  );
+
+  const [description, setDescription] = useState(
+    "Premium watch designed for everyday wear with a refined look and reliable performance."
+  );
+
   const [productType, setProductType] =
+    useState("Watch");
+
+  const [brand, setBrand] =
     useState("");
-  const [vendor, setVendor] = useState("");
-  const [price, setPrice] = useState("");
 
-  const [result, setResult] =
-    useState<AIResult | null>(null);
+  const [price, setPrice] =
+    useState("199.00");
 
-  const [connected, setConnected] =
-    useState(false);
+  const [error, setError] =
+    useState("");
 
-  const [connectionChecking, setConnectionChecking] =
-    useState(true);
+  const [message, setMessage] =
+    useState("");
 
-  const [connecting, setConnecting] =
-    useState(false);
-
-  const [loading, setLoading] =
-    useState(false);
-
-  const [productsLoading, setProductsLoading] =
-    useState(false);
-
-  const [saving, setSaving] =
-    useState(false);
-
-  const [savedToShopify, setSavedToShopify] =
-    useState(false);
-
-  const [checkoutLoading, setCheckoutLoading] =
-    useState(false);
-
-  const [error, setError] = useState("");
-  const [message, setMessage] = useState("");
+  const [scores, setScores] =
+    useState<Optimization>({
+      title: 88,
+      description: 84,
+      seo: 82,
+      clarity: 86,
+      conversion: 86,
+    });
 
   useEffect(() => {
     checkShopifyConnection();
   }, []);
 
   async function checkShopifyConnection() {
-    setConnectionChecking(true);
+    setLoading(true);
+    setError("");
 
     try {
       const response = await fetch(
@@ -112,29 +119,34 @@ export default function Home() {
         }
       );
 
-      const data =
-        await response.json().catch(() => null);
+      const data = await response
+        .json()
+        .catch(() => null);
 
-      const isConnected =
-        response.ok &&
-        data?.connected === true;
-
-      setConnected(isConnected);
-
-      if (isConnected) {
-        setMessage(
-          "Shopify store connected successfully."
-        );
+      if (response.ok && data?.connected) {
+        setStatus({
+          ...data,
+          connected: true,
+          platform: "shopify",
+        });
+      } else {
+        setStatus({
+          connected: false,
+          platform: "shopify",
+        });
       }
     } catch (err) {
       console.error(
-        "SHOPIFY_STATUS_ERROR:",
+        "SHOPIFY_CONNECTION_STATUS_ERROR:",
         err
       );
 
-      setConnected(false);
+      setStatus({
+        connected: false,
+        platform: "shopify",
+      });
     } finally {
-      setConnectionChecking(false);
+      setLoading(false);
     }
   }
 
@@ -143,19 +155,276 @@ export default function Home() {
 
     setConnecting(true);
     setError("");
-    setMessage("");
 
     window.location.assign(
-      "/connect?platform=shopify"
+      "/api/shopify/connect"
     );
   }
 
-  async function startCheckout() {
-    if (checkoutLoading) return;
-
-    setCheckoutLoading(true);
+  async function importShopifyProducts() {
+    setImporting(true);
     setError("");
     setMessage("");
+
+    try {
+      const response = await fetch(
+        "/api/shopify/products",
+        {
+          method: "GET",
+          credentials: "include",
+          cache: "no-store",
+        }
+      );
+
+      const data = await response
+        .json()
+        .catch(() => null);
+
+      if (!response.ok) {
+        throw new Error(
+          data?.error ||
+            "Unable to import Shopify products."
+        );
+      }
+
+      const imported =
+        data?.products ||
+        data?.data?.products ||
+        [];
+
+      if (Array.isArray(imported) && imported.length) {
+        const normalized: Product[] =
+          imported.map(
+            (item: any, index: number) => ({
+              id:
+                item.id ??
+                item.product_id ??
+                index,
+              title:
+                item.title ??
+                "Untitled Product",
+              price:
+                item.price ??
+                item.variants?.[0]?.price ??
+                "",
+              image:
+                item.image ??
+                item.images?.[0]?.src ??
+                "",
+            })
+          );
+
+        setProducts(normalized);
+        setSelectedProduct(normalized[0]);
+
+        setProductTitle(
+          normalized[0].title
+        );
+
+        setPrice(
+          String(normalized[0].price || "")
+        );
+
+        setMessage(
+          "Products loaded successfully."
+        );
+      } else {
+        setMessage(
+          "Shopify is connected. No products were returned."
+        );
+      }
+    } catch (err) {
+      console.error(
+        "SHOPIFY_IMPORT_ERROR:",
+        err
+      );
+
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Unable to import Shopify products."
+      );
+    } finally {
+      setImporting(false);
+    }
+  }
+
+  function selectProduct(product: Product) {
+    setSelectedProduct(product);
+    setProductTitle(product.title);
+    setPrice(String(product.price || ""));
+    setMessage("");
+    setError("");
+  }
+
+  async function optimizeProduct() {
+    if (optimizing) return;
+
+    setOptimizing(true);
+    setError("");
+    setMessage("");
+
+    try {
+      const response = await fetch(
+        "/api/ai/optimize",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          credentials: "include",
+          body: JSON.stringify({
+            product: {
+              id: selectedProduct?.id,
+              title: productTitle,
+              description,
+              productType,
+              brand,
+              price,
+            },
+          }),
+        }
+      );
+
+      const data = await response
+        .json()
+        .catch(() => null);
+
+      if (!response.ok) {
+        throw new Error(
+          data?.error ||
+            "Unable to optimize product."
+        );
+      }
+
+      const optimized =
+        data?.product ||
+        data?.optimized ||
+        data?.data;
+
+      if (optimized?.title) {
+        setProductTitle(
+          optimized.title
+        );
+      }
+
+      if (optimized?.description) {
+        setDescription(
+          optimized.description
+        );
+      }
+
+      if (optimized?.productType) {
+        setProductType(
+          optimized.productType
+        );
+      }
+
+      if (optimized?.brand) {
+        setBrand(
+          optimized.brand
+        );
+      }
+
+      if (optimized?.price) {
+        setPrice(
+          String(optimized.price)
+        );
+      }
+
+      if (data?.scores) {
+        setScores({
+          title:
+            Number(data.scores.title) || 88,
+          description:
+            Number(data.scores.description) || 84,
+          seo:
+            Number(data.scores.seo) || 82,
+          clarity:
+            Number(data.scores.clarity) || 86,
+          conversion:
+            Number(data.scores.conversion) || 86,
+        });
+      }
+
+      setMessage(
+        "Product optimized successfully."
+      );
+    } catch (err) {
+      console.error(
+        "AI_OPTIMIZATION_ERROR:",
+        err
+      );
+
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Unable to optimize product."
+      );
+    } finally {
+      setOptimizing(false);
+    }
+  }
+
+  async function saveToShopify() {
+    if (saving) return;
+
+    setSaving(true);
+    setError("");
+    setMessage("");
+
+    try {
+      const response = await fetch(
+        "/api/shopify/products",
+        {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          credentials: "include",
+          body: JSON.stringify({
+            id: selectedProduct?.id,
+            title: productTitle,
+            description,
+            productType,
+            brand,
+            price,
+          }),
+        }
+      );
+
+      const data = await response
+        .json()
+        .catch(() => null);
+
+      if (!response.ok) {
+        throw new Error(
+          data?.error ||
+            "Unable to save product to Shopify."
+        );
+      }
+
+      setMessage(
+        "Changes saved to Shopify."
+      );
+    } catch (err) {
+      console.error(
+        "SHOPIFY_SAVE_ERROR:",
+        err
+      );
+
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Unable to save product to Shopify."
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function startCheckout() {
+    setError("");
 
     try {
       const response = await fetch(
@@ -163,12 +432,12 @@ export default function Home() {
         {
           method: "POST",
           credentials: "include",
-          cache: "no-store",
         }
       );
 
-      const data =
-        await response.json().catch(() => null);
+      const data = await response
+        .json()
+        .catch(() => null);
 
       if (
         !response.ok ||
@@ -188,376 +457,24 @@ export default function Home() {
           ? err.message
           : "Unable to start subscription checkout."
       );
-
-      setCheckoutLoading(false);
     }
   }
 
-  async function loadProducts() {
-    if (!connected) {
-      setError(
-        "Connect your Shopify store first."
-      );
-      return;
-    }
+  const connected =
+    status?.connected === true;
 
-    setProductsLoading(true);
-    setError("");
-    setMessage("");
-
-    try {
-      const response = await fetch(
-        "/api/shopify/products",
-        {
-          method: "GET",
-          credentials: "include",
-          cache: "no-store",
-        }
-      );
-
-      const data =
-        await response.json().catch(() => null);
-
-      if (
-        !response.ok ||
-        !data?.success
-      ) {
-        throw new Error(
-          data?.error ||
-            "Unable to load Shopify products."
-        );
-      }
-
-      const rawProducts =
-        Array.isArray(data.products)
-          ? data.products
-          : [];
-
-      const normalizedProducts: Product[] =
-        rawProducts.map(
-          (product: any) => {
-            const firstVariant =
-              Array.isArray(
-                product?.variants
-              )
-                ? product.variants[0]
-                : null;
-
-            const rawTags =
-              Array.isArray(product?.tags)
-                ? product.tags
-                : typeof product?.tags ===
-                  "string"
-                ? product.tags
-                    .split(",")
-                    .map((tag: string) =>
-                      tag.trim()
-                    )
-                    .filter(Boolean)
-                : [];
-
-            return {
-              id: String(
-                product?.id ?? ""
-              ),
-              title:
-                product?.title ||
-                "Untitled product",
-              description:
-                product?.description ??
-                product?.body_html ??
-                "",
-              productType:
-                product?.productType ??
-                product?.product_type ??
-                "",
-              vendor:
-                product?.vendor ?? "",
-              price:
-                product?.price ??
-                firstVariant?.price ??
-                "",
-              status:
-                product?.status ?? "",
-              tags: rawTags,
-            };
-          }
-        );
-
-      setProducts(
-        normalizedProducts
-      );
-
-      setSelectedProductId("");
-      setResult(null);
-      setSavedToShopify(false);
-
-      if (
-        normalizedProducts.length === 0
-      ) {
-        setMessage(
-          "No Shopify products were returned."
-        );
-        return;
-      }
-
-      setMessage(
-        `${normalizedProducts.length} Shopify products loaded successfully.`
-      );
-    } catch (err) {
-      setProducts([]);
-
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Unable to load Shopify products."
-      );
-    } finally {
-      setProductsLoading(false);
-    }
-  }
-
-  function selectProduct(
-    product: Product
-  ) {
-    setSelectedProductId(
-      product.id
-    );
-
-    setTitle(
-      product.title || ""
-    );
-
-    setDescription(
-      product.description || ""
-    );
-
-    setProductType(
-      product.productType || ""
-    );
-
-    setVendor(
-      product.vendor || ""
-    );
-
-    setPrice(
-      product.price || ""
-    );
-
-    setResult(null);
-    setSavedToShopify(false);
-    setError("");
-    setMessage("");
-  }
-
-  async function optimize() {
-    if (!title.trim()) {
-      setError(
-        "Enter a product title first."
-      );
-      return;
-    }
-
-    setLoading(true);
-    setError("");
-    setMessage("");
-    setResult(null);
-    setSavedToShopify(false);
-
-    try {
-      const response = await fetch(
-        "/api/ai/analyze",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type":
-              "application/json",
-          },
-          credentials: "include",
-          cache: "no-store",
-          body: JSON.stringify({
-            product: {
-              id:
-                selectedProductId ||
-                null,
-              title:
-                title.trim(),
-              description:
-                description.trim(),
-              productType:
-                productType.trim(),
-              vendor:
-                vendor.trim(),
-              price:
-                price.trim(),
-              platform:
-                "shopify",
-            },
-          }),
-        }
-      );
-
-      const data =
-        await response.json().catch(() => null);
-
-      if (
-        !response.ok ||
-        !data?.success
-      ) {
-        throw new Error(
-          data?.error ||
-            "AI optimization failed."
-        );
-      }
-
-      setResult(
-        data.result
-      );
-
-      setMessage(
-        "AI optimization completed."
-      );
-    } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : "AI optimization failed."
-      );
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function saveToShopify() {
-    if (savedToShopify) return;
-
-    if (!selectedProductId) {
-      setError(
-        "Select an imported Shopify product before saving."
-      );
-      return;
-    }
-
-    if (!result?.optimization) {
-      setError(
-        "Optimize the product first."
-      );
-      return;
-    }
-
-    setSaving(true);
-    setError("");
-    setMessage("");
-
-    try {
-      const optimization =
-        result.optimization;
-
-      const response = await fetch(
-        "/api/shopify/save-product",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type":
-              "application/json",
-          },
-          credentials: "include",
-          cache: "no-store",
-          body: JSON.stringify({
-            productId:
-              selectedProductId,
-
-            title:
-              optimization.title ||
-              title,
-
-            description:
-              optimization.description ||
-              description,
-
-            productType:
-              optimization.productType ||
-              productType,
-
-            tags:
-              optimization.tags ||
-              [],
-
-            seoTitle:
-              optimization.seoTitle ||
-              "",
-
-            metaDescription:
-              optimization.metaDescription ||
-              "",
-          }),
-        }
-      );
-
-      const data =
-        await response.json().catch(() => null);
-
-      if (
-        !response.ok ||
-        !data?.success
-      ) {
-        throw new Error(
-          data?.error ||
-            "Unable to save product to Shopify."
-        );
-      }
-
-      setSavedToShopify(true);
-
-      setMessage(
-        "Product saved to Shopify successfully."
-      );
-    } catch (err) {
-      setSavedToShopify(false);
-
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Unable to save product to Shopify."
-      );
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function copyText(
-    value?: string
-  ) {
-    if (!value) return;
-
-    try {
-      await navigator.clipboard.writeText(
-        value
-      );
-
-      setError("");
-      setMessage("Copied.");
-    } catch {
-      setError(
-        "Unable to copy text."
-      );
-    }
-  }
-
-  function listToText(
-    items?: string[]
-  ) {
-    return items?.length
-      ? items.join("\n")
-      : "";
-  }
-
-  const optimization =
-    result?.optimization;
+  const averageScore = Math.round(
+    (
+      scores.title +
+      scores.description +
+      scores.seo +
+      scores.clarity +
+      scores.conversion
+    ) / 5
+  );
 
   return (
-    <main className="app-shell">
-
+    <main className="page-shell">
       <header className="topbar">
         <div>
           <div className="brand-small">
@@ -573,699 +490,533 @@ export default function Home() {
           type="button"
           className="subscribe-button"
           onClick={startCheckout}
-          disabled={checkoutLoading}
         >
-          {checkoutLoading
-            ? "Opening..."
-            : "Subscribe"}
+          Subscribe
         </button>
       </header>
 
       {error && (
-        <div className="alert error">
+        <div className="message error">
           {error}
         </div>
       )}
 
-      {message && !error && (
-        <div className="alert success">
+      {message && (
+        <div className="message success">
           {message}
         </div>
       )}
 
-      <section className="hero">
-        <div className="hero-inner">
-
-          <div className="eyebrow">
-            SHOPIFY AI OPTIMIZATION
+      {loading ? (
+        <section className="loading-section">
+          <div className="loading-card">
+            <div className="spinner" />
+            <span>
+              Checking Shopify connection...
+            </span>
           </div>
-
-          <h1>
-            Optimize Shopify
-            <br />
-            products{" "}
-            <span>with AI.</span>
-          </h1>
-
-          <p>
-            Connect your Shopify store,
-            import products and create
-            conversion-focused listings,
-            SEO content and product
-            intelligence with Virello AI.
-          </p>
-
-        </div>
-      </section>
-
-      <section className="workspace">
-
-        {/* CONNECTION */}
-
-        <section className="content-card connection-card">
-
-          <div className="step-label">
-            SHOPIFY CONNECTION
-          </div>
-
-          <h2>
-            {connectionChecking
-              ? "Checking your Shopify store"
-              : connected
-              ? "Shopify store connected"
-              : "Connect your Shopify store"}
-          </h2>
-
-          <p className="section-description">
-
-            {connectionChecking
-              ? "Checking your current Shopify connection."
-              : connected
-              ? "Your Shopify store is connected and ready to use with Virello AI."
-              : "Connect your Shopify store to import products and optimize them with Virello AI."}
-
-          </p>
-
-          {connectionChecking ? (
-            <div className="connection-status">
-              <div className="spinner" />
-              <span>
-                Checking Shopify connection...
-              </span>
-            </div>
-          ) : connected ? (
-            <div className="connected-box">
-              <div className="connected-icon">
+        </section>
+      ) : (
+        <>
+          {connected ? (
+            <section className="connected-banner">
+              <div className="connected-check">
                 ✓
               </div>
 
-              <div>
-                <strong>
-                  Shopify connected
-                </strong>
-
-                <span>
-                  Your store is ready.
-                </span>
-              </div>
-            </div>
-          ) : (
-            <button
-              type="button"
-              className="generate-button full-button"
-              onClick={connectShopify}
-              disabled={connecting}
-            >
-              {connecting
-                ? "Connecting..."
-                : "Connect Shopify"}
-            </button>
-          )}
-
-          {connected && (
-            <button
-              type="button"
-              className="small-button import-button"
-              onClick={loadProducts}
-              disabled={productsLoading}
-            >
-              {productsLoading
-                ? "Loading..."
-                : "Import Shopify Products"}
-            </button>
-          )}
-
-        </section>
-
-        {/* PRODUCTS */}
-
-        {products.length > 0 && (
-          <section className="content-card">
-
-            <div className="step-label">
-              IMPORTED PRODUCTS
-            </div>
-
-            <h2>
-              Select a product
-            </h2>
-
-            <div className="product-list">
-
-              {products.map(
-                (product) => {
-
-                  const selected =
-                    selectedProductId ===
-                    product.id;
-
-                  return (
-                    <button
-                      key={product.id}
-                      type="button"
-                      className={
-                        selected
-                          ? "product-card selected-product-card"
-                          : "product-card"
-                      }
-                      onClick={() =>
-                        selectProduct(
-                          product
-                        )
-                      }
-                    >
-
-                      <div className="product-main">
-
-                        <strong>
-                          {product.title ||
-                            "Untitled product"}
-                        </strong>
-
-                        {product.vendor && (
-                          <span>
-                            {product.vendor}
-                          </span>
-                        )}
-
-                      </div>
-
-                      {product.price && (
-                        <span className="product-price">
-                          {product.price}
-                        </span>
-                      )}
-
-                    </button>
-                  );
-                }
-              )}
-
-            </div>
-
-          </section>
-        )}
-
-        {/* OPTIMIZER */}
-
-        <section className="content-card optimizer-card">
-
-          <div>
-            <div className="step-label">
-              AI OPTIMIZER
-            </div>
-
-            <h2>
-              Optimize your product
-            </h2>
-
-            <p className="section-description">
-              Select an imported Shopify
-              product or enter product
-              information manually.
-            </p>
-          </div>
-
-          <button
-            type="button"
-            className="generate-button"
-            onClick={optimize}
-            disabled={loading}
-          >
-            {loading
-              ? "Optimizing..."
-              : "Optimize with AI"}
-          </button>
-
-        </section>
-
-        {/* INPUT */}
-
-        <section className="content-card">
-
-          <div className="result-field first-field">
-
-            <div className="field-header">
-              <label>
-                Product title *
-              </label>
-            </div>
-
-            <input
-              className="search-input"
-              value={title}
-              onChange={(e) => {
-                setTitle(
-                  e.target.value
-                );
-                setSavedToShopify(false);
-              }}
-              placeholder="Enter product title"
-            />
-
-          </div>
-
-          <div className="result-field">
-
-            <div className="field-header">
-              <label>
-                Description
-              </label>
-            </div>
-
-            <textarea
-              className="search-input textarea"
-              value={description}
-              onChange={(e) => {
-                setDescription(
-                  e.target.value
-                );
-                setSavedToShopify(false);
-              }}
-              placeholder="Current product description"
-            />
-
-          </div>
-
-          <div className="input-grid">
-
-            <input
-              className="search-input"
-              value={productType}
-              onChange={(e) => {
-                setProductType(
-                  e.target.value
-                );
-                setSavedToShopify(false);
-              }}
-              placeholder="Product type"
-            />
-
-            <input
-              className="search-input"
-              value={vendor}
-              onChange={(e) => {
-                setVendor(
-                  e.target.value
-                );
-                setSavedToShopify(false);
-              }}
-              placeholder="Brand / supplier"
-            />
-
-            <input
-              className="search-input"
-              value={price}
-              onChange={(e) => {
-                setPrice(
-                  e.target.value
-                );
-                setSavedToShopify(false);
-              }}
-              placeholder="Price"
-            />
-
-          </div>
-
-        </section>
-
-        {/* RESULTS */}
-
-        {result && (
-          <>
-
-            <section className="score-overview">
-
-              <div>
-                <div className="step-label light">
-                  VIRELLO SCORE
+              <div className="connected-copy">
+                <div className="connected-label">
+                  SHOPIFY CONNECTED
                 </div>
 
-                <h2>
-                  Product optimization
-                </h2>
+                <h1>
+                  Your Shopify store is{" "}
+                  <span>connected.</span>
+                </h1>
 
                 <p>
-                  Listing quality, SEO,
-                  clarity and conversion
-                  potential.
+                  Your Shopify store has been
+                  successfully connected to
+                  Virello AI Optimizer.
                 </p>
               </div>
 
-              <div className="overall-score">
-
-                <strong>
-                  {result.score?.overall ??
-                    0}
-                </strong>
-
-                <span>
-                  / 100
-                </span>
-
-              </div>
-
-            </section>
-
-            {result.analysis && (
-              <section className="content-card">
-
-                <div className="step-label">
-                  PRODUCT INTELLIGENCE
+              <div className="connected-store">
+                <div className="shopify-logo">
+                  S
                 </div>
-
-                <h2>
-                  AI analysis
-                </h2>
-
-                <div className="analysis-grid">
-
-                  {result.analysis
-                    .targetCustomer && (
-                    <div className="analysis-item">
-                      <strong>
-                        Target customer
-                      </strong>
-
-                      <p>
-                        {
-                          result.analysis
-                            .targetCustomer
-                        }
-                      </p>
-                    </div>
-                  )}
-
-                  {result.analysis
-                    .purchaseMotivation && (
-                    <div className="analysis-item">
-                      <strong>
-                        Purchase motivation
-                      </strong>
-
-                      <p>
-                        {
-                          result.analysis
-                            .purchaseMotivation
-                        }
-                      </p>
-                    </div>
-                  )}
-
-                </div>
-
-              </section>
-            )}
-
-            {optimization && (
-              <section className="content-card">
-
-                <div className="step-label">
-                  AI OPTIMIZATION
-                </div>
-
-                <h2>
-                  Optimized listing
-                </h2>
-
-                <div className="result-field">
-
-                  <div className="field-header">
-                    <label>
-                      Optimized title
-                    </label>
-
-                    <button
-                      type="button"
-                      className="copy-button"
-                      onClick={() =>
-                        copyText(
-                          optimization.title
-                        )
-                      }
-                    >
-                      Copy
-                    </button>
-                  </div>
-
-                  <div className="result-box">
-                    {optimization.title ||
-                      ""}
-                  </div>
-
-                </div>
-
-                <div className="result-field">
-
-                  <div className="field-header">
-                    <label>
-                      Product type
-                    </label>
-                  </div>
-
-                  <div className="result-box">
-                    {optimization.productType ||
-                      ""}
-                  </div>
-
-                </div>
-
-                <div className="result-field">
-
-                  <div className="field-header">
-                    <label>
-                      Description
-                    </label>
-
-                    <button
-                      type="button"
-                      className="copy-button"
-                      onClick={() =>
-                        copyText(
-                          optimization.description
-                        )
-                      }
-                    >
-                      Copy
-                    </button>
-                  </div>
-
-                  <div className="result-box multiline">
-                    {optimization.description ||
-                      ""}
-                  </div>
-
-                </div>
-
-                {optimization.features &&
-                  optimization.features.length >
-                    0 && (
-                    <div className="result-field">
-
-                      <div className="field-header">
-                        <label>
-                          Features
-                        </label>
-
-                        <button
-                          type="button"
-                          className="copy-button"
-                          onClick={() =>
-                            copyText(
-                              listToText(
-                                optimization.features
-                              )
-                            )
-                          }
-                        >
-                          Copy
-                        </button>
-                      </div>
-
-                      <div className="result-box multiline">
-                        {listToText(
-                          optimization.features
-                        )}
-                      </div>
-
-                    </div>
-                  )}
-
-                {optimization.specifications &&
-                  optimization.specifications.length >
-                    0 && (
-                    <div className="result-field">
-
-                      <div className="field-header">
-                        <label>
-                          Specifications
-                        </label>
-
-                        <button
-                          type="button"
-                          className="copy-button"
-                          onClick={() =>
-                            copyText(
-                              listToText(
-                                optimization.specifications
-                              )
-                            )
-                          }
-                        >
-                          Copy
-                        </button>
-                      </div>
-
-                      <div className="result-box multiline">
-                        {listToText(
-                          optimization.specifications
-                        )}
-                      </div>
-
-                    </div>
-                  )}
-
-              </section>
-            )}
-
-            {optimization && (
-              <section className="content-card">
-
-                <div className="step-label">
-                  SEO
-                </div>
-
-                <h2>
-                  Search optimization
-                </h2>
-
-                <div className="result-field">
-
-                  <div className="field-header">
-                    <label>
-                      SEO title
-                    </label>
-
-                    <span>
-                      {
-                        (
-                          optimization.seoTitle ||
-                          ""
-                        ).length
-                      } / 60
-                    </span>
-                  </div>
-
-                  <div className="result-box">
-                    {
-                      optimization.seoTitle ||
-                      ""
-                    }
-                  </div>
-
-                </div>
-
-                <div className="result-field">
-
-                  <div className="field-header">
-                    <label>
-                      Meta description
-                    </label>
-
-                    <span>
-                      {
-                        (
-                          optimization.metaDescription ||
-                          ""
-                        ).length
-                      } / 160
-                    </span>
-                  </div>
-
-                  <div className="result-box multiline">
-                    {
-                      optimization.metaDescription ||
-                      ""
-                    }
-                  </div>
-
-                </div>
-
-                {optimization.tags &&
-                  optimization.tags.length >
-                    0 && (
-                    <div className="result-field">
-
-                      <div className="field-header">
-                        <label>
-                          Tags
-                        </label>
-                      </div>
-
-                      <div className="tags">
-                        {optimization.tags.map(
-                          (tag) => (
-                            <span
-                              key={tag}
-                              className="tag"
-                            >
-                              {tag}
-                            </span>
-                          )
-                        )}
-                      </div>
-
-                    </div>
-                  )}
-
-              </section>
-            )}
-
-            {optimization && (
-              <section className="save-card">
 
                 <div>
-                  <div className="step-label light">
-                    SHOPIFY
+                  <div className="store-caption">
+                    Connected Store
                   </div>
 
-                  <h2>
-                    Apply optimization
-                  </h2>
+                  <strong>
+                    {status?.shop ||
+                      "Shopify Store"}
+                  </strong>
 
-                  <p>
-                    Save the optimized
-                    product content directly
-                    to your Shopify store.
-                  </p>
+                  <div className="connected-tag">
+                    <span>●</span>
+                    Connected
+                  </div>
+                </div>
+              </div>
+            </section>
+          ) : (
+            <section className="not-connected-banner">
+              <div>
+                <div className="connected-label">
+                  SHOPIFY
+                </div>
+
+                <h1>
+                  Connect your Shopify store
+                </h1>
+
+                <p>
+                  Connect Shopify to import and
+                  optimize your products with AI.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={connectShopify}
+                disabled={connecting}
+              >
+                {connecting
+                  ? "Connecting..."
+                  : "Connect Shopify"}
+              </button>
+            </section>
+          )}
+
+          <section className="dashboard">
+            <div className="left-column">
+              <div className="card">
+                <div className="card-label">
+                  SHOPIFY CONNECTION
+                </div>
+
+                <h2>
+                  Connect your Shopify store
+                </h2>
+
+                <p>
+                  Connect your Shopify store to
+                  import products and optimize
+                  them with Virello AI.
+                </p>
+
+                <div className="connection-status">
+                  <div className="status-icon">
+                    {connected ? "✓" : "!"}
+                  </div>
+
+                  <div>
+                    <strong>
+                      {connected
+                        ? "Shopify Connected"
+                        : "Shopify Not Connected"}
+                    </strong>
+
+                    <span>
+                      {connected
+                        ? "Your store is connected"
+                        : "Connect your store to continue"}
+                    </span>
+                  </div>
+
+                  {connected && (
+                    <span className="status-check">
+                      ✓
+                    </span>
+                  )}
                 </div>
 
                 <button
                   type="button"
-                  className="save-button"
-                  onClick={saveToShopify}
+                  className="secondary-button"
+                  onClick={
+                    connected
+                      ? checkShopifyConnection
+                      : connectShopify
+                  }
+                  disabled={connecting}
+                >
+                  {connected
+                    ? "Refresh Connection"
+                    : connecting
+                    ? "Connecting..."
+                    : "Connect Shopify"}
+                </button>
+              </div>
+
+              <div className="card import-card">
+                <div className="card-label">
+                  IMPORT PRODUCTS
+                </div>
+
+                <h2>
+                  Import your products
+                </h2>
+
+                <p>
+                  Import your products from your
+                  Shopify store.
+                </p>
+
+                <button
+                  type="button"
+                  className="dark-button"
+                  onClick={importShopifyProducts}
                   disabled={
-                    saving ||
-                    savedToShopify
+                    importing || !connected
                   }
                 >
-                  {savedToShopify
-                    ? "Saved to Shopify"
-                    : saving
-                    ? "Saving..."
-                    : "Save to Shopify"}
+                  {importing
+                    ? "Importing..."
+                    : "⇩  Import Shopify Products"}
                 </button>
 
-              </section>
-            )}
+                <div className="import-status">
+                  <span>✓</span>
+                  <div>
+                    <strong>
+                      {products.length} products
+                    </strong>
+                    <small>
+                      {connected
+                        ? "Ready to optimize"
+                        : "Connect Shopify first"}
+                    </small>
+                  </div>
+                </div>
+              </div>
+            </div>
 
-          </>
-        )}
+            <div className="center-column">
+              <div className="card optimizer-card">
+                <div className="card-label">
+                  AI OPTIMIZER
+                </div>
 
-      </section>
+                <h2>
+                  Optimize your product
+                </h2>
+
+                <p>
+                  Select an imported Shopify
+                  product or enter product
+                  information manually.
+                </p>
+
+                <label>
+                  Product title *
+                </label>
+
+                <input
+                  value={productTitle}
+                  onChange={(e) =>
+                    setProductTitle(
+                      e.target.value
+                    )
+                  }
+                  placeholder="Enter product title"
+                />
+
+                <label>
+                  Description
+                </label>
+
+                <textarea
+                  value={description}
+                  onChange={(e) =>
+                    setDescription(
+                      e.target.value
+                    )
+                  }
+                  placeholder="Enter product description"
+                  rows={5}
+                />
+
+                <div className="field-grid">
+                  <div>
+                    <label>
+                      Product type
+                    </label>
+
+                    <input
+                      value={productType}
+                      onChange={(e) =>
+                        setProductType(
+                          e.target.value
+                        )
+                      }
+                      placeholder="Enter type"
+                    />
+                  </div>
+
+                  <div>
+                    <label>
+                      Brand / Supplier
+                    </label>
+
+                    <input
+                      value={brand}
+                      onChange={(e) =>
+                        setBrand(
+                          e.target.value
+                        )
+                      }
+                      placeholder="Enter brand"
+                    />
+                  </div>
+
+                  <div>
+                    <label>
+                      Price
+                    </label>
+
+                    <input
+                      value={price}
+                      onChange={(e) =>
+                        setPrice(
+                          e.target.value
+                        )
+                      }
+                      placeholder="0.00"
+                    />
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  className="dark-button optimize-button"
+                  onClick={optimizeProduct}
+                  disabled={optimizing}
+                >
+                  {optimizing
+                    ? "Optimizing..."
+                    : "✦  Optimize with AI"}
+                </button>
+              </div>
+
+              <div className="card results-card">
+                <div className="card-label">
+                  AI OPTIMIZATION RESULTS
+                </div>
+
+                <div className="results-row">
+                  <div className="overall-score">
+                    <span>
+                      Virello Score
+                    </span>
+
+                    <strong>
+                      {averageScore}
+                      <small>/100</small>
+                    </strong>
+                  </div>
+
+                  <Score
+                    value={scores.title}
+                    label="Title"
+                  />
+
+                  <Score
+                    value={scores.description}
+                    label="Description"
+                  />
+
+                  <Score
+                    value={scores.seo}
+                    label="SEO"
+                  />
+
+                  <Score
+                    value={scores.clarity}
+                    label="Clarity"
+                  />
+
+                  <Score
+                    value={scores.conversion}
+                    label="Conversion"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="right-column">
+              <div className="card products-card">
+                <div className="products-heading">
+                  <div>
+                    <div className="card-label">
+                      IMPORTED PRODUCTS
+                    </div>
+
+                    <p>
+                      Select a product to optimize
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    className="refresh-button"
+                    onClick={
+                      importShopifyProducts
+                    }
+                  >
+                    ↻
+                  </button>
+                </div>
+
+                <div className="product-list">
+                  {products
+                    .slice(0, 5)
+                    .map((product) => (
+                      <button
+                        type="button"
+                        className={`product-item ${
+                          selectedProduct?.id ===
+                          product.id
+                            ? "selected"
+                            : ""
+                        }`}
+                        key={product.id}
+                        onClick={() =>
+                          selectProduct(
+                            product
+                          )
+                        }
+                      >
+                        <div className="product-image">
+                          {product.image ? (
+                            <img
+                              src={product.image}
+                              alt=""
+                            />
+                          ) : (
+                            <span>⌚</span>
+                          )}
+                        </div>
+
+                        <div className="product-info">
+                          <strong>
+                            {product.title}
+                          </strong>
+
+                          <span>
+                            {product.price
+                              ? `$${String(
+                                  product.price
+                                ).replace(
+                                  /^\$/,
+                                  ""
+                                )}`
+                              : "—"}
+                          </span>
+                        </div>
+
+                        <div className="radio">
+                          {selectedProduct?.id ===
+                          product.id
+                            ? "✓"
+                            : ""}
+                        </div>
+                      </button>
+                    ))}
+                </div>
+
+                <button
+                  type="button"
+                  className="view-button"
+                  onClick={
+                    importShopifyProducts
+                  }
+                >
+                  View All Products
+                </button>
+              </div>
+
+              <div className="card actions-card">
+                <div className="card-label">
+                  QUICK ACTIONS
+                </div>
+
+                <button
+                  type="button"
+                  className="action-item"
+                  onClick={optimizeProduct}
+                >
+                  <div className="action-icon">
+                    ✦
+                  </div>
+
+                  <div>
+                    <strong>
+                      Optimize Product
+                    </strong>
+
+                    <span>
+                      Generate AI-optimized content
+                    </span>
+                  </div>
+
+                  <b>›</b>
+                </button>
+
+                <button
+                  type="button"
+                  className="action-item"
+                  onClick={saveToShopify}
+                  disabled={saving}
+                >
+                  <div className="action-icon">
+                    ↑
+                  </div>
+
+                  <div>
+                    <strong>
+                      {saving
+                        ? "Saving..."
+                        : "Save to Shopify"}
+                    </strong>
+
+                    <span>
+                      Apply changes to your store
+                    </span>
+                  </div>
+
+                  <b>›</b>
+                </button>
+              </div>
+            </div>
+          </section>
+        </>
+      )}
 
       <style jsx>{styles}</style>
     </main>
+  );
+}
+
+function Score({
+  value,
+  label,
+}: {
+  value: number;
+  label: string;
+}) {
+  return (
+    <div className="score">
+      <div className="score-circle">
+        {value}
+      </div>
+
+      <span>{label}</span>
+    </div>
   );
 }
 
@@ -1274,548 +1025,660 @@ const styles = `
     box-sizing: border-box;
   }
 
-  .app-shell {
+  .page-shell {
     min-height: 100vh;
-    background: #f5f6f7;
+    background: #f4f5f6;
     color: #111318;
   }
 
   .topbar {
-    min-height: 72px;
-    padding: 12px 34px;
+    min-height: 70px;
+    padding: 12px 28px;
     background: #fff;
-    border-bottom: 1px solid #e4e6e9;
+    border-bottom: 1px solid #e1e3e6;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .brand-small {
+    color: #999ea5;
+    font-size: 9px;
+    font-weight: 850;
+    letter-spacing: .17em;
+  }
+
+  .brand-name {
+    margin-top: 3px;
+    font-size: 18px;
+    font-weight: 850;
+    letter-spacing: -.035em;
+  }
+
+  .subscribe-button {
+    min-height: 42px;
+    padding: 0 22px;
+    border: 0;
+    border-radius: 10px;
+    background: #111318;
+    color: #fff;
+    font-size: 12px;
+    font-weight: 850;
+    cursor: pointer;
+  }
+
+  .message {
+    max-width: 1280px;
+    margin: 12px auto 0;
+    padding: 10px 14px;
+    border-radius: 8px;
+    font-size: 12px;
+  }
+
+  .message.error {
+    background: #fff5f5;
+    border: 1px solid #ebd0d0;
+    color: #9a4d4d;
+  }
+
+  .message.success {
+    background: #f1fbf3;
+    border: 1px solid #ccebd2;
+    color: #34844b;
+  }
+
+  .connected-banner {
+    max-width: 1280px;
+    margin: 22px auto 0;
+    padding: 23px 28px;
+    border: 1px solid #cfe8d4;
+    border-radius: 14px;
+    background: #f5fcf6;
+    display: flex;
+    align-items: center;
+    gap: 18px;
+  }
+
+  .connected-check {
+    width: 58px;
+    height: 58px;
+    flex: 0 0 58px;
+    border-radius: 50%;
+    background: #31a852;
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 31px;
+    font-weight: 500;
+  }
+
+  .connected-copy {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .connected-label,
+  .card-label {
+    color: #91969d;
+    font-size: 9px;
+    font-weight: 850;
+    letter-spacing: .16em;
+  }
+
+  .connected-label {
+    color: #43a05a;
+  }
+
+  .connected-copy h1 {
+    margin: 5px 0 5px;
+    font-size: 26px;
+    line-height: 1.1;
+    letter-spacing: -.04em;
+  }
+
+  .connected-copy h1 span {
+    color: #369a4d;
+  }
+
+  .connected-copy p {
+    margin: 0;
+    color: #727981;
+    font-size: 11px;
+    line-height: 1.5;
+  }
+
+  .connected-store {
+    min-width: 245px;
+    padding: 14px 16px;
+    border-radius: 9px;
+    background: #fff;
+    border: 1px solid #e2e6e3;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .shopify-logo {
+    width: 43px;
+    height: 48px;
+    border-radius: 6px;
+    background: #73b34c;
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 25px;
+    font-weight: 900;
+  }
+
+  .store-caption {
+    color: #747a81;
+    font-size: 8px;
+    margin-bottom: 3px;
+  }
+
+  .connected-store strong {
+    display: block;
+    font-size: 11px;
+  }
+
+  .connected-tag {
+    margin-top: 5px;
+    color: #39954e;
+    font-size: 8px;
+    font-weight: 800;
+  }
+
+  .not-connected-banner {
+    max-width: 1280px;
+    margin: 22px auto 0;
+    padding: 24px 28px;
+    border: 1px solid #dfe2e6;
+    border-radius: 14px;
+    background: #fff;
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 20px;
   }
 
-  .brand-small {
-    color: #9a9fa6;
-    font-size: 9px;
-    font-weight: 850;
-    letter-spacing: .16em;
+  .not-connected-banner h1 {
+    margin: 7px 0 5px;
+    font-size: 25px;
+    letter-spacing: -.04em;
   }
 
-  .brand-name {
-    margin-top: 3px;
-    font-size: 18px;
-    line-height: 1.1;
-    font-weight: 850;
-    letter-spacing: -.025em;
+  .not-connected-banner p {
+    margin: 0;
+    color: #747a82;
+    font-size: 12px;
   }
 
-  .subscribe-button {
-    min-height: 42px;
-    padding: 0 19px;
+  .not-connected-banner button {
+    min-height: 43px;
+    padding: 0 20px;
     border: 0;
-    border-radius: 9px;
+    border-radius: 8px;
     background: #111318;
     color: #fff;
     font-size: 11px;
     font-weight: 800;
-    cursor: pointer;
   }
 
-  .subscribe-button:disabled {
-    opacity: .55;
-    cursor: wait;
+  .dashboard {
+    max-width: 1280px;
+    margin: 16px auto 40px;
+    padding: 0 0;
+    display: grid;
+    grid-template-columns: 280px minmax(0, 1fr) 300px;
+    gap: 16px;
+    align-items: start;
   }
 
-  .hero {
-    background: #fff;
-    border-bottom: 1px solid #e4e6e9;
+  .left-column,
+  .center-column,
+  .right-column {
+    min-width: 0;
   }
 
-  .hero-inner {
-    max-width: 1020px;
-    margin: 0 auto;
-    padding: 52px 34px 48px;
-  }
-
-  .eyebrow,
-  .step-label {
-    color: #92979e;
-    font-size: 10px;
-    line-height: 1.2;
-    font-weight: 850;
-    letter-spacing: .16em;
-  }
-
-  .hero h1 {
-    max-width: 780px;
-    margin: 13px 0 16px;
-    font-size: clamp(40px, 6vw, 62px);
-    line-height: .99;
-    letter-spacing: -.055em;
-    font-weight: 900;
-  }
-
-  .hero h1 span {
-    color: #969ca4;
-  }
-
-  .hero p {
-    max-width: 720px;
-    margin: 0;
-    color: #747a82;
-    font-size: 16px;
-    line-height: 1.6;
-  }
-
-  .workspace {
-    max-width: 1020px;
-    margin: 0 auto;
-    padding: 26px 22px 60px;
-  }
-
-  .alert {
-    margin-bottom: 16px;
-    padding: 12px 15px;
-    border-radius: 9px;
-    font-size: 12px;
-    line-height: 1.5;
-  }
-
-  .alert.error {
-    border: 1px solid #e5cccc;
-    background: #fffafa;
-    color: #984d4d;
-  }
-
-  .alert.success {
-    border: 1px solid #d6ded8;
-    background: #fbfdfb;
-    color: #526459;
-  }
-
-  .content-card {
-    margin-bottom: 16px;
-    padding: 29px;
+  .card {
     border: 1px solid #dfe2e6;
-    border-radius: 17px;
+    border-radius: 13px;
     background: #fff;
-    box-shadow: 0 8px 25px rgba(17, 19, 24, .035);
+    padding: 19px;
   }
 
-  .connection-card {
-    margin-bottom: 16px;
+  .card + .card {
+    margin-top: 14px;
   }
 
-  .content-card h2 {
-    margin: 10px 0 8px;
-    font-size: 27px;
-    line-height: 1.12;
+  .card h2 {
+    margin: 8px 0 6px;
+    font-size: 18px;
+    line-height: 1.15;
     letter-spacing: -.035em;
   }
 
-  .section-description {
-    max-width: 680px;
-    margin: 0 0 22px;
-    color: #777d85;
-    font-size: 14px;
-    line-height: 1.6;
-  }
-
-  .generate-button {
-    min-height: 52px;
-    padding: 0 22px;
-    border: 0;
-    border-radius: 9px;
-    background: #111318;
-    color: #fff;
-    font-size: 12px;
-    font-weight: 850;
-    cursor: pointer;
-  }
-
-  .generate-button:hover,
-  .save-button:hover {
-    background: #292d34;
-  }
-
-  .generate-button:disabled {
-    opacity: .5;
-    cursor: wait;
-  }
-
-  .full-button {
-    width: 100%;
-  }
-
-  .small-button {
-    min-height: 40px;
-    padding: 0 16px;
-    border: 1px solid #d9dce0;
-    border-radius: 9px;
-    background: #fff;
-    color: #646a72;
-    font-size: 11px;
-    font-weight: 800;
-    cursor: pointer;
-  }
-
-  .small-button:hover {
-    background: #f7f7f8;
-  }
-
-  .import-button {
-    margin-top: 12px;
-  }
-
-  .small-button:disabled {
-    opacity: .55;
-    cursor: wait;
+  .card p {
+    margin: 0;
+    color: #747a82;
+    font-size: 10px;
+    line-height: 1.55;
   }
 
   .connection-status {
-    min-height: 52px;
-    padding: 0 16px;
-    border: 1px solid #dfe2e6;
-    border-radius: 9px;
+    margin-top: 17px;
+    padding: 11px;
+    border: 1px solid #cfe8d4;
+    border-radius: 8px;
+    background: #f1fbf3;
     display: flex;
     align-items: center;
-    gap: 12px;
-    color: #747a82;
-    font-size: 12px;
-    font-weight: 700;
+    gap: 8px;
   }
 
-  .spinner {
-    width: 20px;
-    height: 20px;
-    flex: 0 0 20px;
-    border: 2px solid #e3e5e8;
-    border-top-color: #111318;
+  .status-icon {
+    width: 21px;
+    height: 21px;
     border-radius: 50%;
-    animation: spin .8s linear infinite;
-  }
-
-  .connected-box {
-    min-height: 62px;
-    padding: 10px 15px;
-    border: 1px solid #dfe2e6;
-    border-radius: 10px;
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    background: #fbfcfb;
-  }
-
-  .connected-icon {
-    width: 38px;
-    height: 38px;
-    border-radius: 50%;
-    background: #111318;
+    background: #3aaa58;
     color: #fff;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 19px;
-    font-weight: 700;
+    font-size: 11px;
+    font-weight: 900;
   }
 
-  .connected-box strong {
+  .connection-status > div:nth-child(2) {
+    flex: 1;
+  }
+
+  .connection-status strong {
     display: block;
-    font-size: 12px;
+    color: #31894a;
+    font-size: 9px;
   }
 
-  .connected-box span {
+  .connection-status span {
     display: block;
-    margin-top: 3px;
-    color: #777d85;
-    font-size: 10px;
+    margin-top: 2px;
+    color: #6d8974;
+    font-size: 8px;
   }
 
-  .product-list {
-    margin-top: 20px;
-    display: grid;
-    gap: 8px;
+  .status-check {
+    color: #399a50;
+    font-size: 13px !important;
+    font-weight: 900;
   }
 
-  .product-card {
+  .secondary-button,
+  .view-button {
     width: 100%;
-    padding: 14px 15px;
+    min-height: 39px;
+    margin-top: 10px;
     border: 1px solid #e0e2e5;
-    border-radius: 9px;
+    border-radius: 7px;
     background: #fff;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 15px;
-    text-align: left;
-    cursor: pointer;
-  }
-
-  .product-card:hover {
-    background: #fafafa;
-  }
-
-  .selected-product-card {
-    border-color: #111318;
-    background: #fafafa;
-  }
-
-  .product-main {
-    min-width: 0;
-  }
-
-  .product-main strong {
-    display: block;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    font-size: 12px;
-  }
-
-  .product-main span {
-    display: block;
-    margin-top: 4px;
-    color: #858b92;
-    font-size: 10px;
-  }
-
-  .product-price {
-    flex: 0 0 auto;
-    color: #111318;
-    font-size: 11px;
-    font-weight: 800;
-  }
-
-  .optimizer-card {
-    display: flex;
-    align-items: flex-end;
-    justify-content: space-between;
-    gap: 25px;
-  }
-
-  .search-input {
-    width: 100%;
-    min-height: 48px;
-    padding: 12px 14px;
-    border: 1px solid #d9dce0;
-    border-radius: 9px;
-    outline: none;
-    background: #fafafa;
-    color: #111318;
-    font-family: inherit;
-    font-size: 13px;
-  }
-
-  .search-input:focus {
-    border-color: #aeb3b9;
-    background: #fff;
-  }
-
-  .textarea {
-    min-height: 150px;
-    resize: vertical;
-    line-height: 1.6;
-  }
-
-  .result-field {
-    margin-top: 19px;
-  }
-
-  .first-field {
-    margin-top: 0;
-  }
-
-  .field-header {
-    min-height: 22px;
-    margin-bottom: 7px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 10px;
-  }
-
-  .field-header label {
-    color: #4d535b;
-    font-size: 11px;
-    font-weight: 800;
-  }
-
-  .field-header span {
-    color: #8a9097;
-    font-size: 10px;
-  }
-
-  .input-grid {
-    margin-top: 16px;
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 10px;
-  }
-
-  .score-overview {
-    margin-bottom: 16px;
-    padding: 27px 29px;
-    border-radius: 17px;
-    background: #111318;
-    color: #fff;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 25px;
-  }
-
-  .step-label.light {
-    color: #a4a8ae;
-  }
-
-  .score-overview h2 {
-    margin: 9px 0 6px;
-    font-size: 25px;
-    line-height: 1.15;
-    letter-spacing: -.035em;
-  }
-
-  .score-overview p {
-    margin: 0;
-    color: #a4a8ae;
-    font-size: 12px;
-    line-height: 1.5;
-  }
-
-  .overall-score {
-    flex: 0 0 auto;
-    display: flex;
-    align-items: baseline;
-  }
-
-  .overall-score strong {
-    font-size: 50px;
-    line-height: 1;
-    letter-spacing: -.05em;
-  }
-
-  .overall-score span {
-    margin-left: 3px;
-    color: #a4a8ae;
-    font-size: 12px;
-  }
-
-  .analysis-grid {
-    margin-top: 22px;
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 12px;
-  }
-
-  .analysis-item {
-    padding: 17px;
-    border: 1px solid #e3e5e8;
-    border-radius: 10px;
-    background: #fafafa;
-  }
-
-  .analysis-item strong {
-    display: block;
-    font-size: 11px;
-  }
-
-  .analysis-item p {
-    margin: 7px 0 0;
-    color: #747a82;
-    font-size: 11px;
-    line-height: 1.6;
-  }
-
-  .result-box {
-    min-height: 48px;
-    padding: 13px 14px;
-    border: 1px solid #e0e2e5;
-    border-radius: 9px;
-    background: #fafafa;
-    color: #17191d;
-    font-size: 12px;
-    line-height: 1.6;
-    white-space: pre-wrap;
-    word-break: break-word;
-  }
-
-  .multiline {
-    min-height: 100px;
-  }
-
-  .copy-button {
-    padding: 5px 9px;
-    border: 1px solid #d9dce0;
-    border-radius: 6px;
-    background: #fff;
-    color: #656b73;
+    color: #272a2f;
     font-size: 9px;
     font-weight: 800;
     cursor: pointer;
   }
 
-  .copy-button:hover {
-    background: #f5f5f6;
+  .import-card h2 {
+    margin-bottom: 5px;
   }
 
-  .tags {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 7px;
-  }
-
-  .tag {
-    padding: 7px 10px;
-    border-radius: 999px;
-    background: #f0f1f2;
-    color: #5e646c;
-    font-size: 10px;
-    font-weight: 700;
-  }
-
-  .save-card {
-    margin-bottom: 16px;
-    padding: 27px 29px;
-    border-radius: 17px;
+  .dark-button {
+    width: 100%;
+    min-height: 40px;
+    margin-top: 15px;
+    border: 0;
+    border-radius: 7px;
     background: #111318;
     color: #fff;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 25px;
-  }
-
-  .save-card h2 {
-    margin: 9px 0 6px;
-    font-size: 24px;
-    line-height: 1.15;
-    letter-spacing: -.035em;
-  }
-
-  .save-card p {
-    max-width: 600px;
-    margin: 0;
-    color: #a4a8ae;
-    font-size: 12px;
-    line-height: 1.6;
-  }
-
-  .save-button {
-    min-height: 50px;
-    padding: 0 22px;
-    border: 0;
-    border-radius: 9px;
-    background: #fff;
-    color: #111318;
-    font-size: 11px;
+    font-size: 9px;
     font-weight: 850;
     cursor: pointer;
   }
 
-  .save-button:hover {
-    background: #eeeeef;
+  .dark-button:disabled {
+    opacity: .45;
+    cursor: not-allowed;
   }
 
-  .save-button:disabled {
-    opacity: .55;
-    cursor: default;
+  .import-status {
+    margin-top: 10px;
+    padding: 8px;
+    border-radius: 7px;
+    background: #f2faf4;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .import-status > span {
+    color: #3ba357;
+    font-size: 12px;
+  }
+
+  .import-status strong,
+  .import-status small {
+    display: block;
+  }
+
+  .import-status strong {
+    font-size: 8px;
+  }
+
+  .import-status small {
+    margin-top: 2px;
+    color: #778079;
+    font-size: 7px;
+  }
+
+  .optimizer-card label {
+    display: block;
+    margin: 14px 0 5px;
+    color: #33363b;
+    font-size: 8px;
+    font-weight: 800;
+  }
+
+  .optimizer-card input,
+  .optimizer-card textarea {
+    width: 100%;
+    border: 1px solid #dfe2e5;
+    border-radius: 6px;
+    background: #fff;
+    padding: 9px 10px;
+    outline: none;
+    color: #17191d;
+    font-family: inherit;
+    font-size: 9px;
+  }
+
+  .optimizer-card textarea {
+    resize: vertical;
+    line-height: 1.45;
+  }
+
+  .optimizer-card input:focus,
+  .optimizer-card textarea:focus {
+    border-color: #aeb3b9;
+  }
+
+  .field-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 90px;
+    gap: 8px;
+  }
+
+  .field-grid label {
+    margin-top: 11px;
+  }
+
+  .optimize-button {
+    margin-top: 14px;
+  }
+
+  .results-card {
+    padding: 17px 19px;
+  }
+
+  .results-row {
+    margin-top: 13px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 13px;
+  }
+
+  .overall-score {
+    min-width: 105px;
+  }
+
+  .overall-score span {
+    display: block;
+    color: #747a82;
+    font-size: 8px;
+  }
+
+  .overall-score strong {
+    display: block;
+    margin-top: 3px;
+    color: #34984d;
+    font-size: 28px;
+    letter-spacing: -.05em;
+  }
+
+  .overall-score small {
+    color: #858b91;
+    font-size: 10px;
+    font-weight: 500;
+  }
+
+  .score {
+    text-align: center;
+  }
+
+  .score-circle {
+    width: 43px;
+    height: 43px;
+    border: 2px solid #45ae61;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #318f49;
+    font-size: 10px;
+    font-weight: 850;
+  }
+
+  .score span {
+    display: block;
+    margin-top: 5px;
+    color: #747a82;
+    font-size: 7px;
+  }
+
+  .products-heading {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .products-heading p {
+    margin-top: 5px;
+  }
+
+  .refresh-button {
+    width: 27px;
+    height: 27px;
+    border: 1px solid #dfe2e5;
+    border-radius: 6px;
+    background: #fff;
+    color: #50555b;
+    cursor: pointer;
+  }
+
+  .product-list {
+    margin-top: 13px;
+  }
+
+  .product-item {
+    width: 100%;
+    min-height: 53px;
+    padding: 7px;
+    border: 1px solid #e4e6e8;
+    border-radius: 7px;
+    background: #fff;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .product-item + .product-item {
+    margin-top: 5px;
+  }
+
+  .product-item.selected {
+    border-color: #20242a;
+  }
+
+  .product-image {
+    width: 38px;
+    height: 38px;
+    flex: 0 0 38px;
+    overflow: hidden;
+    border-radius: 5px;
+    background: #eee;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+  }
+
+  .product-image img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .product-info {
+    min-width: 0;
+    flex: 1;
+  }
+
+  .product-info strong {
+    display: block;
+    overflow: hidden;
+    color: #202329;
+    font-size: 8px;
+    font-weight: 800;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .product-info span {
+    display: block;
+    margin-top: 3px;
+    color: #70767d;
+    font-size: 8px;
+  }
+
+  .radio {
+    width: 14px;
+    height: 14px;
+    flex: 0 0 14px;
+    border: 1px solid #aeb3b8;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    background: #fff;
+    font-size: 8px;
+    font-weight: 900;
+  }
+
+  .selected .radio {
+    border-color: #111318;
+    background: #111318;
+  }
+
+  .view-button {
+    margin-top: 9px;
+  }
+
+  .actions-card {
+    padding-bottom: 8px;
+  }
+
+  .action-item {
+    width: 100%;
+    padding: 12px 0;
+    border: 0;
+    border-bottom: 1px solid #eceef0;
+    background: transparent;
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .action-item:last-child {
+    border-bottom: 0;
+  }
+
+  .action-icon {
+    width: 28px;
+    height: 28px;
+    flex: 0 0 28px;
+    border-radius: 6px;
+    background: #f1f2f3;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+  }
+
+  .action-item > div:nth-child(2) {
+    flex: 1;
+  }
+
+  .action-item strong {
+    display: block;
+    font-size: 8px;
+  }
+
+  .action-item span {
+    display: block;
+    margin-top: 3px;
+    color: #7a8087;
+    font-size: 7px;
+  }
+
+  .action-item b {
+    color: #777d83;
+    font-size: 16px;
+    font-weight: 400;
+  }
+
+  .loading-section {
+    padding: 35px 20px;
+  }
+
+  .loading-card {
+    max-width: 1280px;
+    min-height: 220px;
+    margin: 0 auto;
+    border: 1px solid #dfe2e6;
+    border-radius: 14px;
+    background: #fff;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 13px;
+    color: #777d84;
+    font-size: 11px;
+  }
+
+  .spinner {
+    width: 28px;
+    height: 28px;
+    border: 3px solid #e4e6e9;
+    border-top-color: #111318;
+    border-radius: 50%;
+    animation: spin .8s linear infinite;
   }
 
   @keyframes spin {
@@ -1824,11 +1687,38 @@ const styles = `
     }
   }
 
-  @media (max-width: 760px) {
+  @media (max-width: 1050px) {
+    .dashboard,
+    .connected-banner,
+    .not-connected-banner {
+      margin-left: 16px;
+      margin-right: 16px;
+    }
 
+    .dashboard {
+      grid-template-columns: 240px minmax(0, 1fr);
+    }
+
+    .right-column {
+      grid-column: 1 / -1;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+
+    .right-column .card + .card {
+      margin-top: 0;
+    }
+
+    .connected-store {
+      min-width: 210px;
+    }
+  }
+
+  @media (max-width: 760px) {
     .topbar {
-      min-height: 66px;
-      padding: 10px 17px;
+      min-height: 65px;
+      padding: 10px 16px;
     }
 
     .brand-name {
@@ -1837,102 +1727,107 @@ const styles = `
 
     .subscribe-button {
       min-height: 38px;
-      padding: 0 15px;
+      padding: 0 16px;
       font-size: 10px;
     }
 
-    .hero-inner {
-      padding: 40px 22px 38px;
-    }
-
-    .hero h1 {
+    .connected-banner {
       margin-top: 12px;
-      font-size: 38px;
-      line-height: .99;
+      padding: 17px;
+      flex-wrap: wrap;
     }
 
-    .hero p {
-      font-size: 13px;
-      line-height: 1.65;
+    .connected-check {
+      width: 45px;
+      height: 45px;
+      flex-basis: 45px;
+      font-size: 24px;
     }
 
-    .workspace {
-      padding: 18px 14px 35px;
+    .connected-copy {
+      width: calc(100% - 65px);
+      flex: 1;
     }
 
-    .content-card {
-      padding: 22px;
-      border-radius: 14px;
+    .connected-copy h1 {
+      font-size: 20px;
     }
 
-    .content-card h2 {
-      font-size: 23px;
+    .connected-store {
+      width: 100%;
     }
 
-    .section-description {
-      font-size: 13px;
+    .not-connected-banner {
+      margin-top: 12px;
+      padding: 18px;
+      flex-direction: column;
+      align-items: stretch;
     }
 
-    .optimizer-card {
+    .not-connected-banner h1 {
+      font-size: 21px;
+    }
+
+    .dashboard {
+      margin: 12px 12px 30px;
+      grid-template-columns: 1fr;
+      gap: 12px;
+    }
+
+    .right-column {
+      grid-column: auto;
       display: block;
     }
 
-    .optimizer-card .generate-button {
-      width: 100%;
-      margin-top: 17px;
+    .right-column .card + .card {
+      margin-top: 12px;
     }
 
-    .input-grid {
+    .card {
+      padding: 17px;
+    }
+
+    .field-grid {
       grid-template-columns: 1fr;
+      gap: 0;
     }
 
-    .score-overview {
-      padding: 22px;
-      border-radius: 14px;
+    .results-row {
+      flex-wrap: wrap;
+      justify-content: flex-start;
     }
 
-    .score-overview h2 {
-      font-size: 22px;
-    }
-
-    .overall-score strong {
-      font-size: 40px;
-    }
-
-    .analysis-grid {
-      grid-template-columns: 1fr;
-    }
-
-    .save-card {
-      display: block;
-      padding: 22px;
-      border-radius: 14px;
-    }
-
-    .save-button {
+    .overall-score {
       width: 100%;
-      margin-top: 18px;
     }
 
+    .score-circle {
+      width: 40px;
+      height: 40px;
+    }
   }
 
   @media (max-width: 430px) {
-
-    .hero h1 {
-      font-size: 35px;
+    .topbar {
+      padding-left: 13px;
+      padding-right: 13px;
     }
 
-    .overall-score strong {
-      font-size: 35px;
+    .brand-name {
+      font-size: 14px;
     }
 
-    .content-card {
-      padding: 20px;
+    .connected-copy h1 {
+      font-size: 18px;
     }
 
-    .product-card {
-      padding: 12px;
+    .connected-copy p {
+      font-size: 9px;
     }
 
+    .dashboard {
+      margin-left: 9px;
+      margin-right: 9px;
+    }
   }
 `;
