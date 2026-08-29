@@ -1,519 +1,105 @@
 "use client";
 
-import {
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
+import { useEffect, useState } from "react";
 
-type Platform =
-  | "shopify"
-  | "woocommerce"
-  | "bigcommerce"
-  | "wix"
-  | "manual";
-
-const platforms: {
-  id: Platform;
-  name: string;
-  description: string;
-  icon: string;
-}[] = [
-  {
-    id: "shopify",
-    name: "Shopify",
-    description:
-      "Connect your Shopify store",
-    icon: "S",
-  },
-  {
-    id: "woocommerce",
-    name: "WooCommerce",
-    description:
-      "Connect your WooCommerce store",
-    icon: "W",
-  },
-  {
-    id: "bigcommerce",
-    name: "BigCommerce",
-    description:
-      "Connect your BigCommerce store",
-    icon: "B",
-  },
-  {
-    id: "wix",
-    name: "Wix",
-    description:
-      "Connect your Wix store",
-    icon: "W",
-  },
-  {
-    id: "manual",
-    name: "Manual / Import",
-    description:
-      "Optimize products without connecting a store",
-    icon: "M",
-  },
-];
-
-function cleanShopDomain(
-  value: string
-): string {
-  return value
-    .trim()
-    .toLowerCase()
-    .replace(/^https?:\/\//, "")
-    .replace(/^www\./, "")
-    .replace(/\/+$/, "")
-    .replace(/\/.*$/, "")
-    .replace(
-      /(\.myshopify\.com){2,}$/,
-      ".myshopify.com"
-    );
-}
-
-function isValidShopifyDomain(
-  value: string
-): boolean {
-  return /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.myshopify\.com$/i.test(
-    value
-  );
-}
+type ConnectionStatus = {
+  success?: boolean;
+  connected?: boolean;
+  platform?: string;
+  shop?: string;
+  error?: string;
+};
 
 export default function ConnectPage() {
-  const [selected, setSelected] =
-    useState<Platform>("shopify");
+  const [loading, setLoading] = useState(true);
+  const [connecting, setConnecting] = useState(false);
+  const [status, setStatus] =
+    useState<ConnectionStatus | null>(null);
+  const [error, setError] = useState("");
 
-  const [shop, setShop] =
-    useState("");
-
-  const [connectedShop, setConnectedShop] =
-    useState("");
-
-  const [connected, setConnected] =
-    useState(false);
-
-  const [message, setMessage] =
-    useState("");
-
-  const [checkoutLoading, setCheckoutLoading] =
-    useState(false);
-
-  const [connecting, setConnecting] =
-    useState(false);
-
-  const [checkingConnection, setCheckingConnection] =
-    useState(true);
-
-  /*
-   * CHECK EXISTING SHOPIFY SESSION
-   *
-   * The server is the source of truth.
-   * We do not rely only on ?connected=1.
-   */
   useEffect(() => {
-    let cancelled = false;
-
-    async function checkConnection() {
-      try {
-        const response = await fetch(
-          "/status",
-          {
-            method: "GET",
-            credentials: "include",
-            cache: "no-store",
-          }
-        );
-
-        const data =
-          await response
-            .json()
-            .catch(() => null);
-
-        if (cancelled) {
-          return;
-        }
-
-        if (
-          response.ok &&
-          data?.success === true &&
-          data?.connected === true &&
-          data?.platform ===
-            "shopify"
-        ) {
-          const verifiedShop =
-            cleanShopDomain(
-              data.shop || ""
-            );
-
-          if (
-            isValidShopifyDomain(
-              verifiedShop
-            )
-          ) {
-            setConnectedShop(
-              verifiedShop
-            );
-            setShop(verifiedShop);
-            setSelected("shopify");
-            setConnected(true);
-            setConnecting(false);
-            setMessage("");
-
-            return;
-          }
-        }
-
-        setConnected(false);
-        setConnectedShop("");
-      } catch (error) {
-        console.error(
-          "SHOPIFY_CONNECTION_CHECK_ERROR:",
-          error
-        );
-
-        if (!cancelled) {
-          setConnected(false);
-          setConnectedShop("");
-        }
-      } finally {
-        if (!cancelled) {
-          setCheckingConnection(false);
-          setConnecting(false);
-        }
-      }
-    }
-
-    void checkConnection();
-
-    return () => {
-      cancelled = true;
-    };
+    checkShopifyConnection();
   }, []);
 
-  /*
-   * HANDLE SHOPIFY OAUTH RETURN
-   *
-   * After OAuth callback:
-   *
-   * /connect?connected=1&shop=...
-   *
-   * We verify the server session again.
-   */
-  useEffect(() => {
-    const params =
-      new URLSearchParams(
-        window.location.search
+  async function checkShopifyConnection() {
+    setLoading(true);
+    setError("");
+
+    try {
+      const response = await fetch(
+        "/api/shopify/status",
+        {
+          method: "GET",
+          credentials: "include",
+          cache: "no-store",
+        }
       );
 
-    const connectedParam =
-      params.get("connected");
+      const data = await response
+        .json()
+        .catch(() => null);
 
-    const shopParam =
-      params.get("shop") || "";
-
-    const statusParam =
-      params.get("status");
-
-    const errorParam =
-      params.get(
-        "error_description"
-      ) ||
-      params.get("error") ||
-      "";
-
-    const cleanedShop =
-      cleanShopDomain(shopParam);
-
-    if (
-      connectedParam === "1" &&
-      isValidShopifyDomain(
-        cleanedShop
-      )
-    ) {
-      setShop(cleanedShop);
-      setSelected("shopify");
-      setConnecting(false);
-
-      /*
-       * The callback has already
-       * saved the HTTP-only session.
-       *
-       * Ask /status to confirm it.
-       */
-      async function verifyReturnedConnection() {
-        try {
-          const response =
-            await fetch(
-              "/status",
-              {
-                method: "GET",
-                credentials:
-                  "include",
-                cache: "no-store",
-              }
-            );
-
-          const data =
-            await response
-              .json()
-              .catch(() => null);
-
-          if (
-            response.ok &&
-            data?.success ===
-              true &&
-            data?.connected ===
-              true &&
-            data?.platform ===
-              "shopify"
-          ) {
-            const verifiedShop =
-              cleanShopDomain(
-                data.shop ||
-                  cleanedShop
-              );
-
-            if (
-              isValidShopifyDomain(
-                verifiedShop
-              )
-            ) {
-              setConnectedShop(
-                verifiedShop
-              );
-              setShop(
-                verifiedShop
-              );
-              setConnected(true);
-              setConnecting(false);
-              setMessage("");
-
-              window.history.replaceState(
-                {},
-                document.title,
-                "/connect"
-              );
-
-              return;
-            }
-          }
-
-          setConnected(false);
-          setConnecting(false);
-          setMessage(
-            data?.error ||
-              "Shopify authorization completed, but the connection could not be verified."
-          );
-
-          window.history.replaceState(
-            {},
-            document.title,
-            "/connect"
-          );
-        } catch (error) {
-          console.error(
-            "SHOPIFY_RETURN_VERIFY_ERROR:",
-            error
-          );
-
-          setConnected(false);
-          setConnecting(false);
-          setMessage(
-            "Shopify authorization completed, but the connection could not be verified."
-          );
-
-          window.history.replaceState(
-            {},
-            document.title,
-            "/connect"
-          );
-        }
+      if (!response.ok || !data?.connected) {
+        setStatus({
+          connected: false,
+          platform: "shopify",
+        });
+        return;
       }
 
-      void verifyReturnedConnection();
-
-      return;
-    }
-
-    /*
-     * OAuth error
-     */
-    if (
-      statusParam === "error"
-    ) {
-      setConnected(false);
-      setConnecting(false);
-      setCheckingConnection(false);
-
-      setMessage(
-        errorParam ||
-          "Shopify authorization was not completed."
+      setStatus({
+        ...data,
+        connected: true,
+        platform: "shopify",
+      });
+    } catch (err) {
+      console.error(
+        "SHOPIFY_CONNECTION_STATUS_ERROR:",
+        err
       );
 
-      window.history.replaceState(
-        {},
-        document.title,
-        "/connect"
-      );
-
-      return;
-    }
-
-    /*
-     * Normal /connect?shop=...
-     */
-    if (
-      isValidShopifyDomain(
-        cleanedShop
-      )
-    ) {
-      setShop(cleanedShop);
-      setSelected("shopify");
-    }
-  }, []);
-
-  /*
-   * Browser back/forward cache.
-   */
-  useEffect(() => {
-    const handlePageShow = () => {
-      setConnecting(false);
-    };
-
-    window.addEventListener(
-      "pageshow",
-      handlePageShow
-    );
-
-    return () => {
-      window.removeEventListener(
-        "pageshow",
-        handlePageShow
-      );
-    };
-  }, []);
-
-  const cleanShop = useMemo(
-    () =>
-      cleanShopDomain(shop),
-    [shop]
-  );
-
-  const shopifyDomainIsValid =
-    isValidShopifyDomain(
-      cleanShop
-    );
-
-  function selectPlatform(
-    platform: Platform
-  ) {
-    setSelected(platform);
-    setMessage("");
-
-    if (
-      platform !== "shopify"
-    ) {
-      setShop("");
-      setConnected(false);
-      setConnectedShop("");
-      setConnecting(false);
+      setStatus({
+        connected: false,
+        platform: "shopify",
+      });
+    } finally {
+      setLoading(false);
     }
   }
 
   function connectShopify() {
-    if (connecting) {
-      return;
-    }
-
-    const cleaned =
-      cleanShopDomain(shop);
-
-    if (
-      !isValidShopifyDomain(
-        cleaned
-      )
-    ) {
-      setMessage(
-        "Enter a valid Shopify .myshopify.com domain."
-      );
-      return;
-    }
+    if (connecting) return;
 
     setConnecting(true);
-    setConnected(false);
-    setConnectedShop("");
-    setMessage("");
+    setError("");
 
-    const oauthUrl =
-      new URL(
-        "/api/auth/shopify",
-        window.location.origin
-      );
-
-    oauthUrl.searchParams.set(
-      "shop",
-      cleaned
+    window.location.assign(
+      "/api/shopify/connect"
     );
+  }
 
-    const url =
-      oauthUrl.toString();
-
-    /*
-     * Standalone app:
-     * always perform OAuth in
-     * the top-level browser window.
-     */
-    if (
-      window.top &&
-      window.top !== window
-    ) {
-      window.top.location.href =
-        url;
-      return;
-    }
-
-    window.location.href =
-      url;
+  function continueToVirello() {
+    window.location.assign("/");
   }
 
   async function startCheckout() {
-    if (checkoutLoading) {
-      return;
-    }
-
-    setCheckoutLoading(true);
-    setMessage("");
+    setError("");
 
     try {
-      const response =
-        await fetch(
-          "/api/stripe/checkout",
-          {
-            method: "POST",
-            headers: {
-              "Content-Type":
-                "application/json",
-            },
-            credentials:
-              "include",
-            cache: "no-store",
-          }
-        );
+      const response = await fetch(
+        "/api/stripe/checkout",
+        {
+          method: "POST",
+          credentials: "include",
+        }
+      );
 
-      const data =
-        await response
-          .json()
-          .catch(() => null);
-
-      if (!response.ok) {
-        throw new Error(
-          data?.error ||
-            "Unable to start subscription checkout."
-        );
-      }
+      const data = await response
+        .json()
+        .catch(() => null);
 
       if (
+        !response.ok ||
         !data?.success ||
         !data?.url
       ) {
@@ -523,216 +109,23 @@ export default function ConnectPage() {
         );
       }
 
-      window.location.assign(
-        data.url
-      );
-    } catch (error) {
-      setMessage(
-        error instanceof Error
-          ? error.message
+      window.location.assign(data.url);
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
           : "Unable to start subscription checkout."
       );
-
-      setCheckoutLoading(false);
     }
   }
 
-  /*
-   * Initial session check.
-   */
-  if (checkingConnection) {
-    return (
-      <main className="app-shell">
-        <div className="loading-screen">
-          <div className="loading-card">
-            <div className="loading-spinner" />
-            <strong>
-              Checking connection...
-            </strong>
-            <span>
-              Please wait.
-            </span>
-          </div>
-        </div>
+  const connected =
+    status?.connected === true;
 
-        <style jsx>{styles}</style>
-      </main>
-    );
-  }
-
-  /*
-   * CONNECTED SCREEN
-   */
-  if (connected) {
-    return (
-      <main className="app-shell">
-        <header className="topbar">
-          <div>
-            <div className="brand-small">
-              VIRELLO AI
-            </div>
-
-            <div className="brand-name">
-              Virello AI Optimizer
-            </div>
-          </div>
-
-          <div className="topbar-actions">
-            <div className="shop-pill">
-              Multi-Platform Ecommerce
-            </div>
-
-            <button
-              type="button"
-              className="subscribe-button"
-              onClick={
-                startCheckout
-              }
-              disabled={
-                checkoutLoading
-              }
-            >
-              {checkoutLoading
-                ? "Opening checkout..."
-                : "Subscribe to Virello"}
-            </button>
-          </div>
-        </header>
-
-        <section className="hero">
-          <div className="hero-inner">
-            <div className="eyebrow">
-              SHOPIFY CONNECTED
-            </div>
-
-            <h1>
-              Your store is{" "}
-              <span>
-                connected.
-              </span>
-            </h1>
-
-            <p>
-              Your Shopify store has
-              been successfully
-              connected to Virello AI
-              Optimizer.
-            </p>
-          </div>
-        </section>
-
-        <section className="workspace">
-          <div className="workspace-grid">
-            <section className="content-card success-card">
-              <div className="success-icon">
-                ✓
-              </div>
-
-              <div className="step-label">
-                CONNECTION COMPLETE
-              </div>
-
-              <h2>
-                Shopify connected
-                successfully
-              </h2>
-
-              <p>
-                Virello can now work
-                with your Shopify
-                store.
-              </p>
-
-              <div className="connected-store">
-                <span>
-                  Connected store
-                </span>
-
-                <strong>
-                  {connectedShop}
-                </strong>
-              </div>
-
-              <div className="connect-actions">
-                <a
-                  href="/"
-                  className="generate-button"
-                >
-                  Continue to Virello
-                </a>
-              </div>
-            </section>
-
-            <section className="content-card">
-              <div className="step-label">
-                VIRELLO WORKFLOW
-              </div>
-
-              <h2>
-                From store to optimized
-                listing
-              </h2>
-
-              <div className="flow-grid">
-                <div className="flow-card">
-                  <strong>
-                    1. Connect
-                  </strong>
-                  <p>
-                    Your Shopify store
-                    is connected.
-                  </p>
-                </div>
-
-                <div className="flow-card">
-                  <strong>
-                    2. Import
-                  </strong>
-                  <p>
-                    Bring your product
-                    information into
-                    Virello.
-                  </p>
-                </div>
-
-                <div className="flow-card">
-                  <strong>
-                    3. Optimize
-                  </strong>
-                  <p>
-                    Generate improved
-                    product content
-                    with AI.
-                  </p>
-                </div>
-
-                <div className="flow-card">
-                  <strong>
-                    4. Apply
-                  </strong>
-                  <p>
-                    Send approved
-                    content back to
-                    your store.
-                  </p>
-                </div>
-              </div>
-            </section>
-          </div>
-        </section>
-
-        <style jsx>{styles}</style>
-      </main>
-    );
-  }
-
-  /*
-   * CONNECT PAGE
-   */
   return (
-    <main className="app-shell">
+    <main className="page-shell">
       <header className="topbar">
-        <div>
+        <div className="brand">
           <div className="brand-small">
             VIRELLO AI
           </div>
@@ -743,341 +136,233 @@ export default function ConnectPage() {
         </div>
 
         <div className="topbar-actions">
-          <div className="shop-pill">
-            Multi-Platform Ecommerce
+          <div className="shopify-pill">
+            Shopify
           </div>
 
           <button
             type="button"
             className="subscribe-button"
-            onClick={
-              startCheckout
-            }
-            disabled={
-              checkoutLoading
-            }
+            onClick={startCheckout}
           >
-            {checkoutLoading
-              ? "Opening checkout..."
-              : "Subscribe to Virello"}
+            Subscribe
           </button>
         </div>
       </header>
 
+      {error && (
+        <div className="error-bar">
+          {error}
+        </div>
+      )}
+
       <section className="hero">
         <div className="hero-inner">
           <div className="eyebrow">
-            AI PRODUCT INTELLIGENCE
+            SHOPIFY AI OPTIMIZATION
           </div>
 
           <h1>
-            Optimize any ecommerce
-            product{" "}
-            <span>
-              with AI.
-            </span>
+            Optimize Shopify
+            <br />
+            products{" "}
+            <span>with AI.</span>
           </h1>
 
           <p>
-            Create stronger product
-            listings, SEO copy and
-            conversion-focused
-            content for ecommerce
-            and dropshipping
-            businesses.
+            Connect your Shopify store, import
+            products and create conversion-focused
+            listings, SEO content and product
+            intelligence with Virello AI.
           </p>
         </div>
       </section>
 
-      <section className="workspace">
-        <div className="workspace-grid">
-          <section className="content-card">
+      {!loading && !connected && (
+        <section className="connection-section">
+          <div className="connection-card">
             <div className="step-label">
-              STEP 1
+              SHOPIFY CONNECTION
             </div>
 
             <h2>
-              Choose your platform
+              Connect your Shopify store
             </h2>
 
-            <p className="section-description">
-              Select the ecommerce
-              platform where your
-              products are stored.
+            <p className="description">
+              Connect your Shopify store to import
+              products and optimize them with
+              Virello AI.
             </p>
 
-            <div className="platform-list">
-              {platforms.map(
-                (platform) => {
-                  const isSelected =
-                    selected ===
-                    platform.id;
-
-                  return (
-                    <button
-                      key={
-                        platform.id
-                      }
-                      type="button"
-                      className={
-                        isSelected
-                          ? "platform-card selected"
-                          : "platform-card"
-                      }
-                      onClick={() =>
-                        selectPlatform(
-                          platform.id
-                        )
-                      }
-                    >
-                      <div className="platform-icon">
-                        {
-                          platform.icon
-                        }
-                      </div>
-
-                      <div className="platform-info">
-                        <strong>
-                          {
-                            platform.name
-                          }
-                        </strong>
-
-                        <span>
-                          {
-                            platform.description
-                          }
-                        </span>
-                      </div>
-
-                      <div
-                        className={
-                          isSelected
-                            ? "radio selected-radio"
-                            : "radio"
-                        }
-                      >
-                        {isSelected
-                          ? "✓"
-                          : ""}
-                      </div>
-                    </button>
-                  );
-                }
-              )}
+            <div className="shopify-field">
+              <span>Shopify</span>
             </div>
-          </section>
 
-          {selected ===
-            "shopify" && (
-            <section className="content-card">
-              <div className="step-label">
-                SHOPIFY STORE
+            <button
+              type="button"
+              className="connect-button"
+              onClick={connectShopify}
+              disabled={connecting}
+            >
+              {connecting
+                ? "Connecting..."
+                : "Connect Shopify"}
+            </button>
+          </div>
+        </section>
+      )}
+
+      {!loading && connected && (
+        <>
+          <section className="connected-hero">
+            <div className="connected-inner">
+              <div className="eyebrow">
+                SHOPIFY CONNECTED
               </div>
 
               <h2>
-                Enter your Shopify
-                store
+                Your store is{" "}
+                <span>connected.</span>
               </h2>
 
-              <p className="section-description">
-                Enter the permanent
-                Shopify domain of your
-                store.
-                <br />
-                Example:
-                <br />
-                <strong>
-                  mystore.myshopify.com
-                </strong>
+              <p>
+                Your Shopify store has been
+                successfully connected to Virello
+                AI Optimizer.
               </p>
+            </div>
+          </section>
 
-              <div className="form-group">
-                <input
-                  type="text"
-                  value={shop}
-                  onChange={(event) => {
-                    setShop(
-                      event.target
-                        .value
-                    );
-                    setMessage("");
-                    setConnecting(false);
-                  }}
-                  onBlur={() => {
-                    const cleaned =
-                      cleanShopDomain(
-                        shop
-                      );
-
-                    if (
-                      cleaned !==
-                      shop
-                    ) {
-                      setShop(
-                        cleaned
-                      );
-                    }
-                  }}
-                  onKeyDown={(event) => {
-                    if (
-                      event.key ===
-                        "Enter" &&
-                      shopifyDomainIsValid &&
-                      !connecting
-                    ) {
-                      connectShopify();
-                    }
-                  }}
-                  placeholder="mystore.myshopify.com"
-                  autoComplete="off"
-                  autoCapitalize="none"
-                  autoCorrect="off"
-                  spellCheck={false}
-                  disabled={
-                    connecting
-                  }
-                />
-
-                <button
-                  type="button"
-                  className="generate-button continue-button"
-                  disabled={
-                    !shopifyDomainIsValid ||
-                    connecting
-                  }
-                  onClick={
-                    connectShopify
-                  }
-                >
-                  {connecting
-                    ? "Connecting..."
-                    : "Connect Store"}
-                </button>
+          <section className="confirmation-section">
+            <div className="confirmation-card">
+              <div className="check-circle">
+                <span>✓</span>
               </div>
 
-              {message && (
-                <div className="message">
-                  {message}
+              <div className="confirmation-label">
+                CONNECTION COMPLETE
+              </div>
+
+              <h2>
+                Shopify connected successfully
+              </h2>
+
+              <p className="confirmation-description">
+                Virello can now work with your
+                Shopify store.
+              </p>
+
+              {status?.shop && (
+                <div className="store-row">
+                  <div className="store-icon">
+                    <span>⌂</span>
+                  </div>
+
+                  <div className="store-info">
+                    <div className="store-label">
+                      Connected store
+                    </div>
+
+                    <div className="store-name">
+                      {status.shop}
+                    </div>
+                  </div>
                 </div>
               )}
 
-              <p className="oauth-note">
-                Shopify authorization
-                will open in this
-                browser window. After
-                approval, Shopify will
-                return you to Virello.
-              </p>
-            </section>
-          )}
-
-          {selected !==
-            "shopify" && (
-            <section className="content-card">
-              <div className="step-label">
-                {selected ===
-                "manual"
-                  ? "MANUAL / IMPORT"
-                  : "PLATFORM"}
-              </div>
-
-              <h2>
-                {selected ===
-                "manual"
-                  ? "Manual / Import"
-                  : `Connect ${
-                      platforms.find(
-                        (item) =>
-                          item.id ===
-                          selected
-                      )?.name ||
-                      selected
-                    }`}
-              </h2>
-
-              <p className="section-description">
-                {selected ===
-                "manual"
-                  ? "Optimize products without connecting an ecommerce store."
-                  : "This platform connection is prepared for your Virello workspace."}
-              </p>
-
-              {selected ===
-                "manual" && (
-                <button
-                  type="button"
-                  className="generate-button continue-button"
-                  onClick={() => {
-                    window.location.assign(
-                      "/?platform=manual"
-                    );
-                  }}
-                >
-                  Continue with
-                  Manual Import
-                </button>
-              )}
-            </section>
-          )}
-
-          <section className="content-card">
-            <div className="step-label">
-              VIRELLO WORKFLOW
+              <button
+                type="button"
+                className="continue-button"
+                onClick={continueToVirello}
+              >
+                Continue to Virello
+              </button>
             </div>
 
-            <h2>
-              From store to optimized
-              listing
-            </h2>
-
-            <div className="flow-grid">
-              <div className="flow-card">
-                <strong>
-                  1. Connect
-                </strong>
-                <p>
-                  Connect your
-                  ecommerce platform.
-                </p>
+            <div className="next-card">
+              <div className="next-label">
+                WHAT'S NEXT?
               </div>
 
-              <div className="flow-card">
-                <strong>
-                  2. Import
-                </strong>
-                <p>
-                  Bring product
-                  information into
-                  Virello.
-                </p>
-              </div>
+              <h3>
+                Start optimizing your Shopify
+                products.
+              </h3>
 
-              <div className="flow-card">
-                <strong>
-                  3. Optimize
-                </strong>
-                <p>
-                  Generate improved
-                  product content
-                  with AI.
-                </p>
-              </div>
+              <p>
+                Import your products, optimize them
+                with AI, review the recommendations
+                and apply the changes to Shopify.
+              </p>
 
-              <div className="flow-card">
-                <strong>
-                  4. Apply
-                </strong>
-                <p>
-                  Send approved
-                  content back to the
-                  store.
-                </p>
+              <div className="steps">
+                <div className="step">
+                  <div className="step-icon">
+                    ↓
+                  </div>
+
+                  <strong>1. Import</strong>
+
+                  <span>
+                    Import your Shopify products.
+                  </span>
+                </div>
+
+                <div className="step">
+                  <div className="step-icon">
+                    ✦
+                  </div>
+
+                  <strong>2. Optimize</strong>
+
+                  <span>
+                    Generate SEO titles,
+                    descriptions and more.
+                  </span>
+                </div>
+
+                <div className="step">
+                  <div className="step-icon">
+                    ✎
+                  </div>
+
+                  <strong>3. Review</strong>
+
+                  <span>
+                    Review and edit AI
+                    recommendations.
+                  </span>
+                </div>
+
+                <div className="step">
+                  <div className="step-icon">
+                    ↑
+                  </div>
+
+                  <strong>4. Apply</strong>
+
+                  <span>
+                    Publish optimized content
+                    to Shopify.
+                  </span>
+                </div>
               </div>
             </div>
           </section>
-        </div>
-      </section>
+        </>
+      )}
+
+      {loading && (
+        <section className="loading-section">
+          <div className="loading-card">
+            <div className="spinner" />
+            <p>
+              Checking Shopify connection...
+            </p>
+          </div>
+        </section>
+      )}
 
       <style jsx>{styles}</style>
     </main>
@@ -1089,67 +374,17 @@ const styles = `
     box-sizing: border-box;
   }
 
-  .app-shell {
+  .page-shell {
     min-height: 100vh;
-    background: #f4f5f7;
+    background: #f5f6f7;
     color: #111318;
   }
 
-  .loading-screen {
-    min-height: 100vh;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 24px;
-  }
-
-  .loading-card {
-    width: min(100%, 360px);
-    padding: 32px;
-    border: 1px solid #e0e3e7;
-    border-radius: 20px;
-    background: #ffffff;
-    box-shadow:
-      0 12px 30px
-      rgba(17, 19, 24, 0.06);
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 10px;
-    text-align: center;
-  }
-
-  .loading-card strong {
-    font-size: 16px;
-  }
-
-  .loading-card span {
-    color: #81878f;
-    font-size: 13px;
-  }
-
-  .loading-spinner {
-    width: 30px;
-    height: 30px;
-    margin-bottom: 8px;
-    border: 3px solid #e2e4e8;
-    border-top-color: #111318;
-    border-radius: 50%;
-    animation:
-      virello-spin 0.8s linear infinite;
-  }
-
-  @keyframes virello-spin {
-    to {
-      transform: rotate(360deg);
-    }
-  }
-
   .topbar {
-    min-height: 92px;
-    padding: 18px 28px;
+    min-height: 76px;
+    padding: 13px 34px;
     background: #ffffff;
-    border-bottom: 1px solid #e5e7eb;
+    border-bottom: 1px solid #e4e6e9;
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -1157,473 +392,501 @@ const styles = `
   }
 
   .brand-small {
-    color: #969ba3;
-    font-size: 10px;
-    font-weight: 800;
-    letter-spacing: 0.16em;
+    color: #9a9fa6;
+    font-size: 9px;
+    font-weight: 850;
+    letter-spacing: .16em;
   }
 
   .brand-name {
-    margin-top: 5px;
-    font-size: 20px;
+    margin-top: 3px;
+    font-size: 18px;
     font-weight: 850;
+    letter-spacing: -.025em;
   }
 
   .topbar-actions {
     display: flex;
     align-items: center;
-    justify-content: flex-end;
     gap: 10px;
   }
 
-  .shop-pill {
-    padding: 10px 15px;
-    border: 1px solid #e0e3e7;
+  .shopify-pill {
+    min-height: 42px;
+    padding: 0 17px;
+    border: 1px solid #dfe2e6;
     border-radius: 999px;
-    background: #ffffff;
-    color: #6f757d;
+    background: #fff;
+    display: flex;
+    align-items: center;
+    color: #70757d;
     font-size: 11px;
-    font-weight: 750;
-    white-space: nowrap;
+    font-weight: 800;
   }
 
   .subscribe-button {
     min-height: 42px;
-    padding: 0 17px;
+    padding: 0 18px;
     border: 0;
-    border-radius: 10px;
+    border-radius: 9px;
     background: #111318;
-    color: #ffffff;
-    font-size: 12px;
-    font-weight: 850;
+    color: #fff;
+    font-size: 11px;
+    font-weight: 800;
     cursor: pointer;
-    white-space: nowrap;
   }
 
   .subscribe-button:hover {
     background: #292d34;
   }
 
-  .subscribe-button:disabled {
-    opacity: 0.55;
-    cursor: wait;
+  .error-bar {
+    margin: 14px auto 0;
+    max-width: 1020px;
+    padding: 11px 14px;
+    border: 1px solid #e5cccc;
+    border-radius: 9px;
+    background: #fffafa;
+    color: #984d4d;
+    font-size: 11px;
   }
 
   .hero {
-    background: #ffffff;
-    border-bottom: 1px solid #e5e7eb;
+    background: #fff;
+    border-bottom: 1px solid #e4e6e9;
   }
 
   .hero-inner {
-    max-width: 1100px;
+    max-width: 1020px;
     margin: 0 auto;
-    padding: 70px 28px 65px;
+    padding: 55px 34px 52px;
   }
 
-  .eyebrow,
-  .step-label {
-    color: #8c929a;
+  .eyebrow {
+    color: #92979e;
     font-size: 10px;
     font-weight: 850;
-    letter-spacing: 0.16em;
+    letter-spacing: .16em;
   }
 
   .hero h1 {
-    max-width: 850px;
-    margin: 18px 0;
-    font-size: clamp(42px, 7vw, 76px);
-    line-height: 0.98;
-    letter-spacing: -0.055em;
+    max-width: 760px;
+    margin: 13px 0 15px;
+    font-size: clamp(38px, 6vw, 62px);
+    line-height: .98;
+    letter-spacing: -.055em;
     font-weight: 900;
   }
 
   .hero h1 span {
-    color: #949aa2;
+    color: #969ca4;
   }
 
   .hero p {
-    max-width: 760px;
+    max-width: 720px;
     margin: 0;
-    color: #727880;
-    font-size: 18px;
+    color: #747a82;
+    font-size: 16px;
     line-height: 1.65;
   }
 
-  .workspace {
-    padding: 28px;
+  .connection-section {
+    padding: 26px 22px 42px;
   }
 
-  .workspace-grid {
-    max-width: 1100px;
+  .connection-card {
+    max-width: 1020px;
     margin: 0 auto;
-    display: flex;
-    flex-direction: column;
-    gap: 18px;
+    padding: 30px;
+    border: 1px solid #dfe2e6;
+    border-radius: 17px;
+    background: #fff;
+    box-shadow: 0 8px 25px rgba(17, 19, 24, .035);
   }
 
-  .content-card {
-    padding: 32px;
-    border: 1px solid #e0e3e7;
-    border-radius: 22px;
-    background: #ffffff;
-    box-shadow:
-      0 12px 30px
-      rgba(17, 19, 24, 0.04);
+  .step-label,
+  .next-label {
+    color: #91969d;
+    font-size: 10px;
+    font-weight: 850;
+    letter-spacing: .16em;
   }
 
-  .content-card h2 {
-    margin: 12px 0 10px;
-    font-size: 30px;
-    letter-spacing: -0.035em;
+  .connection-card h2 {
+    margin: 11px 0 8px;
+    font-size: 27px;
+    line-height: 1.1;
+    letter-spacing: -.035em;
   }
 
-  .section-description {
-    margin: 0 0 24px;
-    color: #7a8088;
-    font-size: 16px;
+  .description {
+    max-width: 650px;
+    margin: 0 0 22px;
+    color: #777d85;
+    font-size: 14px;
     line-height: 1.6;
   }
 
-  .section-description strong {
-    color: #111318;
-  }
-
-  .platform-list {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-  }
-
-  .platform-card {
-    width: 100%;
-    min-height: 108px;
-    padding: 18px 20px;
-    border: 1px solid #e0e3e7;
-    border-radius: 18px;
-    background: #ffffff;
-    display: flex;
-    align-items: center;
-    gap: 20px;
-    text-align: left;
-    cursor: pointer;
-    transition:
-      border-color 0.15s ease,
-      box-shadow 0.15s ease;
-  }
-
-  .platform-card:hover {
-    border-color: #bfc4ca;
-  }
-
-  .platform-card.selected {
-    border-color: #111318;
-    box-shadow:
-      0 8px 20px
-      rgba(17, 19, 24, 0.06);
-  }
-
-  .platform-icon {
-    width: 56px;
-    height: 56px;
-    flex: 0 0 56px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 15px;
-    background: #f1f2f4;
-    color: #111318;
-    font-size: 24px;
-    font-weight: 900;
-  }
-
-  .platform-info {
-    flex: 1;
-    min-width: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-  }
-
-  .platform-info strong {
-    color: #111318;
-    font-size: 18px;
-    font-weight: 850;
-  }
-
-  .platform-info span {
-    color: #858b93;
-    font-size: 14px;
-  }
-
-  .radio {
-    width: 32px;
-    height: 32px;
-    flex: 0 0 32px;
-    border: 2px solid #d5d8dc;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: #ffffff;
-    font-size: 16px;
-    font-weight: 900;
-  }
-
-  .selected-radio {
-    border-color: #111318;
-    background: #111318;
-  }
-
-  .form-group {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-  }
-
-  .form-group input {
-    width: 100%;
-    min-height: 56px;
-    padding: 0 18px;
+  .shopify-field {
+    min-height: 52px;
+    padding: 0 15px;
     border: 1px solid #d9dce0;
-    border-radius: 12px;
-    background: #ffffff;
-    color: #111318;
-    font-size: 16px;
-    outline: none;
+    border-radius: 9px;
+    background: #fafafa;
+    display: flex;
+    align-items: center;
+    color: #17191d;
+    font-size: 13px;
+    font-weight: 750;
   }
 
-  .form-group input:focus {
-    border-color: #111318;
-    box-shadow:
-      0 0 0 3px
-      rgba(17, 19, 24, 0.08);
-  }
-
-  .form-group input::placeholder {
-    color: #9ca1a8;
-  }
-
-  .form-group input:disabled {
-    opacity: 0.55;
-  }
-
-  .generate-button {
-    min-height: 48px;
-    padding: 0 24px;
+  .connect-button,
+  .continue-button {
+    width: 100%;
+    min-height: 52px;
+    margin-top: 10px;
     border: 0;
-    border-radius: 11px;
+    border-radius: 9px;
     background: #111318;
-    color: #ffffff;
-    font-size: 14px;
+    color: #fff;
+    font-size: 12px;
     font-weight: 850;
     cursor: pointer;
-    text-decoration: none;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
   }
 
-  .generate-button:hover {
+  .connect-button:hover,
+  .continue-button:hover {
     background: #292d34;
   }
 
-  .generate-button:disabled {
-    opacity: 0.45;
-    cursor: not-allowed;
+  .connect-button:disabled {
+    opacity: .5;
+    cursor: wait;
   }
 
-  .continue-button {
-    width: 100%;
+  .connected-hero {
+    background: #fff;
+    border-bottom: 1px solid #e4e6e9;
   }
 
-  .message {
-    margin-top: 16px;
-    padding: 14px 16px;
-    border: 1px solid #e0e3e7;
-    border-radius: 12px;
-    background: #f7f8f9;
-    color: #555b63;
-    font-size: 14px;
-    line-height: 1.5;
+  .connected-inner {
+    max-width: 1020px;
+    margin: 0 auto;
+    padding: 47px 34px 48px;
   }
 
-  .oauth-note {
-    margin: 14px 0 0;
-    color: #92979e;
-    font-size: 12px;
-    line-height: 1.55;
-    text-align: center;
-  }
-
-  .success-card {
-    text-align: center;
-  }
-
-  .success-icon {
-    width: 64px;
-    height: 64px;
-    margin: 0 auto 20px;
-    border-radius: 50%;
-    background: #111318;
-    color: #ffffff;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 30px;
+  .connected-inner h2 {
+    max-width: 760px;
+    margin: 12px 0 15px;
+    font-size: clamp(42px, 6vw, 65px);
+    line-height: .98;
+    letter-spacing: -.06em;
     font-weight: 900;
   }
 
-  .success-card .step-label {
+  .connected-inner h2 span {
+    color: #969ca4;
+  }
+
+  .connected-inner p {
+    max-width: 680px;
+    margin: 0;
+    color: #777d85;
+    font-size: 16px;
+    line-height: 1.65;
+  }
+
+  .confirmation-section {
+    padding: 27px 22px 48px;
+  }
+
+  .confirmation-card,
+  .next-card {
+    max-width: 950px;
+    margin: 0 auto;
+    border: 1px solid #dfe2e6;
+    border-radius: 17px;
+    background: #fff;
+  }
+
+  .confirmation-card {
+    padding: 40px 38px 35px;
     text-align: center;
   }
 
-  .success-card h2 {
-    margin-top: 14px;
-  }
-
-  .success-card p {
-    max-width: 600px;
-    margin: 0 auto;
-    color: #7a8088;
-    font-size: 16px;
-    line-height: 1.6;
-  }
-
-  .connected-store {
-    max-width: 520px;
-    margin: 28px auto;
-    padding: 18px 20px;
-    border: 1px solid #e0e3e7;
-    border-radius: 14px;
-    background: #f7f8f9;
+  .check-circle {
+    width: 82px;
+    height: 82px;
+    margin: 0 auto 25px;
+    border-radius: 50%;
+    background: #111318;
     display: flex;
-    flex-direction: column;
-    gap: 7px;
-  }
-
-  .connected-store span {
-    color: #8b9199;
-    font-size: 11px;
-    font-weight: 800;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-  }
-
-  .connected-store strong {
-    color: #111318;
-    font-size: 17px;
-  }
-
-  .connect-actions {
-    display: flex;
+    align-items: center;
     justify-content: center;
   }
 
-  .flow-grid {
-    display: grid;
-    grid-template-columns:
-      repeat(4, minmax(0, 1fr));
-    gap: 12px;
-    margin-top: 24px;
+  .check-circle span {
+    color: #fff;
+    font-size: 43px;
+    font-weight: 500;
+    line-height: 1;
   }
 
-  .flow-card {
-    min-height: 150px;
-    padding: 20px;
-    border: 1px solid #e0e3e7;
-    border-radius: 16px;
-    background: #fafafa;
+  .confirmation-label {
+    color: #92979e;
+    font-size: 10px;
+    font-weight: 850;
+    letter-spacing: .16em;
   }
 
-  .flow-card strong {
-    display: block;
-    margin-bottom: 10px;
-    color: #111318;
-    font-size: 15px;
+  .confirmation-card h2 {
+    margin: 12px 0 8px;
+    font-size: 29px;
+    line-height: 1.15;
+    letter-spacing: -.04em;
   }
 
-  .flow-card p {
+  .confirmation-description {
     margin: 0;
-    color: #81878f;
-    font-size: 13px;
+    color: #777d85;
+    font-size: 14px;
     line-height: 1.55;
   }
 
-  @media (max-width: 800px) {
-    .topbar {
-      align-items: flex-start;
-      flex-direction: column;
-    }
+  .store-row {
+    max-width: 700px;
+    margin: 30px auto 0;
+    padding: 19px 0;
+    border-top: 1px solid #eceef0;
+    border-bottom: 1px solid #eceef0;
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    text-align: left;
+  }
 
-    .topbar-actions {
-      width: 100%;
-      justify-content: space-between;
-    }
+  .store-icon {
+    width: 52px;
+    height: 52px;
+    flex: 0 0 52px;
+    border-radius: 50%;
+    background: #f1f2f3;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
 
-    .hero-inner {
-      padding:
-        55px 20px
-        50px;
-    }
+  .store-icon span {
+    font-size: 22px;
+  }
 
-    .workspace {
-      padding: 18px;
-    }
+  .store-label {
+    color: #777d85;
+    font-size: 10px;
+    font-weight: 750;
+  }
 
-    .content-card {
-      padding: 24px;
-    }
+  .store-name {
+    margin-top: 4px;
+    color: #111318;
+    font-size: 14px;
+    font-weight: 850;
+    word-break: break-word;
+  }
 
-    .flow-grid {
-      grid-template-columns:
-        repeat(2, minmax(0, 1fr));
+  .continue-button {
+    max-width: 700px;
+    margin: 24px auto 0;
+  }
+
+  .next-card {
+    margin-top: 16px;
+    padding: 27px;
+  }
+
+  .next-card h3 {
+    margin: 9px 0 7px;
+    font-size: 21px;
+    letter-spacing: -.03em;
+  }
+
+  .next-card > p {
+    max-width: 650px;
+    margin: 0;
+    color: #777d85;
+    font-size: 12px;
+    line-height: 1.6;
+  }
+
+  .steps {
+    margin-top: 26px;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+  }
+
+  .step {
+    min-width: 0;
+    text-align: center;
+  }
+
+  .step-icon {
+    width: 52px;
+    height: 52px;
+    margin: 0 auto 12px;
+    border-radius: 50%;
+    background: #f1f2f3;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 23px;
+  }
+
+  .step strong {
+    display: block;
+    font-size: 11px;
+  }
+
+  .step span {
+    display: block;
+    margin-top: 5px;
+    color: #858b92;
+    font-size: 9px;
+    line-height: 1.5;
+  }
+
+  .loading-section {
+    padding: 27px 22px;
+  }
+
+  .loading-card {
+    max-width: 1020px;
+    min-height: 170px;
+    margin: 0 auto;
+    border: 1px solid #dfe2e6;
+    border-radius: 17px;
+    background: #fff;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 13px;
+  }
+
+  .loading-card p {
+    margin: 0;
+    color: #777d85;
+    font-size: 12px;
+  }
+
+  .spinner {
+    width: 27px;
+    height: 27px;
+    border: 3px solid #e4e6e9;
+    border-top-color: #111318;
+    border-radius: 50%;
+    animation: spin .8s linear infinite;
+  }
+
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
     }
   }
 
-  @media (max-width: 520px) {
+  @media (max-width: 760px) {
     .topbar {
-      padding: 16px 18px;
+      min-height: 68px;
+      padding: 11px 17px;
     }
 
-    .topbar-actions {
-      align-items: stretch;
-      flex-direction: column;
+    .brand-name {
+      font-size: 15px;
     }
 
-    .shop-pill {
-      text-align: center;
+    .shopify-pill {
+      display: none;
+    }
+
+    .subscribe-button {
+      min-height: 38px;
+      padding: 0 14px;
+    }
+
+    .hero-inner {
+      padding: 39px 22px 37px;
     }
 
     .hero h1 {
-      font-size: 46px;
+      font-size: 39px;
+      line-height: .98;
     }
 
     .hero p {
-      font-size: 16px;
+      font-size: 13px;
     }
 
-    .platform-card {
-      gap: 12px;
-      padding: 15px;
+    .connection-section,
+    .confirmation-section,
+    .loading-section {
+      padding: 17px 14px 30px;
     }
 
-    .platform-icon {
-      width: 48px;
-      height: 48px;
-      flex-basis: 48px;
-      font-size: 20px;
+    .connection-card {
+      padding: 22px;
+      border-radius: 14px;
     }
 
-    .platform-info strong {
-      font-size: 16px;
+    .connection-card h2 {
+      font-size: 23px;
     }
 
-    .platform-info span {
-      font-size: 12px;
+    .connected-inner {
+      padding: 37px 22px 38px;
     }
 
-    .flow-grid {
-      grid-template-columns: 1fr;
+    .connected-inner h2 {
+      font-size: 43px;
+      line-height: .98;
+    }
+
+    .connected-inner p {
+      font-size: 13px;
+    }
+
+    .confirmation-card {
+      padding: 32px 21px 28px;
+    }
+
+    .confirmation-card h2 {
+      font-size: 24px;
+    }
+
+    .store-row {
+      margin-top: 25px;
+    }
+
+    .next-card {
+      padding: 22px;
+    }
+
+    .steps {
+      grid-template-columns: 1fr 1fr;
+      gap: 24px 12px;
+    }
+  }
+
+  @media (max-width: 430px) {
+    .hero h1 {
+      font-size: 36px;
+    }
+
+    .connected-inner h2 {
+      font-size: 39px;
+    }
+
+    .steps {
+      grid-template-columns: 1fr 1fr;
     }
   }
 `;
