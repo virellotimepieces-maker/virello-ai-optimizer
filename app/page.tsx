@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 type Product = {
   id: string;
@@ -9,6 +9,8 @@ type Product = {
   productType?: string;
   vendor?: string;
   price?: string;
+  status?: string;
+  tags?: string[];
 };
 
 type AIResult = {
@@ -40,7 +42,7 @@ type AIResult = {
     tags?: string[];
   };
   reasoning?: string;
-}
+};
 
 export default function Home() {
   const [products, setProducts] = useState<Product[]>([]);
@@ -75,6 +77,21 @@ export default function Home() {
 
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+
+  useEffect(() => {
+    const params = new URLSearchParams(
+      window.location.search
+    );
+
+    const connection =
+      params.get("connected");
+
+    if (connection === "success") {
+      setMessage(
+        "Shopify store connected successfully."
+      );
+    }
+  }, []);
 
   async function startCheckout() {
     if (checkoutLoading) return;
@@ -128,7 +145,7 @@ export default function Home() {
     );
   }
 
-  async function loadShopifyProducts() {
+  async function loadProducts() {
     setProductsLoading(true);
     setError("");
     setMessage("");
@@ -169,13 +186,13 @@ export default function Home() {
 
       if (!imported.length) {
         setMessage(
-          "No products were returned from the connected Shopify store."
+          "No Shopify products were returned."
         );
         return;
       }
 
       setMessage(
-        `${imported.length} Shopify products loaded successfully.`
+        `${imported.length} products loaded successfully.`
       );
     } catch (err) {
       setProducts([]);
@@ -265,6 +282,7 @@ export default function Home() {
       }
 
       setResult(data.result);
+
       setMessage(
         "AI optimization completed."
       );
@@ -280,7 +298,9 @@ export default function Home() {
   }
 
   async function saveToShopify() {
-    if (savedToShopify) return;
+    if (savedToShopify) {
+      return;
+    }
 
     if (!selectedProductId) {
       setError(
@@ -413,10 +433,6 @@ export default function Home() {
         </div>
 
         <div className="topbar-actions">
-          <div className="shop-pill">
-            Shopify
-          </div>
-
           <button
             type="button"
             className="subscribe-button"
@@ -484,24 +500,18 @@ export default function Home() {
               optimize them with Virello AI.
             </p>
 
-            <div className="connection-row">
-              <div className="shopify-platform">
-                Shopify
-              </div>
-
-              <button
-                type="button"
-                className="generate-button"
-                onClick={connectShopify}
-              >
-                Connect Shopify
-              </button>
-            </div>
+            <button
+              type="button"
+              className="generate-button full-button"
+              onClick={connectShopify}
+            >
+              Connect Shopify
+            </button>
 
             <button
               type="button"
               className="small-button import-button"
-              onClick={loadShopifyProducts}
+              onClick={loadProducts}
               disabled={productsLoading}
             >
               {productsLoading
@@ -515,7 +525,7 @@ export default function Home() {
           {products.length > 0 && (
             <section className="content-card">
               <div className="step-label">
-                IMPORTED SHOPIFY PRODUCTS
+                IMPORTED PRODUCTS
               </div>
 
               <h2>
@@ -604,7 +614,7 @@ export default function Home() {
           {/* PRODUCT INPUT */}
 
           <section className="content-card">
-            <div className="result-field">
+            <div className="result-field first-field">
               <div className="field-header">
                 <label>
                   Product title *
@@ -640,7 +650,7 @@ export default function Home() {
                   );
                   setSavedToShopify(false);
                 }}
-                placeholder="Current Shopify product description"
+                placeholder="Current product description"
               />
             </div>
 
@@ -660,22 +670,24 @@ export default function Home() {
               <input
                 className="search-input"
                 value={vendor}
-                onChange={(e) =>
+                onChange={(e) => {
                   setVendor(
                     e.target.value
-                  )
-                }
+                  );
+                  setSavedToShopify(false);
+                }}
                 placeholder="Brand / supplier"
               />
 
               <input
                 className="search-input"
                 value={price}
-                onChange={(e) =>
+                onChange={(e) => {
                   setPrice(
                     e.target.value
-                  )
-                }
+                  );
+                  setSavedToShopify(false);
+                }}
                 placeholder="Price"
               />
             </div>
@@ -782,7 +794,7 @@ export default function Home() {
                     </div>
 
                     <h2>
-                      Ready-to-use Shopify content
+                      Ready-to-use content
                     </h2>
                   </div>
 
@@ -1176,18 +1188,9 @@ const styles = `
     gap: 8px;
   }
 
-  .shop-pill {
-    padding: 7px 11px;
-    border: 1px solid #e0e3e7;
-    border-radius: 999px;
-    color: #6f757d;
-    font-size: 9px;
-    font-weight: 750;
-  }
-
   .subscribe-button {
     min-height: 35px;
-    padding: 0 13px;
+    padding: 0 15px;
     border: 0;
     border-radius: 8px;
     background: #111318;
@@ -1296,50 +1299,6 @@ const styles = `
     line-height: 1.55;
   }
 
-  .connection-row {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) 175px;
-    gap: 9px;
-  }
-
-  .shopify-platform {
-    width: 100%;
-    min-height: 42px;
-    padding: 0 12px;
-    border: 1px solid #d9dce0;
-    border-radius: 8px;
-    background: #fafafa;
-    color: #111318;
-    display: flex;
-    align-items: center;
-    font-size: 12px;
-    font-weight: 750;
-  }
-
-  .search-input {
-    width: 100%;
-    min-height: 42px;
-    padding: 0 12px;
-    border: 1px solid #d9dce0;
-    border-radius: 8px;
-    background: #fff;
-    color: #111318;
-    font: inherit;
-    font-size: 12px;
-    outline: none;
-  }
-
-  textarea.search-input {
-    min-height: 105px;
-    padding: 11px 12px;
-    resize: vertical;
-  }
-
-  .search-input:focus {
-    border-color: #111318;
-    box-shadow: 0 0 0 3px rgba(17, 19, 24, .06);
-  }
-
   .generate-button {
     min-height: 42px;
     padding: 0 16px;
@@ -1359,6 +1318,11 @@ const styles = `
   .generate-button:disabled {
     opacity: .45;
     cursor: not-allowed;
+  }
+
+  .full-button {
+    width: 100%;
+    margin-top: 3px;
   }
 
   .small-button {
@@ -1455,6 +1419,10 @@ const styles = `
     margin-top: 14px;
   }
 
+  .first-field {
+    margin-top: 0;
+  }
+
   .field-header {
     min-height: 26px;
     display: flex;
@@ -1467,6 +1435,30 @@ const styles = `
     color: #3f444b;
     font-size: 10px;
     font-weight: 800;
+  }
+
+  .search-input {
+    width: 100%;
+    min-height: 42px;
+    padding: 0 12px;
+    border: 1px solid #d9dce0;
+    border-radius: 8px;
+    background: #fff;
+    color: #111318;
+    font: inherit;
+    font-size: 12px;
+    outline: none;
+  }
+
+  textarea.search-input {
+    min-height: 105px;
+    padding: 11px 12px;
+    resize: vertical;
+  }
+
+  .search-input:focus {
+    border-color: #111318;
+    box-shadow: 0 0 0 3px rgba(17, 19, 24, .06);
   }
 
   .input-grid {
@@ -1703,10 +1695,6 @@ const styles = `
 
     .content-card h2 {
       font-size: 19px;
-    }
-
-    .connection-row {
-      grid-template-columns: 1fr;
     }
 
     .score-grid {
