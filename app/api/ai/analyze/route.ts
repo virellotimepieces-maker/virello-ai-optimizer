@@ -1,4 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
+import {
+  authorizeSubscriberForAI,
+  setSubscriberCookie,
+} from "../../_lib/subscriber";
 
 export const runtime = "nodejs";
 
@@ -83,17 +87,26 @@ function cleanArray(value: unknown): string[] {
   }
 
   return value
-    .filter((item): item is string => typeof item === "string")
+    .filter(
+      (item): item is string =>
+        typeof item === "string"
+    )
     .map((item) => item.trim())
     .filter(Boolean);
 }
 
 function clampScore(value: unknown): number {
-  if (typeof value !== "number" || !Number.isFinite(value)) {
+  if (
+    typeof value !== "number" ||
+    !Number.isFinite(value)
+  ) {
     return 0;
   }
 
-  return Math.max(0, Math.min(100, Math.round(value)));
+  return Math.max(
+    0,
+    Math.min(100, Math.round(value))
+  );
 }
 
 function limitCharacters(
@@ -509,6 +522,23 @@ export async function POST(
         }
       );
     }
+
+    /*
+     * ============================================================
+     * SUBSCRIBER AUTHORIZATION
+     * ============================================================
+     *
+     * This must happen before the OpenAI request.
+     *
+     * Non-subscribers, invalid sessions, canceled subscriptions,
+     * unpaid subscriptions, and users who reached their usage
+     * limit are blocked by authorizeSubscriberForAI().
+     */
+
+    const subscriberAuthorization =
+      await authorizeSubscriberForAI(
+        request
+      );
 
     const audience: Audience =
       product.audience ??
@@ -946,14 +976,6 @@ ${JSON.stringify(
 Return the complete structured optimization.
 `;
 
-    /*
-     * Use an environment variable when supplied.
-     * Otherwise use a currently supported OpenAI model.
-     *
-     * IMPORTANT:
-     * If you already have OPENAI_MODEL in Vercel,
-     * that value will be used.
-     */
     const model =
       process.env.OPENAI_MODEL ||
       "gpt-5.4";
@@ -1221,9 +1243,6 @@ Return the complete structured optimization.
 
     /*
      * STRICT AUDIENCE PROTECTION
-     *
-     * This prevents the exact problem you had:
-     * Men's product becoming Unisex.
      */
 
     if (
@@ -1310,10 +1329,6 @@ Return the complete structured optimization.
 
     /*
      * HIGH-CONVERSION SCORE FLOOR
-     *
-     * The score reflects the FINAL optimized
-     * listing rather than punishing the user
-     * for an empty original description.
      */
 
     const strongDescription =
@@ -1347,7 +1362,7 @@ Return the complete structured optimization.
 
     /*
      * Recalculate overall score from the
-     * FINAL optimized listing.
+     * final optimized listing.
      */
 
     result.score.overall =
@@ -1361,36 +1376,74 @@ Return the complete structured optimization.
         ) / 5
       );
 
-    return NextResponse.json(
-      {
-        success: true,
-        audience,
-        result,
-      },
-      {
-        status: 200,
+    /*
+     * ============================================================
+     * SUCCESS RESPONSE
+     * ============================================================
+     *
+     * Refresh the signed subscriber cookie using
+     * the latest verified subscription and usage state.
+     */
 
-        headers: {
-          "Cache-Control":
-            "no-store",
+    const response =
+      NextResponse.json(
+        {
+          success: true,
+          audience,
+          result,
+          usage:
+            subscriberAuthorization.usage,
         },
-      }
+        {
+          status: 200,
+
+          headers: {
+            "Cache-Control":
+              "no-store, no-cache, must-revalidate",
+          },
+        }
+      );
+
+    setSubscriberCookie(
+      response,
+      subscriberAuthorization.cookieValue
     );
+
+    return response;
   } catch (error) {
     console.error(
       "Virello AI analysis error:",
       error
     );
 
+    const possibleError =
+      error as {
+        status?: unknown;
+        message?: unknown;
+      };
+
+    const status =
+      typeof possibleError.status ===
+      "number"
+        ? possibleError.status
+        : 500;
+
+    const message =
+      typeof possibleError.message ===
+      "string"
+        ? possibleError.message
+        : "Unexpected server error.";
+
     return NextResponse.json(
       {
-        error:
-          error instanceof Error
-            ? error.message
-            : "Unexpected server error.",
+        error: message,
       },
       {
-        status: 500,
+        status,
+        headers: {
+          "Cache-Control":
+            "no-store",
+        },
       }
     );
   }
