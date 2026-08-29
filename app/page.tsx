@@ -1,12 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
-
-type Platform =
-  | "shopify"
-  | "woocommerce"
-  | "bigcommerce"
-  | "wix";
+import { useState } from "react";
 
 type Product = {
   id: string;
@@ -46,25 +40,10 @@ type AIResult = {
     tags?: string[];
   };
   reasoning?: string;
-};
-
-const platforms: {
-  value: Platform;
-  label: string;
-}[] = [
-  { value: "shopify", label: "Shopify" },
-  { value: "woocommerce", label: "WooCommerce" },
-  { value: "bigcommerce", label: "BigCommerce" },
-  { value: "wix", label: "Wix" },
-];
+}
 
 export default function Home() {
-  const [platform, setPlatform] =
-    useState<Platform>("shopify");
-
-  const [products, setProducts] =
-    useState<Product[]>([]);
-
+  const [products, setProducts] = useState<Product[]>([]);
   const [selectedProductId, setSelectedProductId] =
     useState("");
 
@@ -96,23 +75,6 @@ export default function Home() {
 
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
-
-  useEffect(() => {
-    const params = new URLSearchParams(
-      window.location.search
-    );
-
-    const value = params.get("platform");
-
-    if (
-      value === "shopify" ||
-      value === "woocommerce" ||
-      value === "bigcommerce" ||
-      value === "wix"
-    ) {
-      setPlatform(value);
-    }
-  }, []);
 
   async function startCheckout() {
     if (checkoutLoading) return;
@@ -157,28 +119,23 @@ export default function Home() {
     }
   }
 
-  function connectStore() {
+  function connectShopify() {
     setError("");
     setMessage("");
 
     window.location.assign(
-      `/connect?platform=${platform}`
+      "/connect?platform=shopify"
     );
   }
 
-  async function loadProducts() {
+  async function loadShopifyProducts() {
     setProductsLoading(true);
     setError("");
     setMessage("");
 
     try {
-      const productsEndpoint =
-        platform === "woocommerce"
-          ? "/api/woocommerce/products"
-          : "/api/stores/products";
-
       const response = await fetch(
-        productsEndpoint,
+        "/api/stores/products?platform=shopify",
         {
           method: "GET",
           credentials: "include",
@@ -196,7 +153,7 @@ export default function Home() {
       ) {
         throw new Error(
           data?.error ||
-            `Unable to load ${platform} products.`
+            "Unable to load Shopify products."
         );
       }
 
@@ -212,13 +169,13 @@ export default function Home() {
 
       if (!imported.length) {
         setMessage(
-          "No products were returned from the connected store."
+          "No products were returned from the connected Shopify store."
         );
         return;
       }
 
       setMessage(
-        `${imported.length} products loaded successfully.`
+        `${imported.length} Shopify products loaded successfully.`
       );
     } catch (err) {
       setProducts([]);
@@ -226,7 +183,7 @@ export default function Home() {
       setError(
         err instanceof Error
           ? err.message
-          : `Unable to load ${platform} products.`
+          : "Unable to load Shopify products."
       );
     } finally {
       setProductsLoading(false);
@@ -235,6 +192,7 @@ export default function Home() {
 
   function selectProduct(product: Product) {
     setSelectedProductId(product.id);
+
     setTitle(product.title || "");
     setDescription(
       product.description || ""
@@ -286,7 +244,7 @@ export default function Home() {
                 productType.trim(),
               vendor: vendor.trim(),
               price: price.trim(),
-              platform,
+              platform: "shopify",
             },
           }),
         }
@@ -322,21 +280,7 @@ export default function Home() {
   }
 
   async function saveToShopify() {
-    if (savedToShopify) {
-      return;
-    }
-
-    if (platform !== "shopify") {
-      setError(
-        `Save to ${
-          platforms.find(
-            (item) =>
-              item.value === platform
-          )?.label
-        } is not available yet.`
-      );
-      return;
-    }
+    if (savedToShopify) return;
 
     if (!selectedProductId) {
       setError(
@@ -408,6 +352,7 @@ export default function Home() {
       }
 
       setSavedToShopify(true);
+
       setMessage(
         "Product saved to Shopify successfully."
       );
@@ -469,7 +414,7 @@ export default function Home() {
 
         <div className="topbar-actions">
           <div className="shop-pill">
-            All Ecommerce
+            Shopify
           </div>
 
           <button
@@ -492,14 +437,14 @@ export default function Home() {
           </div>
 
           <h1>
-            Optimize ecommerce
+            Optimize Shopify
             products{" "}
             <span>with AI.</span>
           </h1>
 
           <p>
-            Connect your store, import
-            products and create
+            Connect your Shopify store,
+            import products and create
             conversion-focused listings,
             SEO content and product
             intelligence with Virello AI.
@@ -522,76 +467,46 @@ export default function Home() {
             </div>
           )}
 
-          {/* STORE CONNECTION */}
+          {/* SHOPIFY CONNECTION */}
 
           <section className="content-card">
             <div className="step-label">
-              STORE CONNECTION
+              SHOPIFY CONNECTION
             </div>
 
             <h2>
-              Connect your store
+              Connect your Shopify store
             </h2>
 
             <p className="section-description">
-              Choose your ecommerce
-              platform and connect it
-              to Virello.
+              Connect your Shopify store
+              to import products and
+              optimize them with Virello AI.
             </p>
 
             <div className="connection-row">
-              <select
-                className="search-input"
-                value={platform}
-                onChange={(e) => {
-                  const next =
-                    e.target.value as Platform;
-
-                  setPlatform(next);
-                  setProducts([]);
-                  setSelectedProductId("");
-                  setResult(null);
-                  setSavedToShopify(false);
-                  setError("");
-                  setMessage("");
-                }}
-              >
-                {platforms.map(
-                  (item) => (
-                    <option
-                      key={item.value}
-                      value={item.value}
-                    >
-                      {item.label}
-                    </option>
-                  )
-                )}
-              </select>
+              <div className="shopify-platform">
+                Shopify
+              </div>
 
               <button
                 type="button"
                 className="generate-button"
-                onClick={connectStore}
+                onClick={connectShopify}
               >
-                Connect Store
+                Connect Shopify
               </button>
             </div>
 
             <button
               type="button"
               className="small-button import-button"
-              onClick={loadProducts}
+              onClick={loadShopifyProducts}
               disabled={productsLoading}
             >
               {productsLoading
                 ? "Loading..."
-                : `Import ${
-                    platforms.find(
-                      (item) =>
-                        item.value ===
-                        platform
-                    )?.label
-                  } Products`}
+                : "Import Shopify Products"}
             </button>
           </section>
 
@@ -600,7 +515,7 @@ export default function Home() {
           {products.length > 0 && (
             <section className="content-card">
               <div className="step-label">
-                IMPORTED PRODUCTS
+                IMPORTED SHOPIFY PRODUCTS
               </div>
 
               <h2>
@@ -668,9 +583,9 @@ export default function Home() {
               </h2>
 
               <p className="section-description">
-                Select an imported product
-                or enter product information
-                manually.
+                Select an imported Shopify
+                product or enter product
+                information manually.
               </p>
             </div>
 
@@ -725,7 +640,7 @@ export default function Home() {
                   );
                   setSavedToShopify(false);
                 }}
-                placeholder="Current product description"
+                placeholder="Current Shopify product description"
               />
             </div>
 
@@ -867,35 +782,33 @@ export default function Home() {
                     </div>
 
                     <h2>
-                      Ready-to-use content
+                      Ready-to-use Shopify content
                     </h2>
                   </div>
 
-                  {platform ===
-                    "shopify" &&
-                    selectedProductId && (
-                      <button
-                        type="button"
-                        className={
-                          savedToShopify
-                            ? "save-button saved"
-                            : "save-button"
-                        }
-                        onClick={
-                          saveToShopify
-                        }
-                        disabled={
-                          saving ||
-                          savedToShopify
-                        }
-                      >
-                        {saving
-                          ? "Saving..."
-                          : savedToShopify
-                            ? "Saved to Shopify ✓"
-                            : "Save to Shopify"}
-                      </button>
-                    )}
+                  {selectedProductId && (
+                    <button
+                      type="button"
+                      className={
+                        savedToShopify
+                          ? "save-button saved"
+                          : "save-button"
+                      }
+                      onClick={
+                        saveToShopify
+                      }
+                      disabled={
+                        saving ||
+                        savedToShopify
+                      }
+                    >
+                      {saving
+                        ? "Saving..."
+                        : savedToShopify
+                          ? "Saved to Shopify ✓"
+                          : "Save to Shopify"}
+                    </button>
+                  )}
                 </div>
 
                 {[
@@ -995,28 +908,11 @@ export default function Home() {
                   </div>
                 )}
 
-                {!selectedProductId &&
-                  platform === "shopify" && (
-                    <div className="save-note">
-                      Select an imported Shopify
-                      product to enable Save to
-                      Shopify.
-                    </div>
-                  )}
-
-                {platform !== "shopify" && (
+                {!selectedProductId && (
                   <div className="save-note">
-                    Saving back to{" "}
-                    {
-                      platforms.find(
-                        (item) =>
-                          item.value ===
-                          platform
-                      )?.label
-                    }{" "}
-                    will be available when
-                    that platform's write
-                    integration is enabled.
+                    Select an imported Shopify
+                    product to enable Save to
+                    Shopify.
                   </div>
                 )}
               </section>
@@ -1406,6 +1302,20 @@ const styles = `
     gap: 9px;
   }
 
+  .shopify-platform {
+    width: 100%;
+    min-height: 42px;
+    padding: 0 12px;
+    border: 1px solid #d9dce0;
+    border-radius: 8px;
+    background: #fafafa;
+    color: #111318;
+    display: flex;
+    align-items: center;
+    font-size: 12px;
+    font-weight: 750;
+  }
+
   .search-input {
     width: 100%;
     min-height: 42px;
@@ -1768,10 +1678,6 @@ const styles = `
 
     .brand-name {
       font-size: 14px;
-    }
-
-    .shop-pill {
-      display: none;
     }
 
     .hero-inner {
