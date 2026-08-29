@@ -172,8 +172,13 @@ export default function Home() {
     setMessage("");
 
     try {
+      const productsEndpoint =
+        platform === "woocommerce"
+          ? "/api/woocommerce/products"
+          : "/api/stores/products";
+
       const response = await fetch(
-        `/api/stores/products?platform=${platform}`,
+        productsEndpoint,
         {
           method: "GET",
           credentials: "include",
