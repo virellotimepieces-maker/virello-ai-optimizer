@@ -2,6 +2,17 @@
 
 import { useEffect, useState } from "react";
 
+type Product = {
+  id: string;
+  title: string;
+  description?: string;
+  productType?: string;
+  vendor?: string;
+  price?: string;
+  status?: string;
+  tags?: string[];
+};
+
 type ConnectionStatus = {
   success?: boolean;
   connected?: boolean;
@@ -10,20 +21,86 @@ type ConnectionStatus = {
   error?: string;
 };
 
-export default function ConnectPage() {
-  const [loading, setLoading] = useState(true);
-  const [connecting, setConnecting] = useState(false);
-  const [status, setStatus] =
-    useState<ConnectionStatus | null>(null);
+type AIResult = {
+  analysis?: {
+    targetCustomer?: string;
+    purchaseMotivation?: string;
+    strongestFeatures?: string[];
+    weaknesses?: string[];
+    missingInformation?: string[];
+    seoOpportunities?: string[];
+    conversionOpportunities?: string[];
+  };
+  score?: {
+    title?: number;
+    description?: number;
+    seo?: number;
+    productClarity?: number;
+    conversionPotential?: number;
+    overall?: number;
+  };
+  optimization?: {
+    title?: string;
+    productType?: string;
+    description?: string;
+    features?: string[];
+    specifications?: string[];
+    seoTitle?: string;
+    metaDescription?: string;
+    tags?: string[];
+  };
+  reasoning?: string;
+};
+
+export default function Home() {
+  const [products, setProducts] = useState<Product[]>([]);
+  const [selectedProductId, setSelectedProductId] =
+    useState("");
+
+  const [title, setTitle] = useState("");
+  const [description, setDescription] =
+    useState("");
+  const [productType, setProductType] =
+    useState("");
+  const [vendor, setVendor] = useState("");
+  const [price, setPrice] = useState("");
+
+  const [result, setResult] =
+    useState<AIResult | null>(null);
+
+  const [connected, setConnected] =
+    useState(false);
+
+  const [connectionChecking, setConnectionChecking] =
+    useState(true);
+
+  const [connecting, setConnecting] =
+    useState(false);
+
+  const [loading, setLoading] =
+    useState(false);
+
+  const [productsLoading, setProductsLoading] =
+    useState(false);
+
+  const [saving, setSaving] =
+    useState(false);
+
+  const [savedToShopify, setSavedToShopify] =
+    useState(false);
+
+  const [checkoutLoading, setCheckoutLoading] =
+    useState(false);
+
   const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
 
   useEffect(() => {
     checkShopifyConnection();
   }, []);
 
   async function checkShopifyConnection() {
-    setLoading(true);
-    setError("");
+    setConnectionChecking(true);
 
     try {
       const response = await fetch(
@@ -32,75 +109,32 @@ export default function ConnectPage() {
           method: "GET",
           credentials: "include",
           cache: "no-store",
-          headers: {
-            Accept: "application/json",
-          },
         }
       );
 
-      const data = await response
-        .json()
-        .catch(() => null);
+      const data =
+        await response.json().catch(() => null);
 
-      console.log(
-        "SHOPIFY_STATUS_RESPONSE:",
-        data
-      );
-
-      /*
-       * IMPORTANT:
-       * Do not assume that the API only returns
-       * { connected: true }.
-       *
-       * Some successful Shopify status responses
-       * can contain success/shop information.
-       */
       const isConnected =
-        data?.connected === true ||
-        (
-          data?.success === true &&
-          !!data?.shop
-        );
+        response.ok &&
+        data?.connected === true;
 
-      if (!response.ok) {
-        setStatus({
-          connected: false,
-          platform: "shopify",
-          error:
-            data?.error ||
-            "Unable to check Shopify connection.",
-        });
-
-        return;
-      }
+      setConnected(isConnected);
 
       if (isConnected) {
-        setStatus({
-          ...data,
-          connected: true,
-          platform: "shopify",
-        });
-
-        return;
+        setMessage(
+          "Shopify store connected successfully."
+        );
       }
-
-      setStatus({
-        ...data,
-        connected: false,
-        platform: "shopify",
-      });
     } catch (err) {
       console.error(
-        "SHOPIFY_CONNECTION_STATUS_ERROR:",
+        "SHOPIFY_STATUS_ERROR:",
         err
       );
 
-      setStatus({
-        connected: false,
-        platform: "shopify",
-      });
+      setConnected(false);
     } finally {
-      setLoading(false);
+      setConnectionChecking(false);
     }
   }
 
@@ -109,18 +143,19 @@ export default function ConnectPage() {
 
     setConnecting(true);
     setError("");
+    setMessage("");
 
     window.location.assign(
-      "/api/shopify/connect"
+      "/connect?platform=shopify"
     );
   }
 
-  function continueToVirello() {
-    window.location.assign("/");
-  }
-
   async function startCheckout() {
+    if (checkoutLoading) return;
+
+    setCheckoutLoading(true);
     setError("");
+    setMessage("");
 
     try {
       const response = await fetch(
@@ -128,15 +163,12 @@ export default function ConnectPage() {
         {
           method: "POST",
           credentials: "include",
-          headers: {
-            Accept: "application/json",
-          },
+          cache: "no-store",
         }
       );
 
-      const data = await response
-        .json()
-        .catch(() => null);
+      const data =
+        await response.json().catch(() => null);
 
       if (
         !response.ok ||
@@ -156,16 +188,378 @@ export default function ConnectPage() {
           ? err.message
           : "Unable to start subscription checkout."
       );
+
+      setCheckoutLoading(false);
     }
   }
 
-  const connected =
-    status?.connected === true;
+  async function loadProducts() {
+    if (!connected) {
+      setError(
+        "Connect your Shopify store first."
+      );
+      return;
+    }
+
+    setProductsLoading(true);
+    setError("");
+    setMessage("");
+
+    try {
+      const response = await fetch(
+        "/api/shopify/products",
+        {
+          method: "GET",
+          credentials: "include",
+          cache: "no-store",
+        }
+      );
+
+      const data =
+        await response.json().catch(() => null);
+
+      if (
+        !response.ok ||
+        !data?.success
+      ) {
+        throw new Error(
+          data?.error ||
+            "Unable to load Shopify products."
+        );
+      }
+
+      const rawProducts =
+        Array.isArray(data.products)
+          ? data.products
+          : [];
+
+      const normalizedProducts: Product[] =
+        rawProducts.map(
+          (product: any) => {
+            const firstVariant =
+              Array.isArray(
+                product?.variants
+              )
+                ? product.variants[0]
+                : null;
+
+            const rawTags =
+              Array.isArray(product?.tags)
+                ? product.tags
+                : typeof product?.tags ===
+                  "string"
+                ? product.tags
+                    .split(",")
+                    .map((tag: string) =>
+                      tag.trim()
+                    )
+                    .filter(Boolean)
+                : [];
+
+            return {
+              id: String(
+                product?.id ?? ""
+              ),
+              title:
+                product?.title ||
+                "Untitled product",
+              description:
+                product?.description ??
+                product?.body_html ??
+                "",
+              productType:
+                product?.productType ??
+                product?.product_type ??
+                "",
+              vendor:
+                product?.vendor ?? "",
+              price:
+                product?.price ??
+                firstVariant?.price ??
+                "",
+              status:
+                product?.status ?? "",
+              tags: rawTags,
+            };
+          }
+        );
+
+      setProducts(
+        normalizedProducts
+      );
+
+      setSelectedProductId("");
+      setResult(null);
+      setSavedToShopify(false);
+
+      if (
+        normalizedProducts.length === 0
+      ) {
+        setMessage(
+          "No Shopify products were returned."
+        );
+        return;
+      }
+
+      setMessage(
+        `${normalizedProducts.length} Shopify products loaded successfully.`
+      );
+    } catch (err) {
+      setProducts([]);
+
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Unable to load Shopify products."
+      );
+    } finally {
+      setProductsLoading(false);
+    }
+  }
+
+  function selectProduct(
+    product: Product
+  ) {
+    setSelectedProductId(
+      product.id
+    );
+
+    setTitle(
+      product.title || ""
+    );
+
+    setDescription(
+      product.description || ""
+    );
+
+    setProductType(
+      product.productType || ""
+    );
+
+    setVendor(
+      product.vendor || ""
+    );
+
+    setPrice(
+      product.price || ""
+    );
+
+    setResult(null);
+    setSavedToShopify(false);
+    setError("");
+    setMessage("");
+  }
+
+  async function optimize() {
+    if (!title.trim()) {
+      setError(
+        "Enter a product title first."
+      );
+      return;
+    }
+
+    setLoading(true);
+    setError("");
+    setMessage("");
+    setResult(null);
+    setSavedToShopify(false);
+
+    try {
+      const response = await fetch(
+        "/api/ai/analyze",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type":
+              "application/json",
+          },
+          credentials: "include",
+          cache: "no-store",
+          body: JSON.stringify({
+            product: {
+              id:
+                selectedProductId ||
+                null,
+              title:
+                title.trim(),
+              description:
+                description.trim(),
+              productType:
+                productType.trim(),
+              vendor:
+                vendor.trim(),
+              price:
+                price.trim(),
+              platform:
+                "shopify",
+            },
+          }),
+        }
+      );
+
+      const data =
+        await response.json().catch(() => null);
+
+      if (
+        !response.ok ||
+        !data?.success
+      ) {
+        throw new Error(
+          data?.error ||
+            "AI optimization failed."
+        );
+      }
+
+      setResult(
+        data.result
+      );
+
+      setMessage(
+        "AI optimization completed."
+      );
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "AI optimization failed."
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function saveToShopify() {
+    if (savedToShopify) return;
+
+    if (!selectedProductId) {
+      setError(
+        "Select an imported Shopify product before saving."
+      );
+      return;
+    }
+
+    if (!result?.optimization) {
+      setError(
+        "Optimize the product first."
+      );
+      return;
+    }
+
+    setSaving(true);
+    setError("");
+    setMessage("");
+
+    try {
+      const optimization =
+        result.optimization;
+
+      const response = await fetch(
+        "/api/shopify/save-product",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type":
+              "application/json",
+          },
+          credentials: "include",
+          cache: "no-store",
+          body: JSON.stringify({
+            productId:
+              selectedProductId,
+
+            title:
+              optimization.title ||
+              title,
+
+            description:
+              optimization.description ||
+              description,
+
+            productType:
+              optimization.productType ||
+              productType,
+
+            tags:
+              optimization.tags ||
+              [],
+
+            seoTitle:
+              optimization.seoTitle ||
+              "",
+
+            metaDescription:
+              optimization.metaDescription ||
+              "",
+          }),
+        }
+      );
+
+      const data =
+        await response.json().catch(() => null);
+
+      if (
+        !response.ok ||
+        !data?.success
+      ) {
+        throw new Error(
+          data?.error ||
+            "Unable to save product to Shopify."
+        );
+      }
+
+      setSavedToShopify(true);
+
+      setMessage(
+        "Product saved to Shopify successfully."
+      );
+    } catch (err) {
+      setSavedToShopify(false);
+
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Unable to save product to Shopify."
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function copyText(
+    value?: string
+  ) {
+    if (!value) return;
+
+    try {
+      await navigator.clipboard.writeText(
+        value
+      );
+
+      setError("");
+      setMessage("Copied.");
+    } catch {
+      setError(
+        "Unable to copy text."
+      );
+    }
+  }
+
+  function listToText(
+    items?: string[]
+  ) {
+    return items?.length
+      ? items.join("\n")
+      : "";
+  }
+
+  const optimization =
+    result?.optimization;
 
   return (
-    <main className="page-shell">
+    <main className="app-shell">
+
       <header className="topbar">
-        <div className="brand">
+        <div>
           <div className="brand-small">
             VIRELLO AI
           </div>
@@ -175,240 +569,700 @@ export default function ConnectPage() {
           </div>
         </div>
 
-        <div className="topbar-actions">
-          <button
-            type="button"
-            className="subscribe-button"
-            onClick={startCheckout}
-          >
-            Subscribe
-          </button>
-        </div>
+        <button
+          type="button"
+          className="subscribe-button"
+          onClick={startCheckout}
+          disabled={checkoutLoading}
+        >
+          {checkoutLoading
+            ? "Opening..."
+            : "Subscribe"}
+        </button>
       </header>
 
       {error && (
-        <div className="error-bar">
+        <div className="alert error">
           {error}
         </div>
       )}
 
-      {loading ? (
-        <section className="loading-section">
-          <div className="loading-card">
-            <div className="spinner" />
+      {message && !error && (
+        <div className="alert success">
+          {message}
+        </div>
+      )}
 
-            <p>
-              Checking Shopify connection...
-            </p>
+      <section className="hero">
+        <div className="hero-inner">
+
+          <div className="eyebrow">
+            SHOPIFY AI OPTIMIZATION
           </div>
-        </section>
-      ) : connected ? (
-        <>
-          <section className="connected-hero">
-            <div className="connected-inner">
-              <div className="eyebrow">
-                SHOPIFY CONNECTED
-              </div>
 
-              <h1>
-                Your store is{" "}
-                <span>connected.</span>
-              </h1>
+          <h1>
+            Optimize Shopify
+            <br />
+            products{" "}
+            <span>with AI.</span>
+          </h1>
 
-              <p>
-                Your Shopify store has been
-                successfully connected to
-                Virello AI Optimizer.
-              </p>
+          <p>
+            Connect your Shopify store,
+            import products and create
+            conversion-focused listings,
+            SEO content and product
+            intelligence with Virello AI.
+          </p>
+
+        </div>
+      </section>
+
+      <section className="workspace">
+
+        {/* CONNECTION */}
+
+        <section className="content-card connection-card">
+
+          <div className="step-label">
+            SHOPIFY CONNECTION
+          </div>
+
+          <h2>
+            {connectionChecking
+              ? "Checking your Shopify store"
+              : connected
+              ? "Shopify store connected"
+              : "Connect your Shopify store"}
+          </h2>
+
+          <p className="section-description">
+
+            {connectionChecking
+              ? "Checking your current Shopify connection."
+              : connected
+              ? "Your Shopify store is connected and ready to use with Virello AI."
+              : "Connect your Shopify store to import products and optimize them with Virello AI."}
+
+          </p>
+
+          {connectionChecking ? (
+            <div className="connection-status">
+              <div className="spinner" />
+              <span>
+                Checking Shopify connection...
+              </span>
             </div>
-          </section>
-
-          <section className="confirmation-section">
-            <div className="confirmation-card">
-              <div className="check-circle">
-                <span>✓</span>
+          ) : connected ? (
+            <div className="connected-box">
+              <div className="connected-icon">
+                ✓
               </div>
 
-              <div className="confirmation-label">
-                CONNECTION COMPLETE
+              <div>
+                <strong>
+                  Shopify connected
+                </strong>
+
+                <span>
+                  Your store is ready.
+                </span>
               </div>
+            </div>
+          ) : (
+            <button
+              type="button"
+              className="generate-button full-button"
+              onClick={connectShopify}
+              disabled={connecting}
+            >
+              {connecting
+                ? "Connecting..."
+                : "Connect Shopify"}
+            </button>
+          )}
 
-              <h2>
-                Shopify connected successfully
-              </h2>
+          {connected && (
+            <button
+              type="button"
+              className="small-button import-button"
+              onClick={loadProducts}
+              disabled={productsLoading}
+            >
+              {productsLoading
+                ? "Loading..."
+                : "Import Shopify Products"}
+            </button>
+          )}
 
-              <p className="confirmation-description">
-                Virello can now work with your
-                Shopify store.
-              </p>
+        </section>
 
-              {status?.shop && (
-                <div className="store-row">
-                  <div className="store-icon">
-                    <span>⌂</span>
-                  </div>
+        {/* PRODUCTS */}
 
-                  <div className="store-info">
-                    <div className="store-label">
-                      Connected store
-                    </div>
+        {products.length > 0 && (
+          <section className="content-card">
 
-                    <div className="store-name">
-                      {status.shop}
-                    </div>
-                  </div>
-                </div>
+            <div className="step-label">
+              IMPORTED PRODUCTS
+            </div>
+
+            <h2>
+              Select a product
+            </h2>
+
+            <div className="product-list">
+
+              {products.map(
+                (product) => {
+
+                  const selected =
+                    selectedProductId ===
+                    product.id;
+
+                  return (
+                    <button
+                      key={product.id}
+                      type="button"
+                      className={
+                        selected
+                          ? "product-card selected-product-card"
+                          : "product-card"
+                      }
+                      onClick={() =>
+                        selectProduct(
+                          product
+                        )
+                      }
+                    >
+
+                      <div className="product-main">
+
+                        <strong>
+                          {product.title ||
+                            "Untitled product"}
+                        </strong>
+
+                        {product.vendor && (
+                          <span>
+                            {product.vendor}
+                          </span>
+                        )}
+
+                      </div>
+
+                      {product.price && (
+                        <span className="product-price">
+                          {product.price}
+                        </span>
+                      )}
+
+                    </button>
+                  );
+                }
               )}
 
-              <button
-                type="button"
-                className="continue-button"
-                onClick={continueToVirello}
-              >
-                Continue to Virello
-              </button>
             </div>
 
-            <div className="next-card">
-              <div className="next-label">
-                WHAT'S NEXT?
-              </div>
-
-              <h3>
-                Start optimizing your Shopify
-                products.
-              </h3>
-
-              <p>
-                Import your products, optimize
-                them with AI, review the
-                recommendations and apply the
-                changes to Shopify.
-              </p>
-
-              <div className="steps">
-                <div className="step">
-                  <div className="step-icon">
-                    ↓
-                  </div>
-
-                  <strong>
-                    1. Import
-                  </strong>
-
-                  <span>
-                    Import your Shopify
-                    products.
-                  </span>
-                </div>
-
-                <div className="step">
-                  <div className="step-icon">
-                    ✦
-                  </div>
-
-                  <strong>
-                    2. Optimize
-                  </strong>
-
-                  <span>
-                    Generate SEO titles,
-                    descriptions and more.
-                  </span>
-                </div>
-
-                <div className="step">
-                  <div className="step-icon">
-                    ✎
-                  </div>
-
-                  <strong>
-                    3. Review
-                  </strong>
-
-                  <span>
-                    Review and edit AI
-                    recommendations.
-                  </span>
-                </div>
-
-                <div className="step">
-                  <div className="step-icon">
-                    ↑
-                  </div>
-
-                  <strong>
-                    4. Apply
-                  </strong>
-
-                  <span>
-                    Publish optimized content
-                    to Shopify.
-                  </span>
-                </div>
-              </div>
-            </div>
           </section>
-        </>
-      ) : (
-        <>
-          <section className="hero">
-            <div className="hero-inner">
-              <div className="eyebrow">
-                SHOPIFY AI OPTIMIZATION
-              </div>
+        )}
 
-              <h1>
-                Optimize Shopify
-                <br />
-                products{" "}
-                <span>with AI.</span>
-              </h1>
+        {/* OPTIMIZER */}
 
-              <p>
-                Connect your Shopify store,
-                import products and create
-                conversion-focused listings,
-                SEO content and product
-                intelligence with Virello AI.
-              </p>
+        <section className="content-card optimizer-card">
+
+          <div>
+            <div className="step-label">
+              AI OPTIMIZER
             </div>
-          </section>
 
-          <section className="connection-section">
-            <div className="connection-card">
-              <div className="step-label">
-                SHOPIFY CONNECTION
-              </div>
+            <h2>
+              Optimize your product
+            </h2>
 
-              <h2>
-                Connect your Shopify store
-              </h2>
+            <p className="section-description">
+              Select an imported Shopify
+              product or enter product
+              information manually.
+            </p>
+          </div>
 
-              <p className="description">
-                Connect your Shopify store to
-                import products and optimize
-                them with Virello AI.
-              </p>
+          <button
+            type="button"
+            className="generate-button"
+            onClick={optimize}
+            disabled={loading}
+          >
+            {loading
+              ? "Optimizing..."
+              : "Optimize with AI"}
+          </button>
 
-              <div className="shopify-field">
-                <span>Shopify</span>
-              </div>
+        </section>
 
-              <button
-                type="button"
-                className="connect-button"
-                onClick={connectShopify}
-                disabled={connecting}
-              >
-                {connecting
-                  ? "Connecting..."
-                  : "Connect Shopify"}
-              </button>
+        {/* INPUT */}
+
+        <section className="content-card">
+
+          <div className="result-field first-field">
+
+            <div className="field-header">
+              <label>
+                Product title *
+              </label>
             </div>
-          </section>
-        </>
-      )}
+
+            <input
+              className="search-input"
+              value={title}
+              onChange={(e) => {
+                setTitle(
+                  e.target.value
+                );
+                setSavedToShopify(false);
+              }}
+              placeholder="Enter product title"
+            />
+
+          </div>
+
+          <div className="result-field">
+
+            <div className="field-header">
+              <label>
+                Description
+              </label>
+            </div>
+
+            <textarea
+              className="search-input textarea"
+              value={description}
+              onChange={(e) => {
+                setDescription(
+                  e.target.value
+                );
+                setSavedToShopify(false);
+              }}
+              placeholder="Current product description"
+            />
+
+          </div>
+
+          <div className="input-grid">
+
+            <input
+              className="search-input"
+              value={productType}
+              onChange={(e) => {
+                setProductType(
+                  e.target.value
+                );
+                setSavedToShopify(false);
+              }}
+              placeholder="Product type"
+            />
+
+            <input
+              className="search-input"
+              value={vendor}
+              onChange={(e) => {
+                setVendor(
+                  e.target.value
+                );
+                setSavedToShopify(false);
+              }}
+              placeholder="Brand / supplier"
+            />
+
+            <input
+              className="search-input"
+              value={price}
+              onChange={(e) => {
+                setPrice(
+                  e.target.value
+                );
+                setSavedToShopify(false);
+              }}
+              placeholder="Price"
+            />
+
+          </div>
+
+        </section>
+
+        {/* RESULTS */}
+
+        {result && (
+          <>
+
+            <section className="score-overview">
+
+              <div>
+                <div className="step-label light">
+                  VIRELLO SCORE
+                </div>
+
+                <h2>
+                  Product optimization
+                </h2>
+
+                <p>
+                  Listing quality, SEO,
+                  clarity and conversion
+                  potential.
+                </p>
+              </div>
+
+              <div className="overall-score">
+
+                <strong>
+                  {result.score?.overall ??
+                    0}
+                </strong>
+
+                <span>
+                  / 100
+                </span>
+
+              </div>
+
+            </section>
+
+            {result.analysis && (
+              <section className="content-card">
+
+                <div className="step-label">
+                  PRODUCT INTELLIGENCE
+                </div>
+
+                <h2>
+                  AI analysis
+                </h2>
+
+                <div className="analysis-grid">
+
+                  {result.analysis
+                    .targetCustomer && (
+                    <div className="analysis-item">
+                      <strong>
+                        Target customer
+                      </strong>
+
+                      <p>
+                        {
+                          result.analysis
+                            .targetCustomer
+                        }
+                      </p>
+                    </div>
+                  )}
+
+                  {result.analysis
+                    .purchaseMotivation && (
+                    <div className="analysis-item">
+                      <strong>
+                        Purchase motivation
+                      </strong>
+
+                      <p>
+                        {
+                          result.analysis
+                            .purchaseMotivation
+                        }
+                      </p>
+                    </div>
+                  )}
+
+                </div>
+
+              </section>
+            )}
+
+            {optimization && (
+              <section className="content-card">
+
+                <div className="step-label">
+                  AI OPTIMIZATION
+                </div>
+
+                <h2>
+                  Optimized listing
+                </h2>
+
+                <div className="result-field">
+
+                  <div className="field-header">
+                    <label>
+                      Optimized title
+                    </label>
+
+                    <button
+                      type="button"
+                      className="copy-button"
+                      onClick={() =>
+                        copyText(
+                          optimization.title
+                        )
+                      }
+                    >
+                      Copy
+                    </button>
+                  </div>
+
+                  <div className="result-box">
+                    {optimization.title ||
+                      ""}
+                  </div>
+
+                </div>
+
+                <div className="result-field">
+
+                  <div className="field-header">
+                    <label>
+                      Product type
+                    </label>
+                  </div>
+
+                  <div className="result-box">
+                    {optimization.productType ||
+                      ""}
+                  </div>
+
+                </div>
+
+                <div className="result-field">
+
+                  <div className="field-header">
+                    <label>
+                      Description
+                    </label>
+
+                    <button
+                      type="button"
+                      className="copy-button"
+                      onClick={() =>
+                        copyText(
+                          optimization.description
+                        )
+                      }
+                    >
+                      Copy
+                    </button>
+                  </div>
+
+                  <div className="result-box multiline">
+                    {optimization.description ||
+                      ""}
+                  </div>
+
+                </div>
+
+                {optimization.features &&
+                  optimization.features.length >
+                    0 && (
+                    <div className="result-field">
+
+                      <div className="field-header">
+                        <label>
+                          Features
+                        </label>
+
+                        <button
+                          type="button"
+                          className="copy-button"
+                          onClick={() =>
+                            copyText(
+                              listToText(
+                                optimization.features
+                              )
+                            )
+                          }
+                        >
+                          Copy
+                        </button>
+                      </div>
+
+                      <div className="result-box multiline">
+                        {listToText(
+                          optimization.features
+                        )}
+                      </div>
+
+                    </div>
+                  )}
+
+                {optimization.specifications &&
+                  optimization.specifications.length >
+                    0 && (
+                    <div className="result-field">
+
+                      <div className="field-header">
+                        <label>
+                          Specifications
+                        </label>
+
+                        <button
+                          type="button"
+                          className="copy-button"
+                          onClick={() =>
+                            copyText(
+                              listToText(
+                                optimization.specifications
+                              )
+                            )
+                          }
+                        >
+                          Copy
+                        </button>
+                      </div>
+
+                      <div className="result-box multiline">
+                        {listToText(
+                          optimization.specifications
+                        )}
+                      </div>
+
+                    </div>
+                  )}
+
+              </section>
+            )}
+
+            {optimization && (
+              <section className="content-card">
+
+                <div className="step-label">
+                  SEO
+                </div>
+
+                <h2>
+                  Search optimization
+                </h2>
+
+                <div className="result-field">
+
+                  <div className="field-header">
+                    <label>
+                      SEO title
+                    </label>
+
+                    <span>
+                      {
+                        (
+                          optimization.seoTitle ||
+                          ""
+                        ).length
+                      } / 60
+                    </span>
+                  </div>
+
+                  <div className="result-box">
+                    {
+                      optimization.seoTitle ||
+                      ""
+                    }
+                  </div>
+
+                </div>
+
+                <div className="result-field">
+
+                  <div className="field-header">
+                    <label>
+                      Meta description
+                    </label>
+
+                    <span>
+                      {
+                        (
+                          optimization.metaDescription ||
+                          ""
+                        ).length
+                      } / 160
+                    </span>
+                  </div>
+
+                  <div className="result-box multiline">
+                    {
+                      optimization.metaDescription ||
+                      ""
+                    }
+                  </div>
+
+                </div>
+
+                {optimization.tags &&
+                  optimization.tags.length >
+                    0 && (
+                    <div className="result-field">
+
+                      <div className="field-header">
+                        <label>
+                          Tags
+                        </label>
+                      </div>
+
+                      <div className="tags">
+                        {optimization.tags.map(
+                          (tag) => (
+                            <span
+                              key={tag}
+                              className="tag"
+                            >
+                              {tag}
+                            </span>
+                          )
+                        )}
+                      </div>
+
+                    </div>
+                  )}
+
+              </section>
+            )}
+
+            {optimization && (
+              <section className="save-card">
+
+                <div>
+                  <div className="step-label light">
+                    SHOPIFY
+                  </div>
+
+                  <h2>
+                    Apply optimization
+                  </h2>
+
+                  <p>
+                    Save the optimized
+                    product content directly
+                    to your Shopify store.
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  className="save-button"
+                  onClick={saveToShopify}
+                  disabled={
+                    saving ||
+                    savedToShopify
+                  }
+                >
+                  {savedToShopify
+                    ? "Saved to Shopify"
+                    : saving
+                    ? "Saving..."
+                    : "Save to Shopify"}
+                </button>
+
+              </section>
+            )}
+
+          </>
+        )}
+
+      </section>
 
       <style jsx>{styles}</style>
     </main>
@@ -420,28 +1274,20 @@ const styles = `
     box-sizing: border-box;
   }
 
-  html,
-  body {
-    margin: 0;
-    padding: 0;
-  }
-
-  .page-shell {
+  .app-shell {
     min-height: 100vh;
     background: #f5f6f7;
     color: #111318;
   }
 
   .topbar {
-    min-height: 76px;
-    padding: 13px 34px;
-    background: #ffffff;
+    min-height: 72px;
+    padding: 12px 34px;
+    background: #fff;
     border-bottom: 1px solid #e4e6e9;
-
     display: flex;
     align-items: center;
     justify-content: space-between;
-
     gap: 20px;
   }
 
@@ -455,79 +1301,53 @@ const styles = `
   .brand-name {
     margin-top: 3px;
     font-size: 18px;
+    line-height: 1.1;
     font-weight: 850;
     letter-spacing: -.025em;
   }
 
-  .topbar-actions {
-    display: flex;
-    align-items: center;
-  }
-
   .subscribe-button {
     min-height: 42px;
-    padding: 0 18px;
-
+    padding: 0 19px;
     border: 0;
     border-radius: 9px;
-
     background: #111318;
-    color: #ffffff;
-
+    color: #fff;
     font-size: 11px;
     font-weight: 800;
-
     cursor: pointer;
   }
 
-  .subscribe-button:hover {
-    background: #292d34;
-  }
-
-  .error-bar {
-    width: calc(100% - 44px);
-    max-width: 1020px;
-
-    margin: 14px auto 0;
-    padding: 11px 14px;
-
-    border: 1px solid #e5cccc;
-    border-radius: 9px;
-
-    background: #fffafa;
-    color: #984d4d;
-
-    font-size: 11px;
+  .subscribe-button:disabled {
+    opacity: .55;
+    cursor: wait;
   }
 
   .hero {
-    background: #ffffff;
+    background: #fff;
     border-bottom: 1px solid #e4e6e9;
   }
 
   .hero-inner {
     max-width: 1020px;
     margin: 0 auto;
-
-    padding: 55px 34px 52px;
+    padding: 52px 34px 48px;
   }
 
-  .eyebrow {
+  .eyebrow,
+  .step-label {
     color: #92979e;
-
     font-size: 10px;
+    line-height: 1.2;
     font-weight: 850;
     letter-spacing: .16em;
   }
 
   .hero h1 {
-    max-width: 760px;
-
-    margin: 13px 0 15px;
-
-    font-size: clamp(38px, 6vw, 62px);
-    line-height: .98;
-
+    max-width: 780px;
+    margin: 13px 0 16px;
+    font-size: clamp(40px, 6vw, 62px);
+    line-height: .99;
     letter-spacing: -.055em;
     font-weight: 900;
   }
@@ -538,397 +1358,464 @@ const styles = `
 
   .hero p {
     max-width: 720px;
-
     margin: 0;
-
     color: #747a82;
-
     font-size: 16px;
-    line-height: 1.65;
+    line-height: 1.6;
   }
 
-  .connection-section {
-    padding: 26px 22px 42px;
+  .workspace {
+    max-width: 1020px;
+    margin: 0 auto;
+    padding: 26px 22px 60px;
+  }
+
+  .alert {
+    margin-bottom: 16px;
+    padding: 12px 15px;
+    border-radius: 9px;
+    font-size: 12px;
+    line-height: 1.5;
+  }
+
+  .alert.error {
+    border: 1px solid #e5cccc;
+    background: #fffafa;
+    color: #984d4d;
+  }
+
+  .alert.success {
+    border: 1px solid #d6ded8;
+    background: #fbfdfb;
+    color: #526459;
+  }
+
+  .content-card {
+    margin-bottom: 16px;
+    padding: 29px;
+    border: 1px solid #dfe2e6;
+    border-radius: 17px;
+    background: #fff;
+    box-shadow: 0 8px 25px rgba(17, 19, 24, .035);
   }
 
   .connection-card {
-    max-width: 1020px;
-    margin: 0 auto;
-
-    padding: 30px;
-
-    border: 1px solid #dfe2e6;
-    border-radius: 17px;
-
-    background: #ffffff;
-
-    box-shadow:
-      0 8px 25px rgba(17, 19, 24, .035);
+    margin-bottom: 16px;
   }
 
-  .step-label,
-  .next-label {
-    color: #91969d;
-
-    font-size: 10px;
-    font-weight: 850;
-
-    letter-spacing: .16em;
-  }
-
-  .connection-card h2 {
-    margin: 11px 0 8px;
-
+  .content-card h2 {
+    margin: 10px 0 8px;
     font-size: 27px;
-    line-height: 1.1;
-
+    line-height: 1.12;
     letter-spacing: -.035em;
   }
 
-  .description {
-    max-width: 650px;
-
+  .section-description {
+    max-width: 680px;
     margin: 0 0 22px;
-
     color: #777d85;
-
     font-size: 14px;
     line-height: 1.6;
   }
 
-  .shopify-field {
+  .generate-button {
     min-height: 52px;
-
-    padding: 0 15px;
-
-    border: 1px solid #d9dce0;
-    border-radius: 9px;
-
-    background: #fafafa;
-
-    display: flex;
-    align-items: center;
-
-    color: #17191d;
-
-    font-size: 13px;
-    font-weight: 750;
-  }
-
-  .connect-button,
-  .continue-button {
-    width: 100%;
-    min-height: 52px;
-
-    margin-top: 10px;
-
+    padding: 0 22px;
     border: 0;
     border-radius: 9px;
-
     background: #111318;
-    color: #ffffff;
-
+    color: #fff;
     font-size: 12px;
     font-weight: 850;
-
     cursor: pointer;
   }
 
-  .connect-button:hover,
-  .continue-button:hover {
+  .generate-button:hover,
+  .save-button:hover {
     background: #292d34;
   }
 
-  .connect-button:disabled {
+  .generate-button:disabled {
     opacity: .5;
     cursor: wait;
   }
 
-  .connected-hero {
-    background: #ffffff;
-    border-bottom: 1px solid #e4e6e9;
+  .full-button {
+    width: 100%;
   }
 
-  .connected-inner {
-    max-width: 1020px;
-    margin: 0 auto;
-
-    padding: 47px 34px 48px;
+  .small-button {
+    min-height: 40px;
+    padding: 0 16px;
+    border: 1px solid #d9dce0;
+    border-radius: 9px;
+    background: #fff;
+    color: #646a72;
+    font-size: 11px;
+    font-weight: 800;
+    cursor: pointer;
   }
 
-  .connected-inner h1 {
-    max-width: 760px;
-
-    margin: 12px 0 15px;
-
-    font-size: clamp(42px, 6vw, 65px);
-    line-height: .98;
-
-    letter-spacing: -.06em;
-    font-weight: 900;
+  .small-button:hover {
+    background: #f7f7f8;
   }
 
-  .connected-inner h1 span {
-    color: #969ca4;
+  .import-button {
+    margin-top: 12px;
   }
 
-  .connected-inner p {
-    max-width: 680px;
-
-    margin: 0;
-
-    color: #777d85;
-
-    font-size: 16px;
-    line-height: 1.65;
+  .small-button:disabled {
+    opacity: .55;
+    cursor: wait;
   }
 
-  .confirmation-section {
-    padding: 27px 22px 48px;
-  }
-
-  .confirmation-card,
-  .next-card {
-    max-width: 950px;
-    margin: 0 auto;
-
+  .connection-status {
+    min-height: 52px;
+    padding: 0 16px;
     border: 1px solid #dfe2e6;
-    border-radius: 17px;
-
-    background: #ffffff;
+    border-radius: 9px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    color: #747a82;
+    font-size: 12px;
+    font-weight: 700;
   }
 
-  .confirmation-card {
-    padding: 40px 38px 35px;
-
-    text-align: center;
-  }
-
-  .check-circle {
-    width: 82px;
-    height: 82px;
-
-    margin: 0 auto 25px;
-
+  .spinner {
+    width: 20px;
+    height: 20px;
+    flex: 0 0 20px;
+    border: 2px solid #e3e5e8;
+    border-top-color: #111318;
     border-radius: 50%;
+    animation: spin .8s linear infinite;
+  }
 
+  .connected-box {
+    min-height: 62px;
+    padding: 10px 15px;
+    border: 1px solid #dfe2e6;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: #fbfcfb;
+  }
+
+  .connected-icon {
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
     background: #111318;
-
+    color: #fff;
     display: flex;
     align-items: center;
     justify-content: center;
+    font-size: 19px;
+    font-weight: 700;
   }
 
-  .check-circle span {
-    color: #ffffff;
-
-    font-size: 43px;
-    font-weight: 500;
-
-    line-height: 1;
+  .connected-box strong {
+    display: block;
+    font-size: 12px;
   }
 
-  .confirmation-label {
-    color: #92979e;
-
-    font-size: 10px;
-    font-weight: 850;
-
-    letter-spacing: .16em;
-  }
-
-  .confirmation-card h2 {
-    margin: 12px 0 8px;
-
-    font-size: 29px;
-    line-height: 1.15;
-
-    letter-spacing: -.04em;
-  }
-
-  .confirmation-description {
-    margin: 0;
-
+  .connected-box span {
+    display: block;
+    margin-top: 3px;
     color: #777d85;
-
-    font-size: 14px;
-    line-height: 1.55;
+    font-size: 10px;
   }
 
-  .store-row {
-    max-width: 700px;
+  .product-list {
+    margin-top: 20px;
+    display: grid;
+    gap: 8px;
+  }
 
-    margin: 30px auto 0;
-    padding: 19px 0;
-
-    border-top: 1px solid #eceef0;
-    border-bottom: 1px solid #eceef0;
-
+  .product-card {
+    width: 100%;
+    padding: 14px 15px;
+    border: 1px solid #e0e2e5;
+    border-radius: 9px;
+    background: #fff;
     display: flex;
     align-items: center;
-
+    justify-content: space-between;
     gap: 15px;
-
     text-align: left;
+    cursor: pointer;
   }
 
-  .store-icon {
-    width: 52px;
-    height: 52px;
+  .product-card:hover {
+    background: #fafafa;
+  }
 
-    flex: 0 0 52px;
+  .selected-product-card {
+    border-color: #111318;
+    background: #fafafa;
+  }
 
-    border-radius: 50%;
+  .product-main {
+    min-width: 0;
+  }
 
-    background: #f1f2f3;
+  .product-main strong {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 12px;
+  }
 
+  .product-main span {
+    display: block;
+    margin-top: 4px;
+    color: #858b92;
+    font-size: 10px;
+  }
+
+  .product-price {
+    flex: 0 0 auto;
+    color: #111318;
+    font-size: 11px;
+    font-weight: 800;
+  }
+
+  .optimizer-card {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 25px;
+  }
+
+  .search-input {
+    width: 100%;
+    min-height: 48px;
+    padding: 12px 14px;
+    border: 1px solid #d9dce0;
+    border-radius: 9px;
+    outline: none;
+    background: #fafafa;
+    color: #111318;
+    font-family: inherit;
+    font-size: 13px;
+  }
+
+  .search-input:focus {
+    border-color: #aeb3b9;
+    background: #fff;
+  }
+
+  .textarea {
+    min-height: 150px;
+    resize: vertical;
+    line-height: 1.6;
+  }
+
+  .result-field {
+    margin-top: 19px;
+  }
+
+  .first-field {
+    margin-top: 0;
+  }
+
+  .field-header {
+    min-height: 22px;
+    margin-bottom: 7px;
     display: flex;
     align-items: center;
-    justify-content: center;
+    justify-content: space-between;
+    gap: 10px;
   }
 
-  .store-icon span {
-    font-size: 22px;
+  .field-header label {
+    color: #4d535b;
+    font-size: 11px;
+    font-weight: 800;
   }
 
-  .store-label {
-    color: #777d85;
-
+  .field-header span {
+    color: #8a9097;
     font-size: 10px;
-    font-weight: 750;
   }
 
-  .store-name {
-    margin-top: 4px;
+  .input-grid {
+    margin-top: 16px;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+  }
 
-    color: #111318;
+  .score-overview {
+    margin-bottom: 16px;
+    padding: 27px 29px;
+    border-radius: 17px;
+    background: #111318;
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 25px;
+  }
 
-    font-size: 14px;
-    font-weight: 850;
+  .step-label.light {
+    color: #a4a8ae;
+  }
 
+  .score-overview h2 {
+    margin: 9px 0 6px;
+    font-size: 25px;
+    line-height: 1.15;
+    letter-spacing: -.035em;
+  }
+
+  .score-overview p {
+    margin: 0;
+    color: #a4a8ae;
+    font-size: 12px;
+    line-height: 1.5;
+  }
+
+  .overall-score {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: baseline;
+  }
+
+  .overall-score strong {
+    font-size: 50px;
+    line-height: 1;
+    letter-spacing: -.05em;
+  }
+
+  .overall-score span {
+    margin-left: 3px;
+    color: #a4a8ae;
+    font-size: 12px;
+  }
+
+  .analysis-grid {
+    margin-top: 22px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+
+  .analysis-item {
+    padding: 17px;
+    border: 1px solid #e3e5e8;
+    border-radius: 10px;
+    background: #fafafa;
+  }
+
+  .analysis-item strong {
+    display: block;
+    font-size: 11px;
+  }
+
+  .analysis-item p {
+    margin: 7px 0 0;
+    color: #747a82;
+    font-size: 11px;
+    line-height: 1.6;
+  }
+
+  .result-box {
+    min-height: 48px;
+    padding: 13px 14px;
+    border: 1px solid #e0e2e5;
+    border-radius: 9px;
+    background: #fafafa;
+    color: #17191d;
+    font-size: 12px;
+    line-height: 1.6;
+    white-space: pre-wrap;
     word-break: break-word;
   }
 
-  .continue-button {
-    max-width: 700px;
-
-    margin: 24px auto 0;
+  .multiline {
+    min-height: 100px;
   }
 
-  .next-card {
-    margin-top: 16px;
-    padding: 27px;
+  .copy-button {
+    padding: 5px 9px;
+    border: 1px solid #d9dce0;
+    border-radius: 6px;
+    background: #fff;
+    color: #656b73;
+    font-size: 9px;
+    font-weight: 800;
+    cursor: pointer;
   }
 
-  .next-card h3 {
-    margin: 9px 0 7px;
-
-    font-size: 21px;
-
-    letter-spacing: -.03em;
+  .copy-button:hover {
+    background: #f5f5f6;
   }
 
-  .next-card > p {
-    max-width: 650px;
+  .tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 7px;
+  }
 
+  .tag {
+    padding: 7px 10px;
+    border-radius: 999px;
+    background: #f0f1f2;
+    color: #5e646c;
+    font-size: 10px;
+    font-weight: 700;
+  }
+
+  .save-card {
+    margin-bottom: 16px;
+    padding: 27px 29px;
+    border-radius: 17px;
+    background: #111318;
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 25px;
+  }
+
+  .save-card h2 {
+    margin: 9px 0 6px;
+    font-size: 24px;
+    line-height: 1.15;
+    letter-spacing: -.035em;
+  }
+
+  .save-card p {
+    max-width: 600px;
     margin: 0;
-
-    color: #777d85;
-
+    color: #a4a8ae;
     font-size: 12px;
     line-height: 1.6;
   }
 
-  .steps {
-    margin-top: 26px;
-
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-
-    gap: 16px;
-  }
-
-  .step {
-    min-width: 0;
-
-    text-align: center;
-  }
-
-  .step-icon {
-    width: 52px;
-    height: 52px;
-
-    margin: 0 auto 12px;
-
-    border-radius: 50%;
-
-    background: #f1f2f3;
-
-    display: flex;
-    align-items: center;
-    justify-content: center;
-
-    font-size: 23px;
-  }
-
-  .step strong {
-    display: block;
-
+  .save-button {
+    min-height: 50px;
+    padding: 0 22px;
+    border: 0;
+    border-radius: 9px;
+    background: #fff;
+    color: #111318;
     font-size: 11px;
+    font-weight: 850;
+    cursor: pointer;
   }
 
-  .step span {
-    display: block;
-
-    margin-top: 5px;
-
-    color: #858b92;
-
-    font-size: 9px;
-    line-height: 1.5;
+  .save-button:hover {
+    background: #eeeeef;
   }
 
-  .loading-section {
-    padding: 27px 22px;
-  }
-
-  .loading-card {
-    max-width: 1020px;
-    min-height: 170px;
-
-    margin: 0 auto;
-
-    border: 1px solid #dfe2e6;
-    border-radius: 17px;
-
-    background: #ffffff;
-
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-
-    gap: 13px;
-  }
-
-  .loading-card p {
-    margin: 0;
-
-    color: #777d85;
-
-    font-size: 12px;
-  }
-
-  .spinner {
-    width: 27px;
-    height: 27px;
-
-    border: 3px solid #e4e6e9;
-    border-top-color: #111318;
-
-    border-radius: 50%;
-
-    animation: spin .8s linear infinite;
+  .save-button:disabled {
+    opacity: .55;
+    cursor: default;
   }
 
   @keyframes spin {
@@ -938,9 +1825,10 @@ const styles = `
   }
 
   @media (max-width: 760px) {
+
     .topbar {
-      min-height: 68px;
-      padding: 11px 17px;
+      min-height: 66px;
+      padding: 10px 17px;
     }
 
     .brand-name {
@@ -949,83 +1837,102 @@ const styles = `
 
     .subscribe-button {
       min-height: 38px;
-      padding: 0 14px;
+      padding: 0 15px;
+      font-size: 10px;
     }
 
     .hero-inner {
-      padding: 39px 22px 37px;
+      padding: 40px 22px 38px;
     }
 
     .hero h1 {
-      font-size: 39px;
-      line-height: .98;
+      margin-top: 12px;
+      font-size: 38px;
+      line-height: .99;
     }
 
     .hero p {
       font-size: 13px;
+      line-height: 1.65;
     }
 
-    .connection-section,
-    .confirmation-section,
-    .loading-section {
-      padding: 17px 14px 30px;
+    .workspace {
+      padding: 18px 14px 35px;
     }
 
-    .connection-card {
+    .content-card {
       padding: 22px;
       border-radius: 14px;
     }
 
-    .connection-card h2 {
+    .content-card h2 {
       font-size: 23px;
     }
 
-    .connected-inner {
-      padding: 37px 22px 38px;
-    }
-
-    .connected-inner h1 {
-      font-size: 43px;
-      line-height: .98;
-    }
-
-    .connected-inner p {
+    .section-description {
       font-size: 13px;
     }
 
-    .confirmation-card {
-      padding: 32px 21px 28px;
+    .optimizer-card {
+      display: block;
     }
 
-    .confirmation-card h2 {
-      font-size: 24px;
+    .optimizer-card .generate-button {
+      width: 100%;
+      margin-top: 17px;
     }
 
-    .store-row {
-      margin-top: 25px;
+    .input-grid {
+      grid-template-columns: 1fr;
     }
 
-    .next-card {
+    .score-overview {
       padding: 22px;
+      border-radius: 14px;
     }
 
-    .steps {
-      grid-template-columns: 1fr 1fr;
-      gap: 24px 12px;
+    .score-overview h2 {
+      font-size: 22px;
     }
+
+    .overall-score strong {
+      font-size: 40px;
+    }
+
+    .analysis-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .save-card {
+      display: block;
+      padding: 22px;
+      border-radius: 14px;
+    }
+
+    .save-button {
+      width: 100%;
+      margin-top: 18px;
+    }
+
   }
 
   @media (max-width: 430px) {
+
     .hero h1 {
-      font-size: 36px;
+      font-size: 35px;
     }
 
-    .connected-inner h1 {
-      font-size: 39px;
+    .overall-score strong {
+      font-size: 35px;
     }
 
-    .steps {
-      grid-template-columns: 1fr 1fr;
+    .content-card {
+      padding: 20px;
     }
+
+    .product-card {
+      padding: 12px;
+    }
+
   }
 `;
