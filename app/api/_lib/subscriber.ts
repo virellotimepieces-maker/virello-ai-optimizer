@@ -51,6 +51,13 @@ export type SubscriberUsage = {
   remaining: number;
 };
 
+export type ActiveSubscriberStatus = {
+  active: boolean;
+  customerId: string | null;
+  subscriptionId: string | null;
+  status: StripeSubscriptionStatus | null;
+};
+
 function getStripeSecret(): string {
   const secret = process.env.STRIPE_SECRET_KEY;
 
@@ -664,5 +671,82 @@ export async function hasActiveSubscriber(
     return true;
   } catch {
     return false;
+  }
+}
+
+/*
+ * Returns the verified Stripe subscriber information.
+ * This is used by /api/subscriber/status and the
+ * Stripe Billing Portal flow.
+ */
+export async function getActiveSubscriberStatus(
+  request: NextRequest
+): Promise<ActiveSubscriberStatus> {
+  try {
+    const stripeSecret = getStripeSecret();
+
+    const encoded =
+      request.cookies.get(
+        SUBSCRIBER_COOKIE
+      )?.value || "";
+
+    if (!encoded) {
+      return {
+        active: false,
+        customerId: null,
+        subscriptionId: null,
+        status: null,
+      };
+    }
+
+    const subscriber =
+      decodeSubscriberPayload(
+        encoded,
+        getCookieSecret(stripeSecret)
+      );
+
+    if (!subscriber) {
+      return {
+        active: false,
+        customerId: null,
+        subscriptionId: null,
+        status: null,
+      };
+    }
+
+    const subscription =
+      normalizeSubscription(
+        await stripeRequest<any>(
+          `subscriptions/${encodeURIComponent(
+            subscriber.subscriptionId
+          )}`
+        )
+      );
+
+    const active =
+      subscription.status === "active" ||
+      subscription.status === "trialing";
+
+    return {
+      active,
+      customerId:
+        subscription.customerId,
+      subscriptionId:
+        subscription.subscriptionId,
+      status:
+        subscription.status,
+    };
+  } catch (error) {
+    console.error(
+      "SUBSCRIBER_STATUS_ERROR:",
+      error
+    );
+
+    return {
+      active: false,
+      customerId: null,
+      subscriptionId: null,
+      status: null,
+    };
   }
 }
