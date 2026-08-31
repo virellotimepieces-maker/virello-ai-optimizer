@@ -256,14 +256,12 @@ function normalizeSubscription(
         : "";
 
   const periodStart =
-    typeof data?.current_period_start ===
-    "number"
+    typeof data?.current_period_start === "number"
       ? data.current_period_start
       : 0;
 
   const periodEnd =
-    typeof data?.current_period_end ===
-    "number"
+    typeof data?.current_period_end === "number"
       ? data.current_period_end
       : 0;
 
@@ -338,8 +336,7 @@ async function lockUsage<T>(
 export async function createStripeCheckoutSession(
   origin: string
 ): Promise<string> {
-  const priceId =
-    process.env.STRIPE_PRICE_ID;
+  const priceId = process.env.STRIPE_PRICE_ID;
 
   if (!priceId) {
     throw new ApiError(
@@ -412,8 +409,7 @@ export async function getCheckoutSubscription(
   const subscriptionId =
     typeof subscriptionRef === "string"
       ? subscriptionRef
-      : typeof subscriptionRef?.id ===
-          "string"
+      : typeof subscriptionRef?.id === "string"
         ? subscriptionRef.id
         : "";
 
@@ -431,9 +427,7 @@ export async function getCheckoutSubscription(
       )}`
     );
 
-  return normalizeSubscription(
-    subscription
-  );
+  return normalizeSubscription(subscription);
 }
 
 function updateUsageState(
@@ -445,8 +439,7 @@ function updateUsageState(
 
   const limit = getUsageLimit();
 
-  const existing =
-    usageState.get(usageKey);
+  const existing = usageState.get(usageKey);
 
   const currentCount = Math.max(
     existing?.count ?? 0,
@@ -460,8 +453,7 @@ function updateUsageState(
     );
   }
 
-  const nextCount =
-    currentCount + 1;
+  const nextCount = currentCount + 1;
 
   usageState.set(usageKey, {
     periodStart:
@@ -485,8 +477,7 @@ export async function authorizeSubscriberForAI(
   cookieValue: string;
   usage: SubscriberUsage;
 }> {
-  const stripeSecret =
-    getStripeSecret();
+  const stripeSecret = getStripeSecret();
 
   const cookieSecret =
     getCookieSecret(stripeSecret);
@@ -610,8 +601,7 @@ export function clearSubscriberCookie(
 export function buildSubscriberCookieValue(
   subscription: SubscriptionSnapshot
 ): string {
-  const stripeSecret =
-    getStripeSecret();
+  const stripeSecret = getStripeSecret();
 
   const secret =
     getCookieSecret(stripeSecret);
@@ -642,3 +632,47 @@ export function buildSubscriberCookieValue(
     secret
   );
 }
+
+export async function hasActiveSubscriber(
+  request: NextRequest
+): Promise<boolean> {
+  try {
+    const stripeSecret = getStripeSecret();
+
+    const encoded =
+      request.cookies.get(
+        SUBSCRIBER_COOKIE
+      )?.value || "";
+
+    if (!encoded) {
+      return false;
+    }
+
+    const subscriber =
+      decodeSubscriberPayload(
+        encoded,
+        getCookieSecret(stripeSecret)
+      );
+
+    if (!subscriber) {
+      return false;
+    }
+
+    const subscription =
+      normalizeSubscription(
+        await stripeRequest<any>(
+          `subscriptions/${encodeURIComponent(
+            subscriber.subscriptionId
+          )}`
+        )
+      );
+
+    ensureActiveStatus(
+      subscription.status
+    );
+
+    return true;
+  } catch {
+    return false;
+  }
+        }

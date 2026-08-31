@@ -1,96 +1,174 @@
-import { NextResponse } from "next/server";
+import {
+  NextRequest,
+  NextResponse,
+} from "next/server";
 
-export async function POST(request: Request) {
+import {
+  buildSubscriberCookieValue,
+  clearSubscriberCookie,
+  createStripeCheckoutSession,
+  getCheckoutSubscription,
+  setSubscriberCookie,
+} from "../../_lib/subscriber";
+
+function getErrorDetails(error: unknown): {
+  message: string;
+  status: number;
+} {
+  const candidate = error as {
+    message?: unknown;
+    status?: unknown;
+  };
+
+  return {
+    message:
+      typeof candidate?.message === "string"
+        ? candidate.message
+        : "Unexpected Stripe error.",
+
+    status:
+      typeof candidate?.status === "number"
+        ? candidate.status
+        : 500,
+  };
+}
+
+export async function POST(
+  request: NextRequest
+) {
   try {
-    const secretKey = process.env.STRIPE_SECRET_KEY;
-    const priceId = process.env.STRIPE_PRICE_ID;
-
-    if (!secretKey) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: "STRIPE_SECRET_KEY is not configured.",
-        },
-        { status: 500 }
-      );
-    }
-
-    if (!priceId) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: "STRIPE_PRICE_ID is not configured.",
-        },
-        { status: 500 }
-      );
-    }
-
     const origin =
-      request.headers.get("origin") ||
       new URL(request.url).origin;
 
-    const body = new URLSearchParams();
+    const checkoutUrl =
+      await createStripeCheckoutSession(
+        origin
+      );
 
-    body.append("mode", "subscription");
-    body.append("line_items[0][price]", priceId);
-    body.append("line_items[0][quantity]", "1");
-
-    body.append(
-      "success_url",
-      `${origin}/?checkout=success`
-    );
-
-    body.append(
-      "cancel_url",
-      `${origin}/?checkout=cancelled`
-    );
-
-    body.append(
-      "billing_address_collection",
-      "auto"
-    );
-
-    const response = await fetch(
-      "https://api.stripe.com/v1/checkout/sessions",
+    return NextResponse.json(
       {
-        method: "POST",
+        success: true,
+        url: checkoutUrl,
+      },
+      {
         headers: {
-          Authorization: `Bearer ${secretKey}`,
-          "Content-Type":
-            "application/x-www-form-urlencoded",
+          "Cache-Control": "no-store",
         },
-        body,
-        cache: "no-store",
       }
     );
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            data?.error?.message ||
-            "Unable to create Stripe checkout session.",
-        },
-        { status: response.status }
-      );
-    }
-
-    return NextResponse.json({
-      success: true,
-      url: data.url,
-    });
   } catch (error) {
-    console.error("Stripe checkout error:", error);
+    console.error(
+      "Stripe checkout error:",
+      error
+    );
+
+    const details =
+      getErrorDetails(error);
 
     return NextResponse.json(
       {
         success: false,
-        error: "Unable to create checkout session.",
+        error: details.message,
       },
-      { status: 500 }
+      {
+        status: details.status,
+        headers: {
+          "Cache-Control": "no-store",
+        },
+      }
     );
+  }
+}
+
+export async function GET(
+  request: NextRequest
+) {
+  const sessionId =
+    request.nextUrl.searchParams.get(
+      "session_id"
+    ) || "";
+
+  if (!sessionId) {
+    return NextResponse.redirect(
+      new URL(
+        "/?checkout=cancelled",
+        request.url
+      )
+    );
+  }
+
+  try {
+    const subscription =
+      await getCheckoutSubscription(
+        sessionId
+      );
+
+    const cookieValue =
+      buildSubscriberCookieValue(
+        subscription
+      );
+
+    const redirectUrl =
+      new URL(
+        "/?checkout=success",
+        request.url
+      );
+
+    const response =
+      NextResponse.redirect(
+        redirectUrl
+      );
+
+    setSubscriberCookie(
+      response,
+      cookieValue
+    );
+
+    response.headers.set(
+      "Cache-Control",
+      "no-store"
+    );
+
+    return response;
+  } catch (error) {
+    console.error(
+      "Stripe checkout verification error:",
+      error
+    );
+
+    const details =
+      getErrorDetails(error);
+
+    const redirectUrl =
+      new URL(
+        "/",
+        request.url
+      );
+
+    redirectUrl.searchParams.set(
+      "checkout",
+      "verification_failed"
+    );
+
+    redirectUrl.searchParams.set(
+      "error",
+      details.message
+    );
+
+    const response =
+      NextResponse.redirect(
+        redirectUrl
+      );
+
+    clearSubscriberCookie(
+      response
+    );
+
+    response.headers.set(
+      "Cache-Control",
+      "no-store"
+    );
+
+    return response;
   }
 }
