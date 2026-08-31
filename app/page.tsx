@@ -46,78 +46,82 @@ type AIResult = {
 
 export default function Home() {
   const [products, setProducts] = useState<Product[]>([]);
-  const [selectedProductId, setSelectedProductId] =
-    useState("");
+  const [selectedProductId, setSelectedProductId] = useState("");
 
   const [title, setTitle] = useState("");
-  const [description, setDescription] =
-    useState("");
-  const [productType, setProductType] =
-    useState("");
+  const [description, setDescription] = useState("");
+  const [productType, setProductType] = useState("");
   const [vendor, setVendor] = useState("");
   const [price, setPrice] = useState("");
 
-  const [result, setResult] =
-    useState<AIResult | null>(null);
+  const [result, setResult] = useState<AIResult | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [productsLoading, setProductsLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [savedToShopify, setSavedToShopify] = useState(false);
+  const [checkoutLoading, setCheckoutLoading] = useState(false);
 
-  const [loading, setLoading] =
-    useState(false);
-
-  const [productsLoading, setProductsLoading] =
-    useState(false);
-
-  const [saving, setSaving] =
-    useState(false);
-
-  const [savedToShopify, setSavedToShopify] =
-    useState(false);
-
-  const [checkoutLoading, setCheckoutLoading] =
-    useState(false);
+  const [subscriberActive, setSubscriberActive] = useState(false);
+  const [subscriberChecking, setSubscriberChecking] = useState(true);
 
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
 
   useEffect(() => {
-    const params = new URLSearchParams(
-      window.location.search
-    );
-
-    const connection =
-      params.get("connected");
+    const params = new URLSearchParams(window.location.search);
+    const connection = params.get("connected");
+    const checkout = params.get("checkout");
 
     if (connection === "success") {
-      setMessage(
-        "Shopify store connected successfully."
-      );
+      setMessage("Shopify store connected successfully.");
     }
+
+    async function loadSubscriberStatus() {
+      try {
+        const response = await fetch("/api/subscriber/status", {
+          method: "GET",
+          credentials: "include",
+          cache: "no-store",
+        });
+
+        const data = await response.json().catch(() => null);
+
+        const active =
+          response.ok &&
+          data?.success &&
+          data?.active === true;
+
+        setSubscriberActive(active);
+
+        if (checkout === "success" && active) {
+          setMessage("Subscription activated successfully.");
+        }
+      } catch {
+        setSubscriberActive(false);
+      } finally {
+        setSubscriberChecking(false);
+      }
+    }
+
+    loadSubscriberStatus();
   }, []);
 
   async function startCheckout() {
-    if (checkoutLoading) return;
+    if (checkoutLoading || subscriberActive) return;
 
     setCheckoutLoading(true);
     setError("");
     setMessage("");
 
     try {
-      const response = await fetch(
-        "/api/stripe/checkout",
-        {
-          method: "POST",
-          credentials: "include",
-        }
-      );
+      const response = await fetch("/api/stripe/checkout", {
+        method: "POST",
+        credentials: "include",
+      });
 
-      const data = await response
-        .json()
-        .catch(() => null);
+      const data = await response.json().catch(() => null);
 
-      if (
-        !response.ok ||
-        !data?.success ||
-        !data?.url
-      ) {
+      if (!response.ok || !data?.success || !data?.url) {
         throw new Error(
           data?.error ||
             "Unable to start subscription checkout."
@@ -140,9 +144,7 @@ export default function Home() {
     setError("");
     setMessage("");
 
-    window.location.assign(
-      "/connect?platform=shopify"
-    );
+    window.location.assign("/connect?platform=shopify");
   }
 
   async function loadProducts() {
@@ -160,24 +162,18 @@ export default function Home() {
         }
       );
 
-      const data = await response
-        .json()
-        .catch(() => null);
+      const data = await response.json().catch(() => null);
 
-      if (
-        !response.ok ||
-        !data?.success
-      ) {
+      if (!response.ok || !data?.success) {
         throw new Error(
           data?.error ||
             "Unable to load Shopify products."
         );
       }
 
-      const imported =
-        Array.isArray(data.products)
-          ? data.products
-          : [];
+      const imported = Array.isArray(data.products)
+        ? data.products
+        : [];
 
       setProducts(imported);
       setSelectedProductId("");
@@ -185,9 +181,7 @@ export default function Home() {
       setSavedToShopify(false);
 
       if (!imported.length) {
-        setMessage(
-          "No Shopify products were returned."
-        );
+        setMessage("No Shopify products were returned.");
         return;
       }
 
@@ -209,14 +203,9 @@ export default function Home() {
 
   function selectProduct(product: Product) {
     setSelectedProductId(product.id);
-
     setTitle(product.title || "");
-    setDescription(
-      product.description || ""
-    );
-    setProductType(
-      product.productType || ""
-    );
+    setDescription(product.description || "");
+    setProductType(product.productType || "");
     setVendor(product.vendor || "");
     setPrice(product.price || "");
 
@@ -228,9 +217,7 @@ export default function Home() {
 
   async function optimize() {
     if (!title.trim()) {
-      setError(
-        "Enter a product title first."
-      );
+      setError("Enter a product title first.");
       return;
     }
 
@@ -241,51 +228,35 @@ export default function Home() {
     setSavedToShopify(false);
 
     try {
-      const response = await fetch(
-        "/api/ai/analyze",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type":
-              "application/json",
+      const response = await fetch("/api/ai/analyze", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        credentials: "include",
+        body: JSON.stringify({
+          product: {
+            id: selectedProductId || null,
+            title: title.trim(),
+            description: description.trim(),
+            productType: productType.trim(),
+            vendor: vendor.trim(),
+            price: price.trim(),
+            platform: "shopify",
           },
-          credentials: "include",
-          body: JSON.stringify({
-            product: {
-              id:
-                selectedProductId || null,
-              title: title.trim(),
-              description:
-                description.trim(),
-              productType:
-                productType.trim(),
-              vendor: vendor.trim(),
-              price: price.trim(),
-              platform: "shopify",
-            },
-          }),
-        }
-      );
+        }),
+      });
 
-      const data = await response
-        .json()
-        .catch(() => null);
+      const data = await response.json().catch(() => null);
 
-      if (
-        !response.ok ||
-        !data?.success
-      ) {
+      if (!response.ok || !data?.success) {
         throw new Error(
-          data?.error ||
-            "AI optimization failed."
+          data?.error || "AI optimization failed."
         );
       }
 
       setResult(data.result);
-
-      setMessage(
-        "AI optimization completed."
-      );
+      setMessage("AI optimization completed.");
     } catch (err) {
       setError(
         err instanceof Error
@@ -298,9 +269,7 @@ export default function Home() {
   }
 
   async function saveToShopify() {
-    if (savedToShopify) {
-      return;
-    }
+    if (savedToShopify) return;
 
     if (!selectedProductId) {
       setError(
@@ -310,9 +279,7 @@ export default function Home() {
     }
 
     if (!result?.optimization) {
-      setError(
-        "Optimize the product first."
-      );
+      setError("Optimize the product first.");
       return;
     }
 
@@ -321,50 +288,35 @@ export default function Home() {
     setMessage("");
 
     try {
-      const optimization =
-        result.optimization;
+      const optimization = result.optimization;
 
       const response = await fetch(
         "/api/shopify/save-product",
         {
           method: "POST",
           headers: {
-            "Content-Type":
-              "application/json",
+            "Content-Type": "application/json",
           },
           credentials: "include",
           cache: "no-store",
           body: JSON.stringify({
-            productId:
-              selectedProductId,
-            title:
-              optimization.title ||
-              title,
+            productId: selectedProductId,
+            title: optimization.title || title,
             description:
-              optimization.description ||
-              description,
+              optimization.description || description,
             productType:
-              optimization.productType ||
-              productType,
-            tags:
-              optimization.tags || [],
-            seoTitle:
-              optimization.seoTitle || "",
+              optimization.productType || productType,
+            tags: optimization.tags || [],
+            seoTitle: optimization.seoTitle || "",
             metaDescription:
-              optimization.metaDescription ||
-              "",
+              optimization.metaDescription || "",
           }),
         }
       );
 
-      const data = await response
-        .json()
-        .catch(() => null);
+      const data = await response.json().catch(() => null);
 
-      if (
-        !response.ok ||
-        !data?.success
-      ) {
+      if (!response.ok || !data?.success) {
         throw new Error(
           data?.error ||
             "Unable to save product to Shopify."
@@ -372,7 +324,6 @@ export default function Home() {
       }
 
       setSavedToShopify(true);
-
       setMessage(
         "Product saved to Shopify successfully."
       );
@@ -389,35 +340,23 @@ export default function Home() {
     }
   }
 
-  async function copyText(
-    value?: string
-  ) {
+  async function copyText(value?: string) {
     if (!value) return;
 
     try {
-      await navigator.clipboard.writeText(
-        value
-      );
-
+      await navigator.clipboard.writeText(value);
       setError("");
       setMessage("Copied.");
     } catch {
-      setError(
-        "Unable to copy text."
-      );
+      setError("Unable to copy text.");
     }
   }
 
-  function listToText(
-    items?: string[]
-  ) {
-    return items?.length
-      ? items.join("\n")
-      : "";
+  function listToText(items?: string[]) {
+    return items?.length ? items.join("\n") : "";
   }
 
-  const optimization =
-    result?.optimization;
+  const optimization = result?.optimization;
 
   return (
     <main className="app-shell">
@@ -436,12 +375,24 @@ export default function Home() {
           <button
             type="button"
             className="subscribe-button"
-            onClick={startCheckout}
-            disabled={checkoutLoading}
+            onClick={
+              subscriberActive
+                ? undefined
+                : startCheckout
+            }
+            disabled={
+              subscriberChecking ||
+              checkoutLoading ||
+              subscriberActive
+            }
           >
-            {checkoutLoading
-              ? "Opening..."
-              : "Subscribe"}
+            {subscriberChecking
+              ? "Checking..."
+              : subscriberActive
+                ? "Subscribed"
+                : checkoutLoading
+                  ? "Opening..."
+                  : "Subscribe"}
           </button>
         </div>
       </header>
@@ -453,24 +404,21 @@ export default function Home() {
           </div>
 
           <h1>
-            Optimize Shopify
-            products{" "}
+            Optimize Shopify products{" "}
             <span>with AI.</span>
           </h1>
 
           <p>
-            Connect your Shopify store,
-            import products and create
-            conversion-focused listings,
-            SEO content and product
-            intelligence with Virello AI.
+            Connect your Shopify store, import products
+            and create conversion-focused listings, SEO
+            content and product intelligence with
+            Virello AI.
           </p>
         </div>
       </section>
 
       <section className="workspace">
         <div className="workspace-grid">
-
           {error && (
             <div className="alert error">
               {error}
@@ -483,21 +431,17 @@ export default function Home() {
             </div>
           )}
 
-          {/* SHOPIFY CONNECTION */}
-
           <section className="content-card">
             <div className="step-label">
               SHOPIFY CONNECTION
             </div>
 
-            <h2>
-              Connect your Shopify store
-            </h2>
+            <h2>Connect your Shopify store</h2>
 
             <p className="section-description">
-              Connect your Shopify store
-              to import products and
-              optimize them with Virello AI.
+              Connect your Shopify store to import
+              products and optimize them with
+              Virello AI.
             </p>
 
             <button
@@ -520,67 +464,54 @@ export default function Home() {
             </button>
           </section>
 
-          {/* PRODUCTS */}
-
           {products.length > 0 && (
             <section className="content-card">
               <div className="step-label">
                 IMPORTED PRODUCTS
               </div>
 
-              <h2>
-                Select a product
-              </h2>
+              <h2>Select a product</h2>
 
               <div className="product-list">
-                {products.map(
-                  (product) => {
-                    const selected =
-                      selectedProductId ===
-                      product.id;
+                {products.map((product) => {
+                  const selected =
+                    selectedProductId === product.id;
 
-                    return (
-                      <button
-                        key={product.id}
-                        type="button"
-                        className={
-                          selected
-                            ? "product-card selected-product-card"
-                            : "product-card"
-                        }
-                        onClick={() =>
-                          selectProduct(
-                            product
-                          )
-                        }
-                      >
-                        <div className="product-main">
-                          <strong>
-                            {product.title ||
-                              "Untitled product"}
-                          </strong>
+                  return (
+                    <button
+                      key={product.id}
+                      type="button"
+                      className={
+                        selected
+                          ? "product-card selected-product-card"
+                          : "product-card"
+                      }
+                      onClick={() =>
+                        selectProduct(product)
+                      }
+                    >
+                      <div className="product-main">
+                        <strong>
+                          {product.title ||
+                            "Untitled product"}
+                        </strong>
 
-                          {product.vendor && (
-                            <span>
-                              {product.vendor}
-                            </span>
-                          )}
-                        </div>
-
-                        {product.price && (
-                          <span className="product-price">
-                            {product.price}
-                          </span>
+                        {product.vendor && (
+                          <span>{product.vendor}</span>
                         )}
-                      </button>
-                    );
-                  }
-                )}
+                      </div>
+
+                      {product.price && (
+                        <span className="product-price">
+                          {product.price}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
               </div>
             </section>
           )}
-
-          {/* AI OPTIMIZER */}
 
           <section className="content-card optimizer-card">
             <div>
@@ -588,14 +519,11 @@ export default function Home() {
                 AI OPTIMIZER
               </div>
 
-              <h2>
-                Optimize your product
-              </h2>
+              <h2>Optimize your product</h2>
 
               <p className="section-description">
-                Select an imported Shopify
-                product or enter product
-                information manually.
+                Select an imported Shopify product or
+                enter product information manually.
               </p>
             </div>
 
@@ -611,23 +539,17 @@ export default function Home() {
             </button>
           </section>
 
-          {/* PRODUCT INPUT */}
-
           <section className="content-card">
             <div className="result-field first-field">
               <div className="field-header">
-                <label>
-                  Product title *
-                </label>
+                <label>Product title *</label>
               </div>
 
               <input
                 className="search-input"
                 value={title}
-                onChange={(e) => {
-                  setTitle(
-                    e.target.value
-                  );
+                onChange={(event) => {
+                  setTitle(event.target.value);
                   setSavedToShopify(false);
                 }}
                 placeholder="Enter product title"
@@ -636,18 +558,14 @@ export default function Home() {
 
             <div className="result-field">
               <div className="field-header">
-                <label>
-                  Description
-                </label>
+                <label>Description</label>
               </div>
 
               <textarea
                 className="search-input textarea"
                 value={description}
-                onChange={(e) => {
-                  setDescription(
-                    e.target.value
-                  );
+                onChange={(event) => {
+                  setDescription(event.target.value);
                   setSavedToShopify(false);
                 }}
                 placeholder="Current product description"
@@ -658,10 +576,8 @@ export default function Home() {
               <input
                 className="search-input"
                 value={productType}
-                onChange={(e) => {
-                  setProductType(
-                    e.target.value
-                  );
+                onChange={(event) => {
+                  setProductType(event.target.value);
                   setSavedToShopify(false);
                 }}
                 placeholder="Product type"
@@ -670,10 +586,8 @@ export default function Home() {
               <input
                 className="search-input"
                 value={vendor}
-                onChange={(e) => {
-                  setVendor(
-                    e.target.value
-                  );
+                onChange={(event) => {
+                  setVendor(event.target.value);
                   setSavedToShopify(false);
                 }}
                 placeholder="Brand / supplier"
@@ -682,18 +596,14 @@ export default function Home() {
               <input
                 className="search-input"
                 value={price}
-                onChange={(e) => {
-                  setPrice(
-                    e.target.value
-                  );
+                onChange={(event) => {
+                  setPrice(event.target.value);
                   setSavedToShopify(false);
                 }}
                 placeholder="Price"
               />
             </div>
           </section>
-
-          {/* RESULTS */}
 
           {result && (
             <>
@@ -703,88 +613,66 @@ export default function Home() {
                     VIRELLO SCORE
                   </div>
 
-                  <h2>
-                    Product optimization
-                  </h2>
+                  <h2>Product optimization</h2>
 
                   <p>
-                    Listing quality, SEO,
-                    clarity and conversion
-                    potential.
+                    Listing quality, SEO, clarity and
+                    conversion potential.
                   </p>
                 </div>
 
                 <div className="overall-score">
                   <strong>
-                    {result.score?.overall ??
-                      0}
+                    {result.score?.overall ?? 0}
                   </strong>
-
                   <span>/100</span>
                 </div>
               </section>
 
               <section className="score-grid">
                 {[
-                  [
-                    "Title",
-                    result.score?.title,
-                  ],
+                  ["Title", result.score?.title],
                   [
                     "Description",
                     result.score?.description,
                   ],
-                  [
-                    "SEO",
-                    result.score?.seo,
-                  ],
+                  ["SEO", result.score?.seo],
                   [
                     "Clarity",
                     result.score?.productClarity,
                   ],
                   [
                     "Conversion",
-                    result.score
-                      ?.conversionPotential,
+                    result.score?.conversionPotential,
                   ],
-                ].map(
-                  ([label, value]) => {
-                    const score =
-                      typeof value ===
-                      "number"
-                        ? value
-                        : 0;
+                ].map(([label, value]) => {
+                  const score =
+                    typeof value === "number"
+                      ? value
+                      : 0;
 
-                    return (
-                      <div
-                        className="score-card"
-                        key={String(label)}
-                      >
-                        <div className="score-header">
-                          <span>
-                            {label}
-                          </span>
-
-                          <strong>
-                            {score}/100
-                          </strong>
-                        </div>
-
-                        <div className="score-track">
-                          <div
-                            className="score-fill"
-                            style={{
-                              width: `${score}%`,
-                            }}
-                          />
-                        </div>
+                  return (
+                    <div
+                      className="score-card"
+                      key={String(label)}
+                    >
+                      <div className="score-header">
+                        <span>{label}</span>
+                        <strong>{score}/100</strong>
                       </div>
-                    );
-                  }
-                )}
-              </section>
 
-              {/* OPTIMIZED LISTING */}
+                      <div className="score-track">
+                        <div
+                          className="score-fill"
+                          style={{
+                            width: `${score}%`,
+                          }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </section>
 
               <section className="content-card">
                 <div className="listing-header">
@@ -793,9 +681,7 @@ export default function Home() {
                       OPTIMIZED LISTING
                     </div>
 
-                    <h2>
-                      Ready-to-use content
-                    </h2>
+                    <h2>Ready-to-use content</h2>
                   </div>
 
                   {selectedProductId && (
@@ -806,12 +692,9 @@ export default function Home() {
                           ? "save-button saved"
                           : "save-button"
                       }
-                      onClick={
-                        saveToShopify
-                      }
+                      onClick={saveToShopify}
                       disabled={
-                        saving ||
-                        savedToShopify
+                        saving || savedToShopify
                       }
                     >
                       {saving
@@ -858,78 +741,62 @@ export default function Home() {
                   ],
                   [
                     "Tags",
-                    optimization?.tags?.join(
-                      ", "
-                    ),
+                    optimization?.tags?.join(", "),
                   ],
-                ].map(
-                  ([label, value]) => {
-                    const text =
-                      String(value || "");
+                ].map(([label, value]) => {
+                  const text = String(value || "");
 
-                    return (
-                      <div
-                        className="result-field"
-                        key={String(label)}
-                      >
-                        <div className="field-header">
-                          <label>
-                            {label}
-                          </label>
+                  return (
+                    <div
+                      className="result-field"
+                      key={String(label)}
+                    >
+                      <div className="field-header">
+                        <label>{label}</label>
 
-                          <button
-                            type="button"
-                            className="small-button"
-                            onClick={() =>
-                              copyText(text)
-                            }
-                          >
-                            Copy
-                          </button>
-                        </div>
-
-                        <div
-                          className={
-                            text.includes(
-                              "\n"
-                            )
-                              ? "field-value multiline"
-                              : "field-value"
+                        <button
+                          type="button"
+                          className="small-button"
+                          onClick={() =>
+                            copyText(text)
                           }
                         >
-                          {text ||
-                            "No output"}
-                        </div>
+                          Copy
+                        </button>
                       </div>
-                    );
-                  }
-                )}
+
+                      <div
+                        className={
+                          text.includes("\n")
+                            ? "field-value multiline"
+                            : "field-value"
+                        }
+                      >
+                        {text || "No output"}
+                      </div>
+                    </div>
+                  );
+                })}
 
                 {savedToShopify && (
                   <div className="saved-confirmation">
-                    <strong>
-                      Saved to Shopify
-                    </strong>
+                    <strong>Saved to Shopify</strong>
 
                     <span>
-                      The optimized product
-                      content has been
-                      successfully updated
-                      in your Shopify store.
+                      The optimized product content has
+                      been successfully updated in your
+                      Shopify store.
                     </span>
                   </div>
                 )}
 
                 {!selectedProductId && (
                   <div className="save-note">
-                    Select an imported Shopify
-                    product to enable Save to
-                    Shopify.
+                    Select an imported Shopify product
+                    to enable Save to Shopify.
                   </div>
                 )}
               </section>
-
-              {/* ANALYSIS */}
 
               {result.analysis && (
                 <section className="content-card">
@@ -937,17 +804,11 @@ export default function Home() {
                     AI ANALYSIS
                   </div>
 
-                  <h2>
-                    What Virello found
-                  </h2>
+                  <h2>What Virello found</h2>
 
-                  {result.analysis
-                    .targetCustomer && (
+                  {result.analysis.targetCustomer && (
                     <div className="analysis-block">
-                      <strong>
-                        Target customer
-                      </strong>
-
+                      <strong>Target customer</strong>
                       <p>
                         {
                           result.analysis
@@ -963,7 +824,6 @@ export default function Home() {
                       <strong>
                         Purchase motivation
                       </strong>
-
                       <p>
                         {
                           result.analysis
@@ -973,118 +833,64 @@ export default function Home() {
                     </div>
                   )}
 
-                  {result.analysis
-                    .strongestFeatures
+                  {result.analysis.strongestFeatures
                     ?.length ? (
                     <div className="analysis-block">
                       <strong>
                         Strongest features
                       </strong>
-
                       <ul>
-                        {result.analysis
-                          .strongestFeatures
-                          .map(
-                            (
-                              item,
-                              index
-                            ) => (
-                              <li
-                                key={
-                                  index
-                                }
-                              >
-                                {item}
-                              </li>
-                            )
-                          )}
+                        {result.analysis.strongestFeatures.map(
+                          (item, index) => (
+                            <li key={index}>{item}</li>
+                          )
+                        )}
                       </ul>
                     </div>
                   ) : null}
 
-                  {result.analysis
-                    .weaknesses
+                  {result.analysis.weaknesses
                     ?.length ? (
                     <div className="analysis-block">
-                      <strong>
-                        Weaknesses
-                      </strong>
-
+                      <strong>Weaknesses</strong>
                       <ul>
-                        {result.analysis
-                          .weaknesses
-                          .map(
-                            (
-                              item,
-                              index
-                            ) => (
-                              <li
-                                key={
-                                  index
-                                }
-                              >
-                                {item}
-                              </li>
-                            )
-                          )}
+                        {result.analysis.weaknesses.map(
+                          (item, index) => (
+                            <li key={index}>{item}</li>
+                          )
+                        )}
                       </ul>
                     </div>
                   ) : null}
 
-                  {result.analysis
-                    .missingInformation
+                  {result.analysis.missingInformation
                     ?.length ? (
                     <div className="analysis-block">
                       <strong>
                         Missing information
                       </strong>
-
                       <ul>
-                        {result.analysis
-                          .missingInformation
-                          .map(
-                            (
-                              item,
-                              index
-                            ) => (
-                              <li
-                                key={
-                                  index
-                                }
-                              >
-                                {item}
-                              </li>
-                            )
-                          )}
+                        {result.analysis.missingInformation.map(
+                          (item, index) => (
+                            <li key={index}>{item}</li>
+                          )
+                        )}
                       </ul>
                     </div>
                   ) : null}
 
-                  {result.analysis
-                    .seoOpportunities
+                  {result.analysis.seoOpportunities
                     ?.length ? (
                     <div className="analysis-block">
                       <strong>
                         SEO opportunities
                       </strong>
-
                       <ul>
-                        {result.analysis
-                          .seoOpportunities
-                          .map(
-                            (
-                              item,
-                              index
-                            ) => (
-                              <li
-                                key={
-                                  index
-                                }
-                              >
-                                {item}
-                              </li>
-                            )
-                          )}
+                        {result.analysis.seoOpportunities.map(
+                          (item, index) => (
+                            <li key={index}>{item}</li>
+                          )
+                        )}
                       </ul>
                     </div>
                   ) : null}
@@ -1096,31 +902,17 @@ export default function Home() {
                       <strong>
                         Conversion opportunities
                       </strong>
-
                       <ul>
-                        {result.analysis
-                          .conversionOpportunities
-                          .map(
-                            (
-                              item,
-                              index
-                            ) => (
-                              <li
-                                key={
-                                  index
-                                }
-                              >
-                                {item}
-                              </li>
-                            )
-                          )}
+                        {result.analysis.conversionOpportunities.map(
+                          (item, index) => (
+                            <li key={index}>{item}</li>
+                          )
+                        )}
                       </ul>
                     </div>
                   ) : null}
                 </section>
               )}
-
-              {/* REASONING */}
 
               {result.reasoning && (
                 <section className="content-card">
@@ -1201,8 +993,8 @@ const styles = `
   }
 
   .subscribe-button:disabled {
-    opacity: .55;
-    cursor: wait;
+    opacity: .7;
+    cursor: default;
   }
 
   .hero {
