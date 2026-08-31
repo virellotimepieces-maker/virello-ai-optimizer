@@ -1,5 +1,6 @@
 import { createHmac, timingSafeEqual } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
+import { neon } from "@neondatabase/serverless";
 
 class ApiError extends Error {
   status: number;
@@ -50,16 +51,6 @@ export type SubscriberUsage = {
   remaining: number;
 };
 
-const usageLock = new Map<string, boolean>();
-
-const usageState = new Map<
-  string,
-  {
-    periodStart: number;
-    count: number;
-  }
->();
-
 function getStripeSecret(): string {
   const secret = process.env.STRIPE_SECRET_KEY;
 
@@ -71,6 +62,19 @@ function getStripeSecret(): string {
   }
 
   return secret;
+}
+
+function getDatabaseUrl(): string {
+  const databaseUrl = process.env.DATABASE_URL;
+
+  if (!databaseUrl) {
+    throw new ApiError(
+      "DATABASE_URL is not configured.",
+      500
+    );
+  }
+
+  return databaseUrl;
 }
 
 function getCookieSecret(stripeSecret: string): string {
@@ -314,25 +318,6 @@ function ensureActiveStatus(
   );
 }
 
-async function lockUsage<T>(
-  key: string,
-  action: () => Promise<T>
-): Promise<T> {
-  while (usageLock.get(key)) {
-    await new Promise((resolve) =>
-      setTimeout(resolve, 4)
-    );
-  }
-
-  usageLock.set(key, true);
-
-  try {
-    return await action();
-  } finally {
-    usageLock.delete(key);
-  }
-}
-
 export async function createStripeCheckoutSession(
   origin: string
 ): Promise<string> {
@@ -430,43 +415,56 @@ export async function getCheckoutSubscription(
   return normalizeSubscription(subscription);
 }
 
-function updateUsageState(
-  subscription: SubscriptionSnapshot,
-  requestedCount: number
-): SubscriberUsage {
-  const usageKey =
-    `${subscription.subscriptionId}:${subscription.currentPeriodStart}`;
-
+async function updateUsageState(
+  subscription: SubscriptionSnapshot
+): Promise<SubscriberUsage> {
+  const databaseUrl = getDatabaseUrl();
+  const sql = neon(databaseUrl);
   const limit = getUsageLimit();
 
-  const existing = usageState.get(usageKey);
+  const rows = await sql`
+    INSERT INTO subscriber_usage (
+      subscription_id,
+      period_start,
+      usage_count,
+      updated_at
+    )
+    VALUES (
+      ${subscription.subscriptionId},
+      ${subscription.currentPeriodStart},
+      1,
+      NOW()
+    )
+    ON CONFLICT (subscription_id, period_start)
+    DO UPDATE SET
+      usage_count = subscriber_usage.usage_count + 1,
+      updated_at = NOW()
+    WHERE subscriber_usage.usage_count < ${limit}
+    RETURNING usage_count
+  `;
 
-  const currentCount = Math.max(
-    existing?.count ?? 0,
-    requestedCount
-  );
-
-  if (currentCount >= limit) {
+  if (rows.length === 0) {
     throw new ApiError(
       "You have reached your AI usage limit for the current billing period.",
       429
     );
   }
 
-  const nextCount = currentCount + 1;
+  const used = Number(rows[0].usage_count);
 
-  usageState.set(usageKey, {
-    periodStart:
-      subscription.currentPeriodStart,
-    count: nextCount,
-  });
+  if (!Number.isFinite(used)) {
+    throw new ApiError(
+      "Unable to determine subscriber usage.",
+      500
+    );
+  }
 
   return {
-    used: nextCount,
+    used,
     limit,
     remaining: Math.max(
       0,
-      limit - nextCount
+      limit - used
     ),
   };
 }
@@ -521,16 +519,8 @@ export async function authorizeSubscriberForAI(
   );
 
   const usage =
-    await lockUsage(
-      refreshedSubscription.subscriptionId,
-      async () =>
-        updateUsageState(
-          refreshedSubscription,
-          subscriber.usagePeriodStart ===
-            refreshedSubscription.currentPeriodStart
-            ? subscriber.usageCount
-            : 0
-        )
+    await updateUsageState(
+      refreshedSubscription
     );
 
   const payload: SubscriberPayload = {
@@ -675,4 +665,4 @@ export async function hasActiveSubscriber(
   } catch {
     return false;
   }
-        }
+}
