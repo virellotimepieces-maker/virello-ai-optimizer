@@ -59,7 +59,9 @@ export default function Home() {
   const [productsLoading, setProductsLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [savedToShopify, setSavedToShopify] = useState(false);
+
   const [checkoutLoading, setCheckoutLoading] = useState(false);
+  const [portalLoading, setPortalLoading] = useState(false);
 
   const [subscriberActive, setSubscriberActive] = useState(false);
   const [subscriberChecking, setSubscriberChecking] = useState(true);
@@ -137,6 +139,40 @@ export default function Home() {
       );
 
       setCheckoutLoading(false);
+    }
+  }
+
+  async function openBillingPortal() {
+    if (portalLoading || !subscriberActive) return;
+
+    setPortalLoading(true);
+    setError("");
+    setMessage("");
+
+    try {
+      const response = await fetch("/api/stripe/portal", {
+        method: "POST",
+        credentials: "include",
+      });
+
+      const data = await response.json().catch(() => null);
+
+      if (!response.ok || !data?.success || !data?.url) {
+        throw new Error(
+          data?.error ||
+            "Unable to open subscription management."
+        );
+      }
+
+      window.location.assign(data.url);
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Unable to open subscription management."
+      );
+
+      setPortalLoading(false);
     }
   }
 
@@ -372,28 +408,35 @@ export default function Home() {
         </div>
 
         <div className="topbar-actions">
-          <button
-            type="button"
-            className="subscribe-button"
-            onClick={
-              subscriberActive
-                ? undefined
-                : startCheckout
-            }
-            disabled={
-              subscriberChecking ||
-              checkoutLoading ||
-              subscriberActive
-            }
-          >
-            {subscriberChecking
-              ? "Checking..."
-              : subscriberActive
-                ? "Subscribed"
+          {subscriberActive ? (
+            <button
+              type="button"
+              className="subscribe-button"
+              onClick={openBillingPortal}
+              disabled={
+                subscriberChecking || portalLoading
+              }
+            >
+              {portalLoading
+                ? "Opening..."
+                : "Manage Subscription"}
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="subscribe-button"
+              onClick={startCheckout}
+              disabled={
+                subscriberChecking || checkoutLoading
+              }
+            >
+              {subscriberChecking
+                ? "Checking..."
                 : checkoutLoading
                   ? "Opening..."
                   : "Subscribe"}
-          </button>
+            </button>
+          )}
         </div>
       </header>
 
