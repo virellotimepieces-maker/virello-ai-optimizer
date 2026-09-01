@@ -85,16 +85,7 @@ function getCookieSecret(stripeSecret: string): string {
 }
 
 function getUsageLimit(): number {
-  const parsed = Number.parseInt(
-    process.env.AI_SUBSCRIBER_USAGE_LIMIT || "100",
-    10
-  );
-
-  if (!Number.isFinite(parsed) || parsed <= 0) {
-    return 100;
-  }
-
-  return parsed;
+  return 1000;
 }
 
 function signPayload(
