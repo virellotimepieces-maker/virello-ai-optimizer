@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import "../styles.css";
 import { getShopifyClientId } from "./api/_lib/shopify-config";
+import ShopifyAppBridge from "./shopify-app-bridge";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -23,7 +24,10 @@ export default function RootLayout({
           content={getShopifyClientId()}
         />
       </head>
-      <body>{children}</body>
+      <body>
+        <ShopifyAppBridge />
+        {children}
+      </body>
     </html>
   );
 }
