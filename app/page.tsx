@@ -181,7 +181,13 @@ export default function Home() {
     setError("");
     setMessage("");
 
-    window.location.assign("/connect?platform=shopify");
+    const current = new URLSearchParams(window.location.search);
+    const shop = current.get("shop") || "";
+    const target = new URL("/connect", window.location.origin);
+    target.searchParams.set("platform", "shopify");
+    if (shop) target.searchParams.set("shop", shop);
+
+    window.location.assign(target.toString());
   }
 
   async function loadProducts() {

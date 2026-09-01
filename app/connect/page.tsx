@@ -116,11 +116,26 @@ export default function ConnectPage() {
     setConnecting(true);
     setError("");
 
-    window.location.assign(
+    const authorizationPath =
       `/api/auth/shopify?shop=${encodeURIComponent(
         cleanedShop
-      )}`
+      )}`;
+
+    /*
+     * Shopify's authorization page cannot be rendered inside the embedded
+     * Admin iframe. Navigate the top-level browsing context so mobile Admin
+     * does not fail with net::ERR_BLOCKED_BY_RESPONSE.
+     */
+    const opened = window.open(
+      authorizationPath,
+      "_top"
     );
+
+    if (!opened) {
+      window.location.assign(
+        authorizationPath
+      );
+    }
   }
 
   function continueToVirello() {
