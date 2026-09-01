@@ -25,3 +25,13 @@ export function getShopifyClientSecret(): string {
       process.env.SHOPIFY_CLIENT_SECRET
   );
 }
+
+export function getShopifyClientSecrets(): string[] {
+  return [
+    process.env.SHOPIFY_API_SECRET,
+    process.env.SHOPIFY_CLIENT_SECRET,
+    process.env.SHOPIFY_API_SECRET_PREVIOUS,
+  ]
+    .map(cleanEnvironmentValue)
+    .filter((value, index, values) => value && values.indexOf(value) === index);
+}
