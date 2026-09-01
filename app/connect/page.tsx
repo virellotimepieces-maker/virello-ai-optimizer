@@ -19,6 +19,16 @@ export default function ConnectPage() {
   const [error, setError] = useState("");
 
   useEffect(() => {
+    const shopFromUrl = new URLSearchParams(
+      window.location.search
+    ).get("shop");
+
+    if (shopFromUrl) {
+      setShop(
+        cleanShopDomain(shopFromUrl)
+      );
+    }
+
     checkShopifyConnection();
   }, []);
 
@@ -407,6 +417,9 @@ export default function ConnectPage() {
                 }
               }}
               placeholder="your-store.myshopify.com"
+              inputMode="url"
+              autoCapitalize="none"
+              spellCheck={false}
               autoComplete="off"
               className="shop-input"
             />
