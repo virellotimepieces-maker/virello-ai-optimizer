@@ -26,18 +26,8 @@ function isValidShopDomain(shop: string) {
   );
 }
 
-function getShopifyRedirectUri(request: NextRequest) {
-  const configured =
-    process.env.SHOPIFY_REDIRECT_URI?.trim();
-
-  if (configured) {
-    return configured;
-  }
-
-  return new URL(
-    "/api/auth/shopify/callback",
-    request.nextUrl.origin
-  ).toString();
+function getShopifyRedirectUri() {
+  return "https://virello-ai-optimizer.vercel.app/api/auth/shopify/callback";
 }
 
 export async function GET(request: NextRequest) {
