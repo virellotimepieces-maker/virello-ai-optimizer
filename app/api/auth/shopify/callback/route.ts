@@ -11,31 +11,49 @@ import { saveShopifySession } from "../../../_lib/shopify-auth";
 import { getShopifyClientId, getShopifyClientSecret } from "../../../_lib/shopify-config";
 
 function hasValidShopifyHmac(request: NextRequest, secret: string): boolean {
-  const supplied = request.nextUrl.searchParams.get("hmac") || "";
+  const supplied = (request.nextUrl.searchParams.get("hmac") || "").toLowerCase();
   if (!/^[a-f0-9]{64}$/i.test(supplied)) return false;
 
-  // Match Shopify's documented Node algorithm exactly: exclude only
-  // the hmac field, sort all remaining decoded query entries, then compare
-  // the hexadecimal strings using a constant-time operation.
-  const params = Object.fromEntries(
-    [...request.nextUrl.searchParams.entries()].filter(
-      ([key]) => key !== "hmac"
-    )
-  );
-  const message = Object.entries(params)
-    .sort()
+  const suppliedBuffer = Buffer.from(supplied);
+
+  const matches = (message: string) => {
+    const expected = createHmac("sha256", secret).update(message).digest("hex");
+    const expectedBuffer = Buffer.from(expected);
+    return suppliedBuffer.length === expectedBuffer.length &&
+      timingSafeEqual(suppliedBuffer, expectedBuffer);
+  };
+
+  const decodedEntries = [...request.nextUrl.searchParams.entries()]
+    .filter(([key]) => key !== "hmac")
+    .sort(([leftKey, leftValue], [rightKey, rightValue]) =>
+      leftKey.localeCompare(rightKey) || leftValue.localeCompare(rightValue)
+    );
+
+  // Shopify's documented algorithm uses decoded, sorted key/value pairs.
+  const decodedMessage = decodedEntries
     .map(([key, value]) => `${key}=${value}`)
     .join("&");
-  const expected = createHmac("sha256", secret)
-    .update(message)
-    .digest("hex");
-  const suppliedBuffer = Buffer.from(supplied);
-  const expectedBuffer = Buffer.from(expected);
+  if (matches(decodedMessage)) return true;
 
-  return (
-    suppliedBuffer.length === expectedBuffer.length &&
-    timingSafeEqual(suppliedBuffer, expectedBuffer)
-  );
+  // Some embedded/mobile browser hops preserve the percent-encoded callback
+  // query. Verify that canonical representation as a compatibility fallback.
+  // This is not a bypass: the supplied HMAC must still match the app secret.
+  const rawMessage = request.nextUrl.search
+    .replace(/^\?/, "")
+    .split("&")
+    .filter(Boolean)
+    .filter((part) => {
+      const rawKey = part.split("=", 1)[0];
+      try {
+        return decodeURIComponent(rawKey) !== "hmac";
+      } catch {
+        return rawKey !== "hmac";
+      }
+    })
+    .sort()
+    .join("&");
+
+  return rawMessage !== decodedMessage && matches(rawMessage);
 }
 
 function getShopFromSignedState(state: string, secret: string): string {
@@ -300,39 +318,3 @@ export async function GET(
       "virello_shopify_oauth_state"
     );
 
-    response.cookies.delete(
-      "virello_shopify_oauth_shop"
-    );
-
-    response.cookies.delete(
-      "virello_return_origin"
-    );
-
-    response.headers.set(
-      "Cache-Control",
-      "no-store, no-cache, must-revalidate"
-    );
-
-    console.log(
-      "SHOPIFY_OAUTH_SUCCESS",
-      {
-        shop,
-        returnOrigin,
-      }
-    );
-
-    return response;
-  } catch (error) {
-    console.error(
-      "SHOPIFY_CALLBACK_ERROR:",
-      error
-    );
-
-    return redirectError(
-      returnOrigin,
-      error instanceof Error
-        ? error.message
-        : "Unable to complete Shopify connection."
-    );
-  }
-}
