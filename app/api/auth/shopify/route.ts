@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createHmac, randomBytes } from "crypto";
+import { getShopifyClientId, getShopifyClientSecret } from "../../_lib/shopify-config";
 
 function createSignedOAuthState(shop: string, secret: string) {
   const payload = Buffer.from(
@@ -57,8 +58,8 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const apiKey = process.env.SHOPIFY_API_KEY;
-    const apiSecret = process.env.SHOPIFY_API_SECRET;
+    const apiKey = getShopifyClientId();
+    const apiSecret = getShopifyClientSecret();
 
     if (!apiKey || !apiSecret) {
       return NextResponse.json(
