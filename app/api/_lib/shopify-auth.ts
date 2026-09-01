@@ -1,7 +1,11 @@
 import { createHmac, timingSafeEqual } from "crypto";
 import { NextRequest } from "next/server";
 import { database, ensureDatabaseSchema } from "./database";
-import { getShopifyClientId, getShopifyClientSecret } from "./shopify-config";
+import {
+  getShopifyClientId,
+  getShopifyClientSecret,
+  getShopifyClientSecrets,
+} from "./shopify-config";
 import {
   decryptShopifyToken,
   encryptShopifyToken,
@@ -48,10 +52,16 @@ export function getShopifyIdToken(request: NextRequest): string {
   );
 }
 
-export function verifyShopifyIdToken(token: string): { shop: string; userId: string } {
+type VerifiedShopifyIdentity = {
+  shop: string;
+  userId: string;
+  credentialSecret: string;
+};
+
+function verifyShopifyIdTokenCredential(token: string): VerifiedShopifyIdentity {
   const apiKey = getShopifyClientId();
-  const apiSecret = getShopifyClientSecret();
-  if (!apiKey || !apiSecret) {
+  const apiSecrets = getShopifyClientSecrets();
+  if (!apiKey || apiSecrets.length === 0) {
     throw new ShopifyAuthError("Shopify credentials are not configured.", 500);
   }
 
@@ -66,11 +76,14 @@ export function verifyShopifyIdToken(token: string): { shop: string; userId: str
     throw new ShopifyAuthError("Invalid Shopify session token.");
   }
 
-  const expected = createHmac("sha256", apiSecret)
-    .update(`${parts[0]}.${parts[1]}`)
-    .digest();
   const received = Buffer.from(parts[2], "base64url");
-  if (received.length !== expected.length || !timingSafeEqual(received, expected)) {
+  const credentialSecret = apiSecrets.find((secret) => {
+    const expected = createHmac("sha256", secret)
+      .update(`${parts[0]}.${parts[1]}`)
+      .digest();
+    return received.length === expected.length && timingSafeEqual(received, expected);
+  });
+  if (!credentialSecret) {
     throw new ShopifyAuthError("Invalid Shopify session signature.");
   }
 
@@ -91,7 +104,13 @@ export function verifyShopifyIdToken(token: string): { shop: string; userId: str
   return {
     shop,
     userId: typeof payload.sub === "string" ? payload.sub : "",
+    credentialSecret,
   };
+}
+
+export function verifyShopifyIdToken(token: string): { shop: string; userId: string } {
+  const { shop, userId } = verifyShopifyIdTokenCredential(token);
+  return { shop, userId };
 }
 
 export async function saveShopifySession(
@@ -129,10 +148,13 @@ async function storedAccessToken(shop: string): Promise<string> {
   return decryptShopifyToken(String(rows[0]?.encrypted_access_token || ""));
 }
 
-async function exchangeOfflineToken(shop: string, idToken: string): Promise<string> {
+async function exchangeOfflineToken(
+  shop: string,
+  idToken: string,
+  credentialSecret = getShopifyClientSecret()
+): Promise<string> {
   const apiKey = getShopifyClientId();
-  const apiSecret = getShopifyClientSecret();
-  if (!apiKey || !apiSecret) {
+  if (!apiKey || !credentialSecret) {
     throw new ShopifyAuthError("Shopify credentials are not configured.", 500);
   }
 
@@ -141,7 +163,7 @@ async function exchangeOfflineToken(shop: string, idToken: string): Promise<stri
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
       client_id: apiKey,
-      client_secret: apiSecret,
+      client_secret: credentialSecret,
       grant_type: "urn:ietf:params:oauth:grant-type:token-exchange",
       subject_token: idToken,
       subject_token_type: "urn:ietf:params:oauth:token-type:id_token",
@@ -177,13 +199,19 @@ export async function authenticateShopifyRequest(
 
   if (idToken) {
     try {
-      const identity = verifyShopifyIdToken(idToken);
+      const identity = verifyShopifyIdTokenCredential(idToken);
       if (!requireAccessToken) return { ...identity, accessToken: "" };
 
       const saved = await storedAccessToken(identity.shop);
       return {
         ...identity,
-        accessToken: saved || await exchangeOfflineToken(identity.shop, idToken),
+        accessToken:
+          saved ||
+          await exchangeOfflineToken(
+            identity.shop,
+            idToken,
+            identity.credentialSecret
+          ),
       };
     } catch (error) {
       // An older Shopify app configuration can send an ID token signed for a
