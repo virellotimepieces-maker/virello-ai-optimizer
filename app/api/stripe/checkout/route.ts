@@ -146,6 +146,21 @@ export async function GET(
       cookieValue
     );
 
+    // Stripe has verified this checkout and its normalized shop identity.
+    // Persist the shop for top-level mobile returns where Shopify partitions
+    // the original embedded-app cookies.
+    response.cookies.set(
+      "virello_shopify_shop",
+      checkout.shop,
+      {
+        httpOnly: true,
+        secure: true,
+        sameSite: "none",
+        path: "/",
+        maxAge: 60 * 60 * 24 * 30,
+      }
+    );
+
     response.headers.set(
       "Cache-Control",
       "no-store"
