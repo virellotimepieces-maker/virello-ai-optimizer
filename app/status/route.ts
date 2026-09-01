@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { authenticateShopifyRequest } from "../api/_lib/shopify-auth";
+import { authenticateShopifyRequest, ShopifyAuthError } from "../api/_lib/shopify-auth";
 
 export async function GET(request: NextRequest) {
   try {
@@ -21,10 +21,10 @@ export async function GET(request: NextRequest) {
       }
     );
   } catch (error) {
-    console.error(
-      "SHOPIFY_STATUS_ERROR:",
-      error
-    );
+    const expectedDisconnected = error instanceof ShopifyAuthError && error.status === 401;
+    if (!expectedDisconnected) {
+      console.error("SHOPIFY_STATUS_ERROR:", error);
+    }
 
     return NextResponse.json(
       {
@@ -36,7 +36,7 @@ export async function GET(request: NextRequest) {
             : "Unable to verify Shopify connection.",
       },
       {
-        status: 500,
+        status: expectedDisconnected ? 200 : 500,
         headers: {
           "Cache-Control":
             "no-store, no-cache, must-revalidate",
