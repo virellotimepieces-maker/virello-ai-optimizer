@@ -112,7 +112,6 @@ export default function ConnectPage() {
 
   async function checkShopifyConnection() {
     setLoading(true);
-    setError("");
 
     try {
       const response = await shopifyFetch("/status", {
