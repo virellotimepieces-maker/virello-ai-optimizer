@@ -23,17 +23,27 @@ function hasValidShopifyHmac(request: NextRequest, secret: string): boolean {
       timingSafeEqual(suppliedBuffer, expectedBuffer);
   };
 
-  const decodedEntries = [...request.nextUrl.searchParams.entries()]
+  const allDecodedEntries = [...request.nextUrl.searchParams.entries()]
     .filter(([key]) => key !== "hmac")
     .sort(([leftKey, leftValue], [rightKey, rightValue]) =>
       leftKey.localeCompare(rightKey) || leftValue.localeCompare(rightValue)
     );
 
   // Shopify's documented algorithm uses decoded, sorted key/value pairs.
-  const decodedMessage = decodedEntries
+  const decodedMessage = allDecodedEntries
     .map(([key, value]) => `${key}=${value}`)
     .join("&");
   if (matches(decodedMessage)) return true;
+
+  // Legacy Shopify authorization responses can include a separate
+  // `signature` field. It is not part of the HMAC payload.
+  const legacyDecodedMessage = allDecodedEntries
+    .filter(([key]) => key !== "signature")
+    .map(([key, value]) => `${key}=${value}`)
+    .join("&");
+  if (legacyDecodedMessage !== decodedMessage && matches(legacyDecodedMessage)) {
+    return true;
+  }
 
   // Some embedded/mobile browser hops preserve the percent-encoded callback
   // query. Verify that canonical representation as a compatibility fallback.
@@ -53,7 +63,21 @@ function hasValidShopifyHmac(request: NextRequest, secret: string): boolean {
     .sort()
     .join("&");
 
-  return rawMessage !== decodedMessage && matches(rawMessage);
+  if (rawMessage !== decodedMessage && matches(rawMessage)) return true;
+
+  const legacyRawMessage = rawMessage
+    .split("&")
+    .filter((part) => {
+      const rawKey = part.split("=", 1)[0];
+      try {
+        return decodeURIComponent(rawKey) !== "signature";
+      } catch {
+        return rawKey !== "signature";
+      }
+    })
+    .join("&");
+
+  return legacyRawMessage !== rawMessage && matches(legacyRawMessage);
 }
 
 function getShopFromSignedState(state: string, secret: string): string {
