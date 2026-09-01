@@ -13,6 +13,23 @@ import {
 } from "../../_lib/subscriber";
 import { authenticateShopifyRequest } from "../../_lib/shopify-auth";
 
+function getEmbeddedShopifyAppUrl(
+  shop: string,
+  checkout: "success"
+): URL {
+  const storeHandle = shop.replace(/\.myshopify\.com$/i, "");
+  const appHandle =
+    process.env.SHOPIFY_APP_HANDLE?.trim() ||
+    "virello-ai-optimizer";
+  const url = new URL(
+    `/store/${encodeURIComponent(storeHandle)}/apps/${encodeURIComponent(appHandle)}`,
+    "https://admin.shopify.com"
+  );
+  url.searchParams.set("shop", shop);
+  url.searchParams.set("checkout", checkout);
+  return url;
+}
+
 function getErrorDetails(error: unknown): {
   message: string;
   status: number;
@@ -114,9 +131,9 @@ export async function GET(
       );
 
     const redirectUrl =
-      new URL(
-        "/?checkout=success",
-        request.url
+      getEmbeddedShopifyAppUrl(
+        checkout.shop,
+        "success"
       );
 
     const response =
