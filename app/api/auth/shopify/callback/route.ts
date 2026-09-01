@@ -79,6 +79,8 @@ function redirectError(
   origin: string,
   message: string
 ) {
+  console.error("SHOPIFY_OAUTH_CALLBACK_REJECTED", { message });
+
   const url = new URL(
     "/connect",
     origin
