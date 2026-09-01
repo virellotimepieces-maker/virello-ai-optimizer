@@ -74,6 +74,62 @@ export default function Home() {
     const params = new URLSearchParams(window.location.search);
     const connection = params.get("connected");
     const checkout = params.get("checkout");
+    const shopFromUrl = params.get("shop") || "";
+    const normalizedShop =
+      /^[a-z0-9][a-z0-9-]*\.myshopify\.com$/i.test(shopFromUrl)
+        ? shopFromUrl.toLowerCase()
+        : "";
+
+    if (normalizedShop) {
+      window.localStorage.setItem(
+        "virello_shopify_shop",
+        normalizedShop
+      );
+    }
+
+    const rememberedShop =
+      normalizedShop ||
+      window.localStorage.getItem(
+        "virello_shopify_shop"
+      ) ||
+      "";
+
+    /*
+     * Shopify and Stripe can briefly return the mobile browser to the
+     * standalone Vercel origin. A standalone page has no App Bridge ID
+     * token, so return it to the embedded Shopify Admin app immediately.
+     */
+    if (
+      window.top === window.self &&
+      /^[a-z0-9][a-z0-9-]*\.myshopify\.com$/i.test(
+        rememberedShop
+      )
+    ) {
+      const storeHandle = rememberedShop.replace(
+        /\.myshopify\.com$/i,
+        ""
+      );
+      const adminUrl = new URL(
+        `/store/${encodeURIComponent(
+          storeHandle
+        )}/apps/virello-ai-optimizer`,
+        "https://admin.shopify.com"
+      );
+      adminUrl.searchParams.set(
+        "shop",
+        rememberedShop
+      );
+      if (checkout) {
+        adminUrl.searchParams.set(
+          "checkout",
+          checkout
+        );
+      }
+      window.location.replace(
+        adminUrl.toString()
+      );
+      return;
+    }
 
     if (connection === "success") {
       setMessage("Shopify store connected successfully.");
