@@ -12,13 +12,11 @@ function cleanEnvironmentValue(value?: string): string {
   return trimmed;
 }
 
-const SHOPIFY_APP_CLIENT_ID = "99a9fad60d48cb24828f243360fffc40";
-
 export function getShopifyClientId(): string {
-  // This public identifier must match shopify.app.toml exactly. Keeping the
-  // canonical app ID here prevents a mistyped Vercel value from sending the
-  // embedded iframe to accounts.shopify.com.
-  return SHOPIFY_APP_CLIENT_ID;
+  return cleanEnvironmentValue(
+    process.env.SHOPIFY_API_KEY ||
+      process.env.SHOPIFY_CLIENT_ID
+  );
 }
 
 export function getShopifyClientSecret(): string {
