@@ -20,9 +20,11 @@ export default function ConnectPage() {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    const shopFromUrl = new URLSearchParams(
-      window.location.search
-    ).get("shop");
+    const params = new URLSearchParams(window.location.search);
+    const shopFromUrl = params.get("shop");
+    const oauthError = params.get("error_description");
+
+    if (oauthError) setError(oauthError);
 
     if (shopFromUrl) {
       setShop(
@@ -116,8 +118,8 @@ export default function ConnectPage() {
     setConnecting(true);
     setError("");
 
-    const authorizationPath =
-      `/api/auth/shopify?shop=${encodeURIComponent(
+    const authorizationUrl =
+      `${window.location.origin}/api/auth/shopify?shop=${encodeURIComponent(
         cleanedShop
       )}`;
 
@@ -127,19 +129,21 @@ export default function ConnectPage() {
      * does not fail with net::ERR_BLOCKED_BY_RESPONSE.
      */
     const opened = window.open(
-      authorizationPath,
+      authorizationUrl,
       "_top"
     );
 
     if (!opened) {
       window.location.assign(
-        authorizationPath
+        authorizationUrl
       );
     }
   }
 
   function continueToVirello() {
-    window.location.assign("/");
+    const target = new URL("/", window.location.origin);
+    if (shop) target.searchParams.set("shop", cleanShopDomain(shop));
+    window.location.assign(target.toString());
   }
 
   const connected =
