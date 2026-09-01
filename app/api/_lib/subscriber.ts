@@ -77,11 +77,35 @@ function getStripeSecret(): string {
   return secret;
 }
 
-function getCookieSecret(stripeSecret: string): string {
-  return (
-    process.env.SUBSCRIBER_COOKIE_SECRET ||
-    stripeSecret
-  );
+function getCookieSecrets(): string[] {
+  const secrets = [
+    process.env.SUBSCRIBER_COOKIE_SECRET,
+    process.env.SHOPIFY_TOKEN_ENCRYPTION_KEY,
+    process.env.STRIPE_SECRET_KEY,
+  ]
+    .map((value) => value?.trim() || "")
+    .filter((value, index, values) =>
+      Boolean(value) && values.indexOf(value) === index
+    );
+
+  if (secrets.length === 0) {
+    throw new ApiError("Subscriber cookie signing key is not configured.", 500);
+  }
+
+  return secrets;
+}
+
+function getCookieSecret(): string {
+  return getCookieSecrets()[0];
+}
+
+function decodeConfiguredSubscriberPayload(value: string): SubscriberPayload | null {
+  for (const secret of getCookieSecrets()) {
+    const payload = decodeSubscriberPayload(value, secret);
+    if (payload) return payload;
+  }
+
+  return null;
 }
 
 function getUsageLimit(): number {
@@ -572,7 +596,17 @@ export async function authorizeSubscriberForAI(
   cookieValue: string;
   usage: SubscriberUsage;
 }> {
-  const { shop } = await authenticateShopifyRequest(request, false);
+  let shop = "";
+  try {
+    shop = (await authenticateShopifyRequest(request, false)).shop;
+  } catch {
+    shop = await getShopForSubscriberCookie(request);
+  }
+
+  if (!shop) {
+    throw new ApiError("A verified Shopify subscription is required.", 401);
+  }
+
   const refreshedSubscription = await refreshShopSubscription(shop);
 
   if (!refreshedSubscription) {
@@ -608,7 +642,7 @@ export async function authorizeSubscriberForAI(
 
   return {
     cookieValue:
-      encodeSubscriberPayload(payload, getCookieSecret(getStripeSecret())),
+      encodeSubscriberPayload(payload, getCookieSecret()),
     usage,
   };
 }
@@ -653,10 +687,7 @@ export function clearSubscriberCookie(
 export function buildSubscriberCookieValue(
   subscription: SubscriptionSnapshot
 ): string {
-  const stripeSecret = getStripeSecret();
-
-  const secret =
-    getCookieSecret(stripeSecret);
+  const secret = getCookieSecret();
 
   ensureActiveStatus(
     subscription.status
@@ -696,10 +727,7 @@ export async function getShopForSubscriberCookie(
       return "";
     }
 
-    const payload = decodeSubscriberPayload(
-      cookieValue,
-      getCookieSecret(getStripeSecret())
-    );
+    const payload = decodeConfiguredSubscriberPayload(cookieValue);
 
     if (!payload?.subscriptionId) {
       return "";
@@ -731,7 +759,13 @@ export async function hasActiveSubscriber(
   request: NextRequest
 ): Promise<boolean> {
   try {
-    const { shop } = await authenticateShopifyRequest(request, false);
+    let shop = "";
+    try {
+      shop = (await authenticateShopifyRequest(request, false)).shop;
+    } catch {
+      shop = await getShopForSubscriberCookie(request);
+    }
+    if (!shop) return false;
     const subscription = await refreshShopSubscription(shop);
     if (!subscription) return false;
 
@@ -760,8 +794,8 @@ export async function getActiveSubscriberStatus(
       shop = (await authenticateShopifyRequest(request, false)).shop;
     } catch {
       // Stripe checkout returns through the top-level browser. On mobile,
-      // Shopify and the Vercel page can use partitioned cookie jars, so
-      // recover the shop from the separately signed subscriber cookie.
+      // Shopify and the top-level Vercel page can use partitioned cookie jars,
+      // so recover the shop from the separately signed subscriber cookie.
       shop = await getShopForSubscriberCookie(request);
     }
 
