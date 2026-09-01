@@ -1,5 +1,5 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "crypto";
-import { getShopifyClientSecret } from "./shopify-config";
+import { getShopifyClientSecrets } from "./shopify-config";
 
 export const SHOPIFY_TOKEN_COOKIE = "virello_shopify_access_token";
 
@@ -21,7 +21,7 @@ function encryptionKeys(): Buffer[] {
   // remain connected while new tokens continue to be encrypted securely.
   const candidates = [
     cleanValue(process.env.SHOPIFY_TOKEN_ENCRYPTION_KEY),
-    getShopifyClientSecret(),
+    ...getShopifyClientSecrets(),
   ].filter((value, index, values) =>
     value.length >= 32 && values.indexOf(value) === index
   );
