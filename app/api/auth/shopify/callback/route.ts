@@ -236,21 +236,17 @@ export async function GET(
     // as a standalone-browser compatibility path.
     await saveShopifySession(shop, data.access_token, data.scope || "");
 
-    const redirectUrl =
-      new URL(
-        "/connect",
-        returnOrigin
-      );
-
-    redirectUrl.searchParams.set(
-      "shop",
-      shop
+    // Return to the embedded Shopify Admin app after OAuth. Returning to
+    // the standalone Vercel page loses Shopify's App Bridge session on mobile.
+    const storeHandle = shop.replace(/\\.myshopify\\.com$/i, "");
+    const appHandle =
+      process.env.SHOPIFY_APP_HANDLE?.trim() || "virello-ai-optimizer";
+    const redirectUrl = new URL(
+      `/store/${encodeURIComponent(storeHandle)}/apps/${encodeURIComponent(appHandle)}`,
+      "https://admin.shopify.com"
     );
-
-    redirectUrl.searchParams.set(
-      "connected",
-      "1"
-    );
+    redirectUrl.searchParams.set("shop", shop);
+    redirectUrl.searchParams.set("connected", "1");
 
     const response =
       NextResponse.redirect(
