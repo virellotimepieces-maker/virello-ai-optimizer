@@ -14,7 +14,7 @@ export async function GET(request: NextRequest) {
         url: null,
       },
       {
-        status: 404,
+        status: 200,
         headers: {
           "Cache-Control": "no-store",
         },
