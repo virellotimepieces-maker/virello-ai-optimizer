@@ -8,6 +8,7 @@ import {
   SHOPIFY_TOKEN_COOKIE,
 } from "../../../_lib/shopify-session";
 import { saveShopifySession } from "../../../_lib/shopify-auth";
+import { getShopifyClientId, getShopifyClientSecret } from "../../../_lib/shopify-config";
 
 function hasValidShopifyHmac(request: NextRequest, secret: string): boolean {
   const supplied = request.nextUrl.searchParams.get("hmac") || "";
@@ -141,8 +142,8 @@ export async function GET(
       );
     }
 
-    const apiKey = process.env.SHOPIFY_API_KEY;
-    const apiSecret = process.env.SHOPIFY_API_SECRET;
+    const apiKey = getShopifyClientId();
+    const apiSecret = getShopifyClientSecret();
 
     if (!apiKey || !apiSecret) {
       return redirectError(
