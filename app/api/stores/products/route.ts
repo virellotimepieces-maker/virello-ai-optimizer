@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { authenticateShopifyRequest } from "../../_lib/shopify-auth";
+import { authenticateShopifyRequest, ShopifyAuthError } from "../../_lib/shopify-auth";
 
 const SHOPIFY_API_VERSION = "2026-07";
 const SHOPIFY_MYSHOPIFY_SUFFIX = ".myshopify.com";
@@ -190,16 +190,16 @@ export async function GET(request: NextRequest) {
       }
     );
   } catch (error) {
-    console.error(
-      "SHOPIFY_PRODUCTS_GET_ERROR:",
-      error
-    );
+    const status = error instanceof ShopifyAuthError ? error.status : 500;
+    if (status >= 500) {
+      console.error("SHOPIFY_PRODUCTS_GET_ERROR:", error);
+    }
 
     return errorResponse(
       error instanceof Error
         ? error.message
         : "Unable to load Shopify products.",
-      500
+      status
     );
   }
 }
