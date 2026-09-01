@@ -131,6 +131,43 @@ export default function Home() {
       return;
     }
 
+    if (window.top === window.self) {
+      async function recoverEmbeddedAdmin() {
+        try {
+          const response = await fetch(
+            "/api/shopify/admin-return",
+            {
+              method: "GET",
+              credentials: "include",
+              cache: "no-store",
+            }
+          );
+          const data = await response
+            .json()
+            .catch(() => null);
+
+          if (
+            response.ok &&
+            data?.success &&
+            typeof data.url === "string"
+          ) {
+            window.location.replace(data.url);
+            return;
+          }
+        } catch (error) {
+          console.error(
+            "SHOPIFY_ADMIN_RETURN_ERROR",
+            error
+          );
+        }
+
+        loadSubscriberStatus();
+      }
+
+      recoverEmbeddedAdmin();
+      return;
+    }
+
     if (connection === "success") {
       setMessage("Shopify store connected successfully.");
     }
