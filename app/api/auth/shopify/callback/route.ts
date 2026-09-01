@@ -229,7 +229,10 @@ export async function GET(
     }
 
     const hmacSecrets = getShopifyClientSecrets();
-    if (!hmacSecrets.some((secret) => hasValidShopifyHmac(request, secret))) {
+    const verifiedSecret = hmacSecrets.find((secret) =>
+      hasValidShopifyHmac(request, secret)
+    );
+    if (!verifiedSecret) {
       return redirectError(returnOrigin, "Shopify authorization signature is invalid.");
     }
 
@@ -245,7 +248,9 @@ export async function GET(
           body:
             new URLSearchParams({
               client_id: apiKey,
-              client_secret: apiSecret,
+              // The same credential that verified Shopify's callback must be
+              // used to redeem its authorization code during secret rotation.
+              client_secret: verifiedSecret,
               code,
             }).toString(),
           cache: "no-store",
