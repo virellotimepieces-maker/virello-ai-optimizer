@@ -23,14 +23,13 @@ DATABASE_URL=postgresql://...
 AI_SUBSCRIBER_USAGE_LIMIT=1000
 SHOPIFY_API_KEY=...
 SHOPIFY_API_SECRET=...
-SHOPIFY_TOKEN_ENCRYPTION_KEY=at-least-32-random-characters
 ```
 
 The production server initializes the required tables automatically. The SQL files in
 `migrations/` are retained for auditing and manual database administration.
 
-The Shopify token encryption key must remain stable after stores connect. Changing it
-invalidates stored encrypted Shopify sessions and requires merchants to reconnect.
+Shopify access tokens are encrypted using a key derived from the Shopify app secret.
+Rotating the Shopify app secret invalidates stored sessions and requires merchants to reconnect.
 
 Shopify uses managed installation, App Bridge ID tokens, offline token exchange, and
 server-side encrypted sessions. Deploy `shopify.app.toml` with Shopify CLI before app

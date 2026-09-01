@@ -3,11 +3,14 @@ import { createCipheriv, createDecipheriv, createHash, randomBytes } from "crypt
 export const SHOPIFY_TOKEN_COOKIE = "virello_shopify_access_token";
 
 function encryptionKey(): Buffer {
-  const secret = process.env.SHOPIFY_TOKEN_ENCRYPTION_KEY;
+  // Use the Shopify app secret as the stable encryption root. This removes
+  // the separate encryption-key setting that previously broke reconnects
+  // when it was missing, changed, or configured only in one environment.
+  const secret = process.env.SHOPIFY_API_SECRET;
 
   if (!secret || secret.length < 32) {
     throw new Error(
-      "SHOPIFY_TOKEN_ENCRYPTION_KEY must be configured with at least 32 characters."
+      "SHOPIFY_API_SECRET must be configured before Shopify tokens can be encrypted."
     );
   }
 
