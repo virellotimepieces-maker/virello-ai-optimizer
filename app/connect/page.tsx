@@ -198,22 +198,18 @@ export default function ConnectPage() {
       )}`;
 
     /*
-     * Shopify's authorization page cannot be rendered inside the embedded
-     * Admin iframe. Navigate the top-level browsing context so mobile Admin
-     * does not fail with net::ERR_BLOCKED_BY_RESPONSE.
+     * Shopify login refuses to render inside the Admin iframe/mobile webview.
+     * Open it from this user gesture in a separate browser context.
      */
-    try {
-      if (window.top) {
-        window.top.location.assign(
-          authorizationUrl
-        );
-        return;
-      }
-    } catch (error) {
-      console.error(
-        "SHOPIFY_TOP_NAVIGATION_ERROR",
-        error
-      );
+    const authorizationWindow = window.open(
+      authorizationUrl,
+      "_blank",
+      "noopener,noreferrer"
+    );
+
+    if (authorizationWindow) {
+      setConnecting(false);
+      return;
     }
 
     window.location.assign(
