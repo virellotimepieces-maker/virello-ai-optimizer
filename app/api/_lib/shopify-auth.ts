@@ -1,6 +1,7 @@
 import { createHmac, timingSafeEqual } from "crypto";
 import { NextRequest } from "next/server";
 import { database, ensureDatabaseSchema } from "./database";
+import { getShopifyClientId, getShopifyClientSecret } from "./shopify-config";
 import {
   decryptShopifyToken,
   encryptShopifyToken,
@@ -48,8 +49,8 @@ export function getShopifyIdToken(request: NextRequest): string {
 }
 
 export function verifyShopifyIdToken(token: string): { shop: string; userId: string } {
-  const apiKey = process.env.SHOPIFY_API_KEY;
-  const apiSecret = process.env.SHOPIFY_API_SECRET;
+  const apiKey = getShopifyClientId();
+  const apiSecret = getShopifyClientSecret();
   if (!apiKey || !apiSecret) {
     throw new ShopifyAuthError("Shopify credentials are not configured.", 500);
   }
@@ -129,8 +130,8 @@ async function storedAccessToken(shop: string): Promise<string> {
 }
 
 async function exchangeOfflineToken(shop: string, idToken: string): Promise<string> {
-  const apiKey = process.env.SHOPIFY_API_KEY;
-  const apiSecret = process.env.SHOPIFY_API_SECRET;
+  const apiKey = getShopifyClientId();
+  const apiSecret = getShopifyClientSecret();
   if (!apiKey || !apiSecret) {
     throw new ShopifyAuthError("Shopify credentials are not configured.", 500);
   }
