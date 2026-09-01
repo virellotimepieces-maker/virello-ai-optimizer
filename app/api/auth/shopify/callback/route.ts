@@ -14,14 +14,28 @@ function hasValidShopifyHmac(request: NextRequest, secret: string): boolean {
   const supplied = request.nextUrl.searchParams.get("hmac") || "";
   if (!/^[a-f0-9]{64}$/i.test(supplied)) return false;
 
-  const message = [...request.nextUrl.searchParams.entries()]
-    .filter(([key]) => key !== "hmac" && key !== "signature")
-    .sort(([a], [b]) => a.localeCompare(b))
+  // Match Shopify's documented Node algorithm exactly: exclude only
+  // the hmac field, sort all remaining decoded query entries, then compare
+  // the hexadecimal strings using a constant-time operation.
+  const params = Object.fromEntries(
+    [...request.nextUrl.searchParams.entries()].filter(
+      ([key]) => key !== "hmac"
+    )
+  );
+  const message = Object.entries(params)
+    .sort()
     .map(([key, value]) => `${key}=${value}`)
     .join("&");
-  const expected = createHmac("sha256", secret).update(message).digest("hex");
+  const expected = createHmac("sha256", secret)
+    .update(message)
+    .digest("hex");
+  const suppliedBuffer = Buffer.from(supplied);
+  const expectedBuffer = Buffer.from(expected);
 
-  return timingSafeEqual(Buffer.from(supplied, "hex"), Buffer.from(expected, "hex"));
+  return (
+    suppliedBuffer.length === expectedBuffer.length &&
+    timingSafeEqual(suppliedBuffer, expectedBuffer)
+  );
 }
 
 function getShopFromSignedState(state: string, secret: string): string {
