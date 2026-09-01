@@ -2,6 +2,7 @@ import { createHmac, timingSafeEqual } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { decryptShopifyToken, SHOPIFY_TOKEN_COOKIE } from "../../_lib/shopify-session";
 import { authenticateShopifyRequest } from "../../_lib/shopify-auth";
+import { getShopifyClientId, getShopifyClientSecret } from "../../_lib/shopify-config";
 
 const SHOPIFY_API_VERSION = "2026-07";
 const SHOPIFY_MYSHOPIFY_SUFFIX = ".myshopify.com";
@@ -72,8 +73,8 @@ function getTokenParts(token: string) {
 }
 
 function verifyShopifySessionToken(token: string) {
-  const apiKey = process.env.SHOPIFY_API_KEY;
-  const apiSecret = process.env.SHOPIFY_API_SECRET;
+  const apiKey = getShopifyClientId();
+  const apiSecret = getShopifyClientSecret();
 
   if (!apiKey || !apiSecret) {
     throw new Error(
@@ -240,8 +241,8 @@ async function exchangeToken(
   shop: string,
   sessionToken: string
 ) {
-  const apiKey = process.env.SHOPIFY_API_KEY;
-  const apiSecret = process.env.SHOPIFY_API_SECRET;
+  const apiKey = getShopifyClientId();
+  const apiSecret = getShopifyClientSecret();
 
   if (!apiKey || !apiSecret) {
     throw new Error(
