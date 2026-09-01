@@ -1,91 +1,57 @@
 import { NextRequest, NextResponse } from "next/server";
+import { authenticateShopifyRequest } from "../app/api/_lib/shopify-auth";
 
-function cleanShopDomain(value: string) {
-  return value
-    .trim()
-    .toLowerCase()
-    .replace(/^https?:\/\//, "")
-    .replace(/^www\./, "")
-    .replace(/\/+$/, "")
-    .replace(
-      /(\.myshopify\.com){2,}$/,
-      ".myshopify.com"
-    );
-}
-
-function isValidShopDomain(shop: string) {
-  return /^([a-z0-9][a-z0-9-]*[a-z0-9]|[a-z0-9])\.myshopify\.com$/i.test(
-    shop
-  );
-}
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
   try {
-    const shop = cleanShopDomain(
-      request.cookies.get(
-        "virello_shopify_shop"
-      )?.value || ""
-    );
+    const { shop } = await authenticateShopifyRequest(request);
 
-    const accessToken =
-      request.cookies.get(
-        "virello_shopify_access_token"
-      )?.value || "";
-
-    if (
-      !shop ||
-      !isValidShopDomain(shop) ||
-      !accessToken
-    ) {
-      return NextResponse.json({
-        success: true,
-        connected: false,
-        platform: "shopify",
-      });
-    }
-
-    const response = await fetch(
-      `https://${shop}/admin/api/2025-10/shop.json`,
+    return NextResponse.json(
       {
-        method: "GET",
+        success: true,
+        connected: true,
+        platform: "shopify",
+        shop,
+      },
+      {
         headers: {
-          "X-Shopify-Access-Token":
-            accessToken,
-          Accept: "application/json",
+          "Cache-Control": "no-store, no-cache, must-revalidate",
         },
-        cache: "no-store",
       }
     );
-
-    if (!response.ok) {
-      return NextResponse.json({
-        success: true,
-        connected: false,
-        platform: "shopify",
-      });
-    }
-
-    return NextResponse.json({
-      success: true,
-      connected: true,
-      platform: "shopify",
-      shop,
-    });
   } catch (error) {
-    console.error(
-      "SHOPIFY_STATUS_ERROR:",
-      error
-    );
+    const candidate = error as {
+      message?: unknown;
+      status?: unknown;
+    };
+
+    const message =
+      typeof candidate?.message === "string"
+        ? candidate.message
+        : "Unable to verify Shopify connection.";
+
+    const status =
+      typeof candidate?.status === "number"
+        ? candidate.status
+        : 401;
+
+    console.error("SHOPIFY_STATUS_ERROR:", error);
 
     return NextResponse.json(
       {
         success: false,
         connected: false,
         platform: "shopify",
-        error:
-          "Unable to verify Shopify connection.",
+        error: message,
       },
-      { status: 500 }
+      {
+        status,
+        headers: {
+          "Cache-Control": "no-store, no-cache, must-revalidate",
+        },
+      }
     );
   }
 }
