@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { decryptShopifyToken, SHOPIFY_TOKEN_COOKIE } from "../api/_lib/shopify-session";
 
 function cleanShopDomain(value: string): string {
   return value
@@ -28,10 +29,9 @@ export async function GET(request: NextRequest) {
       )?.value || ""
     );
 
-    const accessToken =
-      request.cookies.get(
-        "virello_shopify_access_token"
-      )?.value || "";
+    const accessToken = decryptShopifyToken(
+      request.cookies.get(SHOPIFY_TOKEN_COOKIE)?.value || ""
+    );
 
     if (
       !shop ||

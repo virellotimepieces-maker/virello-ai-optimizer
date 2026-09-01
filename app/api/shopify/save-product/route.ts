@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { decryptShopifyToken, SHOPIFY_TOKEN_COOKIE } from "../../_lib/shopify-session";
 
 const SHOPIFY_API_VERSION = "2026-07";
 
@@ -60,10 +61,9 @@ export async function POST(
      * token exchange here.
      */
 
-    const accessToken =
-      request.cookies.get(
-        "virello_shopify_access_token"
-      )?.value || "";
+    const accessToken = decryptShopifyToken(
+      request.cookies.get(SHOPIFY_TOKEN_COOKIE)?.value || ""
+    );
 
     const savedShop =
       request.cookies.get(

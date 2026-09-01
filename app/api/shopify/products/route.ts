@@ -1,5 +1,6 @@
 import { createHmac, timingSafeEqual } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
+import { decryptShopifyToken, SHOPIFY_TOKEN_COOKIE } from "../../_lib/shopify-session";
 
 const SHOPIFY_API_VERSION = "2026-07";
 const SHOPIFY_MYSHOPIFY_SUFFIX = ".myshopify.com";
@@ -330,10 +331,9 @@ export async function POST(
     const sessionToken =
       getSessionToken(request);
 
-    const cookieAccessToken =
-      request.cookies.get(
-        "virello_shopify_access_token"
-      )?.value?.trim() || "";
+    const cookieAccessToken = decryptShopifyToken(
+      request.cookies.get(SHOPIFY_TOKEN_COOKIE)?.value || ""
+    );
 
     const cookieShopRaw =
       request.cookies.get(
