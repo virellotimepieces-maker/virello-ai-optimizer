@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import "../styles.css";
+import { getShopifyClientId } from "./api/_lib/shopify-config";
 
 export const metadata = {
   title: "Virello AI Optimizer",
@@ -16,7 +17,7 @@ export default function RootLayout({
       <head>
         <meta
           name="shopify-api-key"
-          content={process.env.SHOPIFY_API_KEY || ""}
+          content={getShopifyClientId()}
         />
         <script src="https://cdn.shopify.com/shopifycloud/app-bridge.js"></script>
       </head>
