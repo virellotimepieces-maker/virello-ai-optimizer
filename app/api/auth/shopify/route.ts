@@ -66,7 +66,7 @@ export async function GET(request: NextRequest) {
     const state = createSignedOAuthState(shop, apiSecret);
 
     const redirectUri =
-      getShopifyRedirectUri(request);
+      getShopifyRedirectUri();
 
     const scopes =
       process.env.SHOPIFY_SCOPES ||
