@@ -2,6 +2,25 @@ import {
   NextRequest,
   NextResponse,
 } from "next/server";
+import { createHmac, timingSafeEqual } from "crypto";
+import {
+  encryptShopifyToken,
+  SHOPIFY_TOKEN_COOKIE,
+} from "../../../_lib/shopify-session";
+
+function hasValidShopifyHmac(request: NextRequest, secret: string): boolean {
+  const supplied = request.nextUrl.searchParams.get("hmac") || "";
+  if (!/^[a-f0-9]{64}$/i.test(supplied)) return false;
+
+  const message = [...request.nextUrl.searchParams.entries()]
+    .filter(([key]) => key !== "hmac" && key !== "signature")
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([key, value]) => `${key}=${value}`)
+    .join("&");
+  const expected = createHmac("sha256", secret).update(message).digest("hex");
+
+  return timingSafeEqual(Buffer.from(supplied, "hex"), Buffer.from(expected, "hex"));
+}
 
 function cleanShopDomain(value: string) {
   return value
@@ -153,6 +172,10 @@ export async function GET(
       );
     }
 
+    if (!hasValidShopifyHmac(request, apiSecret)) {
+      return redirectError(returnOrigin, "Shopify authorization signature is invalid.");
+    }
+
     const tokenResponse =
       await fetch(
         `https://${shop}/admin/oauth/access_token`,
@@ -238,8 +261,8 @@ export async function GET(
       );
 
     response.cookies.set(
-      "virello_shopify_access_token",
-      data.access_token,
+      SHOPIFY_TOKEN_COOKIE,
+      encryptShopifyToken(data.access_token),
       {
         httpOnly: true,
         secure: true,
