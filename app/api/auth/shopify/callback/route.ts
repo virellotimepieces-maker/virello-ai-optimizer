@@ -238,7 +238,7 @@ export async function GET(
 
     // Return to the embedded Shopify Admin app after OAuth. Returning to
     // the standalone Vercel page loses Shopify's App Bridge session on mobile.
-    const storeHandle = shop.replace(/\\.myshopify\\.com$/i, "");
+    const storeHandle = shop.replace(/\.myshopify\.com$/i, "");
     const appHandle =
       process.env.SHOPIFY_APP_HANDLE?.trim() || "virello-ai-optimizer";
     const redirectUrl = new URL(
