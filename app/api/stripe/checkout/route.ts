@@ -8,8 +8,10 @@ import {
   clearSubscriberCookie,
   createStripeCheckoutSession,
   getCheckoutSubscription,
+  saveShopSubscription,
   setSubscriberCookie,
 } from "../../_lib/subscriber";
+import { authenticateShopifyRequest } from "../../_lib/shopify-auth";
 
 function getErrorDetails(error: unknown): {
   message: string;
@@ -37,12 +39,13 @@ export async function POST(
   request: NextRequest
 ) {
   try {
-    const origin =
-      new URL(request.url).origin;
+    const origin = new URL(request.url).origin;
+    const { shop } = await authenticateShopifyRequest(request, false);
 
     const checkoutUrl =
       await createStripeCheckoutSession(
-        origin
+        origin,
+        shop
       );
 
     return NextResponse.json(
@@ -98,14 +101,16 @@ export async function GET(
   }
 
   try {
-    const subscription =
+    const checkout =
       await getCheckoutSubscription(
         sessionId
       );
 
+    await saveShopSubscription(checkout.shop, checkout.subscription);
+
     const cookieValue =
       buildSubscriberCookieValue(
-        subscription
+        checkout.subscription
       );
 
     const redirectUrl =

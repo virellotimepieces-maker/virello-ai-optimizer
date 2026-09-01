@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { shopifyFetch } from "./shopify-fetch";
 
 type Product = {
   id: string;
@@ -80,7 +81,7 @@ export default function Home() {
 
     async function loadSubscriberStatus() {
       try {
-        const response = await fetch("/api/subscriber/status", {
+        const response = await shopifyFetch("/api/subscriber/status", {
           method: "GET",
           credentials: "include",
           cache: "no-store",
@@ -116,7 +117,7 @@ export default function Home() {
     setMessage("");
 
     try {
-      const response = await fetch("/api/stripe/checkout", {
+      const response = await shopifyFetch("/api/stripe/checkout", {
         method: "POST",
         credentials: "include",
       });
@@ -150,7 +151,7 @@ export default function Home() {
     setMessage("");
 
     try {
-      const response = await fetch("/api/stripe/portal", {
+      const response = await shopifyFetch("/api/stripe/portal", {
         method: "POST",
         credentials: "include",
       });
@@ -189,7 +190,7 @@ export default function Home() {
     setMessage("");
 
     try {
-      const response = await fetch(
+      const response = await shopifyFetch(
         "/api/stores/products?platform=shopify",
         {
           method: "GET",
@@ -264,7 +265,7 @@ export default function Home() {
     setSavedToShopify(false);
 
     try {
-      const response = await fetch("/api/ai/analyze", {
+      const response = await shopifyFetch("/api/ai/analyze", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -326,7 +327,7 @@ export default function Home() {
     try {
       const optimization = result.optimization;
 
-      const response = await fetch(
+      const response = await shopifyFetch(
         "/api/shopify/save-product",
         {
           method: "POST",

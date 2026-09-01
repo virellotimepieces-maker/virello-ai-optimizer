@@ -1,6 +1,7 @@
 import { createHmac, timingSafeEqual } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { decryptShopifyToken, SHOPIFY_TOKEN_COOKIE } from "../../_lib/shopify-session";
+import { authenticateShopifyRequest } from "../../_lib/shopify-auth";
 
 const SHOPIFY_API_VERSION = "2026-07";
 const SHOPIFY_MYSHOPIFY_SUFFIX = ".myshopify.com";
@@ -328,114 +329,7 @@ export async function POST(
   request: NextRequest
 ) {
   try {
-    const sessionToken =
-      getSessionToken(request);
-
-    const cookieAccessToken = decryptShopifyToken(
-      request.cookies.get(SHOPIFY_TOKEN_COOKIE)?.value || ""
-    );
-
-    const cookieShopRaw =
-      request.cookies.get(
-        "virello_shopify_shop"
-      )?.value?.trim() || "";
-
-    const cookieShop =
-      normalizeShop(cookieShopRaw);
-
-    let shop = "";
-    let accessToken = "";
-
-    /*
-     * If a Shopify session token is present,
-     * verify it first and derive the shop from
-     * the signed token. Never trust the shop
-     * header over the signed token.
-     */
-    if (sessionToken) {
-      const verified =
-        verifyShopifySessionToken(
-          sessionToken
-        );
-
-      if (!verified.valid || !verified.shop) {
-        return errorResponse(
-          "Invalid or expired Shopify session token.",
-          401
-        );
-      }
-
-      shop = verified.shop;
-
-      const headerShop =
-        normalizeShop(
-          request.headers.get(
-            "x-shopify-shop"
-          ) || ""
-        );
-
-      if (
-        headerShop &&
-        headerShop !== shop
-      ) {
-        return errorResponse(
-          "Shopify shop header does not match the authenticated session.",
-          403
-        );
-      }
-
-      /*
-       * If cookies exist, they must belong to
-       * the same authenticated Shopify shop.
-       */
-      if (
-        cookieAccessToken &&
-        cookieShop &&
-        cookieShop !== shop
-      ) {
-        return errorResponse(
-          "Shopify shop cookie does not match the authenticated session.",
-          403
-        );
-      }
-
-      /*
-       * Prefer an existing access-token cookie,
-       * otherwise exchange the verified session token.
-       */
-      if (
-        cookieAccessToken &&
-        cookieShop === shop
-      ) {
-        accessToken =
-          cookieAccessToken;
-      } else {
-        accessToken =
-          await exchangeToken(
-            shop,
-            sessionToken
-          );
-      }
-    } else {
-      /*
-       * Cookie-only requests are accepted only
-       * when BOTH cookies are present and the
-       * shop cookie is a valid myshopify domain.
-       */
-      if (
-        !cookieAccessToken ||
-        !cookieShop
-      ) {
-        return errorResponse(
-          "Shopify connection is missing.",
-          401
-        );
-      }
-
-      shop = cookieShop;
-      accessToken =
-        cookieAccessToken;
-    }
+    const { shop, accessToken } = await authenticateShopifyRequest(request);
 
     const body = await request.json();
 

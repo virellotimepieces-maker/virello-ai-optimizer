@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { decryptShopifyToken, SHOPIFY_TOKEN_COOKIE } from "../../_lib/shopify-session";
+import { authenticateShopifyRequest } from "../../_lib/shopify-auth";
 
 const SHOPIFY_API_VERSION = "2026-07";
 
@@ -61,38 +61,7 @@ export async function POST(
      * token exchange here.
      */
 
-    const accessToken = decryptShopifyToken(
-      request.cookies.get(SHOPIFY_TOKEN_COOKIE)?.value || ""
-    );
-
-    const savedShop =
-      request.cookies.get(
-        "virello_shopify_shop"
-      )?.value || "";
-
-    const shop =
-      cleanShopDomain(savedShop);
-
-    /*
-     * Make sure the standalone OAuth
-     * connection exists.
-     */
-    if (!accessToken) {
-      return jsonError(
-        "Shopify connection is missing. Please connect your Shopify store again.",
-        401
-      );
-    }
-
-    if (
-      !shop ||
-      !isValidShopDomain(shop)
-    ) {
-      return jsonError(
-        "Shopify store information is missing or invalid. Please reconnect your store.",
-        401
-      );
-    }
+    const { shop, accessToken } = await authenticateShopifyRequest(request);
 
     /*
      * Read request body.

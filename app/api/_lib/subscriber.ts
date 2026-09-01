@@ -1,6 +1,7 @@
 import { createHmac, timingSafeEqual } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
-import { neon } from "@neondatabase/serverless";
+import { database, ensureDatabaseSchema } from "./database";
+import { authenticateShopifyRequest, normalizeShop } from "./shopify-auth";
 
 class ApiError extends Error {
   status: number;
@@ -45,6 +46,11 @@ type SubscriptionSnapshot = {
   currentPeriodEnd: number;
 };
 
+export type CheckoutSubscription = {
+  shop: string;
+  subscription: SubscriptionSnapshot;
+};
+
 export type SubscriberUsage = {
   limit: number;
   used: number;
@@ -69,19 +75,6 @@ function getStripeSecret(): string {
   }
 
   return secret;
-}
-
-function getDatabaseUrl(): string {
-  const databaseUrl = process.env.DATABASE_URL;
-
-  if (!databaseUrl) {
-    throw new ApiError(
-      "DATABASE_URL is not configured.",
-      500
-    );
-  }
-
-  return databaseUrl;
 }
 
 function getCookieSecret(stripeSecret: string): string {
@@ -190,7 +183,7 @@ function decodeSubscriberPayload(
   }
 }
 
-async function stripeRequest<T>(
+export async function stripeRequest<T>(
   path: string,
   options: {
     method?: "GET" | "POST";
@@ -266,17 +259,26 @@ function normalizeSubscription(
         ? customer.id
         : "";
 
+  // Stripe Basil moved billing periods from Subscription to SubscriptionItem.
+  const firstItem = Array.isArray(data?.items?.data)
+    ? data.items.data[0]
+    : null;
+
   const periodStart =
     typeof data?.current_period_start === "number"
       ? data.current_period_start
-      : 0;
+      : typeof firstItem?.current_period_start === "number"
+        ? firstItem.current_period_start
+        : 0;
 
   const periodEnd =
     typeof data?.current_period_end === "number"
       ? data.current_period_end
-      : 0;
+      : typeof firstItem?.current_period_end === "number"
+        ? firstItem.current_period_end
+        : 0;
 
-  if (!id || !customerId || !status) {
+  if (!id || !customerId || !status || !periodStart || !periodEnd) {
     throw new ApiError(
       "Stripe subscription payload is invalid.",
       502
@@ -290,6 +292,13 @@ function normalizeSubscription(
     currentPeriodStart: periodStart,
     currentPeriodEnd: periodEnd,
   };
+}
+
+export async function saveStripeSubscriptionPayload(
+  shop: string,
+  payload: unknown
+): Promise<void> {
+  await saveShopSubscription(shop, normalizeSubscription(payload));
 }
 
 function ensureActiveStatus(
@@ -326,7 +335,8 @@ function ensureActiveStatus(
 }
 
 export async function createStripeCheckoutSession(
-  origin: string
+  origin: string,
+  shop: string
 ): Promise<string> {
   const priceId = process.env.STRIPE_PRICE_ID;
 
@@ -366,6 +376,10 @@ export async function createStripeCheckoutSession(
     "auto"
   );
 
+  body.set("client_reference_id", shop);
+  body.set("metadata[shop]", shop);
+  body.set("subscription_data[metadata][shop]", shop);
+
   const session =
     await stripeRequest<{ url?: string }>(
       "checkout/sessions",
@@ -387,7 +401,7 @@ export async function createStripeCheckoutSession(
 
 export async function getCheckoutSubscription(
   sessionId: string
-): Promise<SubscriptionSnapshot> {
+): Promise<CheckoutSubscription> {
   const checkoutSession =
     await stripeRequest<any>(
       `checkout/sessions/${encodeURIComponent(
@@ -419,14 +433,82 @@ export async function getCheckoutSubscription(
       )}`
     );
 
-  return normalizeSubscription(subscription);
+  const shop = normalizeShop(
+    checkoutSession?.client_reference_id ||
+    checkoutSession?.metadata?.shop ||
+    subscription?.metadata?.shop ||
+    ""
+  );
+
+  if (!shop) {
+    throw new ApiError("Stripe checkout is not linked to a Shopify store.", 400);
+  }
+
+  return { shop, subscription: normalizeSubscription(subscription) };
+}
+
+export async function saveShopSubscription(
+  shop: string,
+  subscription: SubscriptionSnapshot
+): Promise<void> {
+  const normalizedShop = normalizeShop(shop);
+  if (!normalizedShop) throw new ApiError("Invalid Shopify store.", 400);
+  const sql = database();
+  await ensureDatabaseSchema();
+  await sql`
+    INSERT INTO shop_subscriptions (
+      shop, stripe_customer_id, stripe_subscription_id, status,
+      current_period_start, current_period_end, updated_at
+    ) VALUES (
+      ${normalizedShop}, ${subscription.customerId}, ${subscription.subscriptionId},
+      ${subscription.status}, ${subscription.currentPeriodStart},
+      ${subscription.currentPeriodEnd}, NOW()
+    )
+    ON CONFLICT (shop) DO UPDATE SET
+      stripe_customer_id = EXCLUDED.stripe_customer_id,
+      stripe_subscription_id = EXCLUDED.stripe_subscription_id,
+      status = EXCLUDED.status,
+      current_period_start = EXCLUDED.current_period_start,
+      current_period_end = EXCLUDED.current_period_end,
+      updated_at = NOW()
+  `;
+}
+
+export async function subscriptionForShop(shop: string): Promise<SubscriptionSnapshot | null> {
+  const sql = database();
+  await ensureDatabaseSchema();
+  const rows = await sql`
+    SELECT stripe_customer_id, stripe_subscription_id, status,
+           current_period_start, current_period_end
+    FROM shop_subscriptions
+    WHERE shop = ${shop}
+    LIMIT 1
+  `;
+  if (!rows.length) return null;
+  return {
+    customerId: String(rows[0].stripe_customer_id),
+    subscriptionId: String(rows[0].stripe_subscription_id),
+    status: String(rows[0].status),
+    currentPeriodStart: Number(rows[0].current_period_start),
+    currentPeriodEnd: Number(rows[0].current_period_end),
+  };
+}
+
+export async function refreshShopSubscription(shop: string): Promise<SubscriptionSnapshot | null> {
+  const saved = await subscriptionForShop(shop);
+  if (!saved) return null;
+  const fresh = normalizeSubscription(await stripeRequest<any>(
+    `subscriptions/${encodeURIComponent(saved.subscriptionId)}`
+  ));
+  await saveShopSubscription(shop, fresh);
+  return fresh;
 }
 
 async function updateUsageState(
   subscription: SubscriptionSnapshot
 ): Promise<SubscriberUsage> {
-  const databaseUrl = getDatabaseUrl();
-  const sql = neon(databaseUrl);
+  const sql = database();
+  await ensureDatabaseSchema();
   const limit = getUsageLimit();
 
   const rows = await sql`
@@ -482,44 +564,12 @@ export async function authorizeSubscriberForAI(
   cookieValue: string;
   usage: SubscriberUsage;
 }> {
-  const stripeSecret = getStripeSecret();
+  const { shop } = await authenticateShopifyRequest(request, false);
+  const refreshedSubscription = await refreshShopSubscription(shop);
 
-  const cookieSecret =
-    getCookieSecret(stripeSecret);
-
-  const encoded =
-    request.cookies.get(
-      SUBSCRIBER_COOKIE
-    )?.value || "";
-
-  if (!encoded) {
-    throw new ApiError(
-      "An active subscription is required to use AI optimization.",
-      402
-    );
+  if (!refreshedSubscription) {
+    throw new ApiError("An active subscription is required to use AI optimization.", 402);
   }
-
-  const subscriber =
-    decodeSubscriberPayload(
-      encoded,
-      cookieSecret
-    );
-
-  if (!subscriber) {
-    throw new ApiError(
-      "Subscriber session is invalid. Please complete checkout again.",
-      401
-    );
-  }
-
-  const refreshedSubscription =
-    normalizeSubscription(
-      await stripeRequest<any>(
-        `subscriptions/${encodeURIComponent(
-          subscriber.subscriptionId
-        )}`
-      )
-    );
 
   ensureActiveStatus(
     refreshedSubscription.status
@@ -550,10 +600,7 @@ export async function authorizeSubscriberForAI(
 
   return {
     cookieValue:
-      encodeSubscriberPayload(
-        payload,
-        cookieSecret
-      ),
+      encodeSubscriberPayload(payload, getCookieSecret(getStripeSecret())),
     usage,
   };
 }
@@ -570,7 +617,7 @@ export function setSubscriberCookie(
       secure:
         process.env.NODE_ENV ===
         "production",
-      sameSite: "lax",
+      sameSite: "none",
       path: "/",
       maxAge: 60 * 60 * 24 * 32,
     }
@@ -588,7 +635,7 @@ export function clearSubscriberCookie(
       secure:
         process.env.NODE_ENV ===
         "production",
-      sameSite: "lax",
+      sameSite: "none",
       path: "/",
       maxAge: 0,
     }
@@ -634,35 +681,9 @@ export async function hasActiveSubscriber(
   request: NextRequest
 ): Promise<boolean> {
   try {
-    const stripeSecret = getStripeSecret();
-
-    const encoded =
-      request.cookies.get(
-        SUBSCRIBER_COOKIE
-      )?.value || "";
-
-    if (!encoded) {
-      return false;
-    }
-
-    const subscriber =
-      decodeSubscriberPayload(
-        encoded,
-        getCookieSecret(stripeSecret)
-      );
-
-    if (!subscriber) {
-      return false;
-    }
-
-    const subscription =
-      normalizeSubscription(
-        await stripeRequest<any>(
-          `subscriptions/${encodeURIComponent(
-            subscriber.subscriptionId
-          )}`
-        )
-      );
+    const { shop } = await authenticateShopifyRequest(request, false);
+    const subscription = await refreshShopSubscription(shop);
+    if (!subscription) return false;
 
     ensureActiveStatus(
       subscription.status
@@ -683,45 +704,11 @@ export async function getActiveSubscriberStatus(
   request: NextRequest
 ): Promise<ActiveSubscriberStatus> {
   try {
-    const stripeSecret = getStripeSecret();
-
-    const encoded =
-      request.cookies.get(
-        SUBSCRIBER_COOKIE
-      )?.value || "";
-
-    if (!encoded) {
-      return {
-        active: false,
-        customerId: null,
-        subscriptionId: null,
-        status: null,
-      };
+    const { shop } = await authenticateShopifyRequest(request, false);
+    const subscription = await refreshShopSubscription(shop);
+    if (!subscription) {
+      return { active: false, customerId: null, subscriptionId: null, status: null };
     }
-
-    const subscriber =
-      decodeSubscriberPayload(
-        encoded,
-        getCookieSecret(stripeSecret)
-      );
-
-    if (!subscriber) {
-      return {
-        active: false,
-        customerId: null,
-        subscriptionId: null,
-        status: null,
-      };
-    }
-
-    const subscription =
-      normalizeSubscription(
-        await stripeRequest<any>(
-          `subscriptions/${encodeURIComponent(
-            subscriber.subscriptionId
-          )}`
-        )
-      );
 
     const active =
       subscription.status === "active" ||

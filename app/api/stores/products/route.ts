@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { decryptShopifyToken, SHOPIFY_TOKEN_COOKIE } from "../../_lib/shopify-session";
+import { authenticateShopifyRequest } from "../../_lib/shopify-auth";
 
 const SHOPIFY_API_VERSION = "2026-07";
 const SHOPIFY_MYSHOPIFY_SUFFIX = ".myshopify.com";
@@ -52,23 +52,7 @@ function errorResponse(message: string, status: number) {
 
 export async function GET(request: NextRequest) {
   try {
-    const accessToken = decryptShopifyToken(
-      request.cookies.get(SHOPIFY_TOKEN_COOKIE)?.value || ""
-    );
-
-    const shopCookie =
-      request.cookies
-        .get("virello_shopify_shop")
-        ?.value?.trim() || "";
-
-    const shop = normalizeShop(shopCookie);
-
-    if (!accessToken || !shop) {
-      return errorResponse(
-        "Shopify connection is missing. Please connect your store again.",
-        401
-      );
-    }
+    const { shop, accessToken } = await authenticateShopifyRequest(request);
 
     const query = `
       query GetProducts {

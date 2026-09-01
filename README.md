@@ -26,9 +26,15 @@ SHOPIFY_API_SECRET=...
 SHOPIFY_TOKEN_ENCRYPTION_KEY=at-least-32-random-characters
 ```
 
-Run `migrations/001_subscriber_usage.sql` once against `DATABASE_URL` before launch.
+The production server initializes the required tables automatically. The SQL files in
+`migrations/` are retained for auditing and manual database administration.
 
-The Shopify token encryption key must remain stable after stores connect. Changing it invalidates existing encrypted Shopify sessions and requires merchants to reconnect.
+The Shopify token encryption key must remain stable after stores connect. Changing it
+invalidates stored encrypted Shopify sessions and requires merchants to reconnect.
+
+Shopify uses managed installation, App Bridge ID tokens, offline token exchange, and
+server-side encrypted sessions. Deploy `shopify.app.toml` with Shopify CLI before app
+review so the embedded setting, scopes, redirect URL, and mandatory webhooks are active.
 
 In Stripe, configure the production webhook endpoint as
 `https://virello-ai-optimizer.vercel.app/api/stripe/webhook` and subscribe to checkout,

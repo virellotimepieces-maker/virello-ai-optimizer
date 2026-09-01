@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { shopifyFetch } from "../shopify-fetch";
 
 type ConnectionStatus = {
   success?: boolean;
@@ -37,7 +38,7 @@ export default function ConnectPage() {
     setError("");
 
     try {
-      const response = await fetch("/status", {
+      const response = await shopifyFetch("/status", {
         method: "GET",
         credentials: "include",
         cache: "no-store",

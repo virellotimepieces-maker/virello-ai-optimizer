@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import crypto from "crypto";
+import { deleteShopifyData } from "../_lib/shopify-auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -68,9 +69,14 @@ export async function POST(request: Request) {
     );
 
     switch (topic) {
+      case "app/uninstalled":
+      case "shop/redact":
+        if (shop) await deleteShopifyData(shop);
+        break;
+
       case "customers/data_request":
       case "customers/redact":
-      case "shop/redact":
+        // Virello does not store Shopify customer data.
         break;
 
       default:

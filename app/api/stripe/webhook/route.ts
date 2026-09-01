@@ -6,6 +6,13 @@ import {
 import {
   NextResponse,
 } from "next/server";
+import { database, ensureDatabaseSchema } from "../../_lib/database";
+import { normalizeShop } from "../../_lib/shopify-auth";
+import {
+  getCheckoutSubscription,
+  saveShopSubscription,
+  saveStripeSubscriptionPayload,
+} from "../../_lib/subscriber";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -161,6 +168,8 @@ export async function POST(
         id?: string;
         customer?: string;
         status?: string;
+        client_reference_id?: string;
+        metadata?: { shop?: string };
       };
     };
   };
@@ -183,23 +192,32 @@ export async function POST(
   const object =
     event.data?.object;
 
+  if (!event.id || !event.type || !object) {
+    return NextResponse.json({ received: false, error: "Incomplete Stripe event." }, { status: 400 });
+  }
+
+  const sql = database();
+  await ensureDatabaseSchema();
+  const duplicate = await sql`
+    SELECT event_id FROM stripe_webhook_events WHERE event_id = ${event.id} LIMIT 1
+  `;
+  if (duplicate.length) {
+    return NextResponse.json({ received: true, duplicate: true });
+  }
+
   switch (event.type) {
     case "checkout.session.completed":
+      if (!object.id) throw new Error("Stripe checkout event has no session ID.");
+      const checkout = await getCheckoutSubscription(object.id);
+      await saveShopSubscription(checkout.shop, checkout.subscription);
+      break;
+
     case "customer.subscription.created":
     case "customer.subscription.updated":
     case "customer.subscription.deleted":
-    case "invoice.paid":
-    case "invoice.payment_failed":
-      console.log(
-        "STRIPE_SUBSCRIPTION_EVENT",
-        {
-          eventId: event.id,
-          type: event.type,
-          objectId: object?.id,
-          customer: object?.customer,
-          status: object?.status,
-        }
-      );
+      const shop = normalizeShop(object.metadata?.shop || "");
+      if (!shop) throw new Error("Stripe subscription is not linked to a Shopify store.");
+      await saveStripeSubscriptionPayload(shop, object);
       break;
 
     default:
@@ -211,6 +229,12 @@ export async function POST(
         }
       );
   }
+
+  await sql`
+    INSERT INTO stripe_webhook_events (event_id)
+    VALUES (${event.id})
+    ON CONFLICT (event_id) DO NOTHING
+  `;
 
   return NextResponse.json(
     {

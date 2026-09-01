@@ -7,6 +7,7 @@ import {
   encryptShopifyToken,
   SHOPIFY_TOKEN_COOKIE,
 } from "../../../_lib/shopify-session";
+import { saveShopifySession } from "../../../_lib/shopify-auth";
 
 function hasValidShopifyHmac(request: NextRequest, secret: string): boolean {
   const supplied = request.nextUrl.searchParams.get("hmac") || "";
@@ -238,6 +239,10 @@ export async function GET(
           "Shopify authorization failed."
       );
     }
+
+    // The database is the durable source of truth. Cookies are kept only
+    // as a standalone-browser compatibility path.
+    await saveShopifySession(shop, data.access_token, data.scope || "");
 
     const redirectUrl =
       new URL(

@@ -1,60 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { decryptShopifyToken, SHOPIFY_TOKEN_COOKIE } from "../api/_lib/shopify-session";
-
-function cleanShopDomain(value: string): string {
-  return value
-    .trim()
-    .toLowerCase()
-    .replace(/^https?:\/\//, "")
-    .replace(/^www\./, "")
-    .replace(/\/+$/, "")
-    .replace(/\/.*$/, "")
-    .replace(
-      /(\.myshopify\.com){2,}$/,
-      ".myshopify.com"
-    );
-}
-
-function isValidShopDomain(value: string): boolean {
-  return /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.myshopify\.com$/i.test(
-    value
-  );
-}
+import { authenticateShopifyRequest } from "../api/_lib/shopify-auth";
 
 export async function GET(request: NextRequest) {
   try {
-    const shop = cleanShopDomain(
-      request.cookies.get(
-        "virello_shopify_shop"
-      )?.value || ""
-    );
-
-    const accessToken = decryptShopifyToken(
-      request.cookies.get(SHOPIFY_TOKEN_COOKIE)?.value || ""
-    );
-
-    if (
-      !shop ||
-      !isValidShopDomain(shop) ||
-      !accessToken
-    ) {
-      return NextResponse.json(
-        {
-          success: false,
-          connected: false,
-          platform: "shopify",
-          error:
-            "Shopify connection is missing. Please connect your store again.",
-        },
-        {
-          status: 401,
-          headers: {
-            "Cache-Control":
-              "no-store, no-cache, must-revalidate",
-          },
-        }
-      );
-    }
+    const { shop } = await authenticateShopifyRequest(request);
 
     return NextResponse.json(
       {
@@ -82,8 +31,9 @@ export async function GET(request: NextRequest) {
         success: false,
         connected: false,
         platform: "shopify",
-        error:
-          "Unable to verify Shopify connection. Please reconnect the store.",
+          error: error instanceof Error
+            ? error.message
+            : "Unable to verify Shopify connection.",
       },
       {
         status: 500,

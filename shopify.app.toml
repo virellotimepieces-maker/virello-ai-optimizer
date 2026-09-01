@@ -4,9 +4,9 @@ client_id = "99a9fad60d48cb24828f243360fffc40"
 
 application_url = "https://virello-ai-optimizer.vercel.app"
 
-embedded = false
+embedded = true
 
-use_legacy_install_flow = true
+use_legacy_install_flow = false
 
 [access_scopes]
 
@@ -17,3 +17,10 @@ scopes = "read_products,write_products"
 redirect_urls = [
   "https://virello-ai-optimizer.vercel.app/api/auth/shopify/callback"
 ]
+
+[webhooks]
+api_version = "2026-07"
+
+[[webhooks.subscriptions]]
+topics = ["app/uninstalled", "customers/data_request", "customers/redact", "shop/redact"]
+uri = "/api/webhooks"

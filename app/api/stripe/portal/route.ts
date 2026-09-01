@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { SUBSCRIBER_COOKIE } from "../../_lib/subscriber";
+import { getActiveSubscriberStatus } from "../../_lib/subscriber";
 
 export const runtime = "nodejs";
 
@@ -43,35 +43,9 @@ async function stripeRequest(
 
 export async function POST(request: NextRequest) {
   try {
-    const subscriberCookie =
-      request.cookies.get(SUBSCRIBER_COOKIE)?.value || "";
-
-    if (!subscriberCookie) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: "An active subscription is required.",
-        },
-        { status: 401 }
-      );
-    }
-
-    const statusResponse = await fetch(
-      new URL("/api/subscriber/status", request.nextUrl.origin),
-      {
-        method: "GET",
-        headers: {
-          cookie: request.headers.get("cookie") || "",
-        },
-        cache: "no-store",
-      }
-    );
-
-    const status = await statusResponse.json();
+    const status = await getActiveSubscriberStatus(request);
 
     if (
-      !statusResponse.ok ||
-      !status?.success ||
       !status?.active ||
       !status?.customerId
     ) {
