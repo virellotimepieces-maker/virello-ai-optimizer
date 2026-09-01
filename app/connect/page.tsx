@@ -14,6 +14,8 @@ type ConnectionStatus = {
 export default function ConnectPage() {
   const [loading, setLoading] = useState(true);
   const [connecting, setConnecting] = useState(false);
+  const [subscriberActive, setSubscriberActive] = useState(false);
+  const [billingLoading, setBillingLoading] = useState(false);
   const [shop, setShop] = useState("");
   const [status, setStatus] =
     useState<ConnectionStatus | null>(null);
@@ -33,7 +35,80 @@ export default function ConnectPage() {
     }
 
     checkShopifyConnection();
+    checkSubscriberStatus();
   }, []);
+
+  async function checkSubscriberStatus() {
+    try {
+      const response = await shopifyFetch(
+        "/api/subscriber/status",
+        {
+          method: "GET",
+          credentials: "include",
+          cache: "no-store",
+        }
+      );
+      const data = await response
+        .json()
+        .catch(() => null);
+
+      setSubscriberActive(
+        response.ok &&
+        data?.success &&
+        data?.active === true
+      );
+    } catch {
+      setSubscriberActive(false);
+    }
+  }
+
+  async function handleSubscription() {
+    if (billingLoading) return;
+
+    if (!subscriberActive) {
+      window.location.assign("/?checkout=true");
+      return;
+    }
+
+    setBillingLoading(true);
+    setError("");
+
+    try {
+      const response = await shopifyFetch(
+        "/api/stripe/portal",
+        {
+          method: "POST",
+          credentials: "include",
+        }
+      );
+      const data = await response
+        .json()
+        .catch(() => null);
+
+      if (!response.ok || !data?.url) {
+        throw new Error(
+          data?.error ||
+          "Unable to open subscription management."
+        );
+      }
+
+      const opened = window.open(
+        data.url,
+        "_top"
+      );
+
+      if (!opened) {
+        window.location.assign(data.url);
+      }
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Unable to open subscription management."
+      );
+      setBillingLoading(false);
+    }
+  }
 
   async function checkShopifyConnection() {
     setLoading(true);
@@ -170,13 +245,14 @@ export default function ConnectPage() {
           <button
             type="button"
             className="subscribe-button"
-            onClick={() =>
-              window.location.assign(
-                "/?checkout=true"
-              )
-            }
+            onClick={handleSubscription}
+            disabled={billingLoading}
           >
-            Subscribe
+            {billingLoading
+              ? "Opening..."
+              : subscriberActive
+                ? "Manage Subscription"
+                : "Subscribe"}
           </button>
         </div>
       </header>
