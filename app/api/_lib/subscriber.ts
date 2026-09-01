@@ -325,6 +325,23 @@ function ensureActiveStatus(
   );
 }
 
+function getEmbeddedShopifyAppUrl(
+  shop: string,
+  checkout: "cancelled"
+): string {
+  const storeHandle = shop.replace(/\.myshopify\.com$/i, "");
+  const appHandle =
+    process.env.SHOPIFY_APP_HANDLE?.trim() ||
+    "virello-ai-optimizer";
+  const url = new URL(
+    `/store/${encodeURIComponent(storeHandle)}/apps/${encodeURIComponent(appHandle)}`,
+    "https://admin.shopify.com"
+  );
+  url.searchParams.set("shop", shop);
+  url.searchParams.set("checkout", checkout);
+  return url.toString();
+}
+
 export async function createStripeCheckoutSession(
   origin: string,
   shop: string
@@ -359,7 +376,7 @@ export async function createStripeCheckoutSession(
 
   body.set(
     "cancel_url",
-    `${origin}/?checkout=cancelled`
+    getEmbeddedShopifyAppUrl(shop, "cancelled")
   );
 
   body.set(
