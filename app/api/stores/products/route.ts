@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { decryptShopifyToken, SHOPIFY_TOKEN_COOKIE } from "../../_lib/shopify-session";
 
 const SHOPIFY_API_VERSION = "2026-07";
 const SHOPIFY_MYSHOPIFY_SUFFIX = ".myshopify.com";
@@ -51,10 +52,9 @@ function errorResponse(message: string, status: number) {
 
 export async function GET(request: NextRequest) {
   try {
-    const accessToken =
-      request.cookies
-        .get("virello_shopify_access_token")
-        ?.value?.trim() || "";
+    const accessToken = decryptShopifyToken(
+      request.cookies.get(SHOPIFY_TOKEN_COOKIE)?.value || ""
+    );
 
     const shopCookie =
       request.cookies
