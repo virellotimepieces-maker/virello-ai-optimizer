@@ -98,7 +98,7 @@ export async function GET(request: NextRequest) {
       {
         httpOnly: true,
         secure: true,
-        sameSite: "lax",
+        sameSite: "none",
         path: "/",
         maxAge: 600,
       }
@@ -113,7 +113,7 @@ export async function GET(request: NextRequest) {
       {
         httpOnly: true,
         secure: true,
-        sameSite: "lax",
+        sameSite: "none",
         path: "/",
         maxAge: 600,
       }
@@ -132,7 +132,7 @@ export async function GET(request: NextRequest) {
       {
         httpOnly: true,
         secure: true,
-        sameSite: "lax",
+        sameSite: "none",
         path: "/",
         maxAge: 600,
       }
