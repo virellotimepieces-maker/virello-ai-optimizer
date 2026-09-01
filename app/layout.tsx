@@ -2,6 +2,9 @@ import type { ReactNode } from "react";
 import "../styles.css";
 import { getShopifyClientId } from "./api/_lib/shopify-config";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 export const metadata = {
   title: "Virello AI Optimizer",
   description: "AI-powered product optimization for Shopify stores.",
