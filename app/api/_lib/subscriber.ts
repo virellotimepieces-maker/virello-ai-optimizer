@@ -754,7 +754,21 @@ export async function getActiveSubscriberStatus(
   request: NextRequest
 ): Promise<ActiveSubscriberStatus> {
   try {
-    const { shop } = await authenticateShopifyRequest(request, false);
+    let shop = "";
+
+    try {
+      shop = (await authenticateShopifyRequest(request, false)).shop;
+    } catch {
+      // Stripe checkout returns through the top-level browser. On mobile,
+      // Shopify and the Vercel page can use partitioned cookie jars, so
+      // recover the shop from the separately signed subscriber cookie.
+      shop = await getShopForSubscriberCookie(request);
+    }
+
+    if (!shop) {
+      return { active: false, customerId: null, subscriptionId: null, status: null };
+    }
+
     const subscription = await refreshShopSubscription(shop);
     if (!subscription) {
       return { active: false, customerId: null, subscriptionId: null, status: null };
