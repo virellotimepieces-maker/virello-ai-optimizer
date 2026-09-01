@@ -8,7 +8,11 @@ import {
   SHOPIFY_TOKEN_COOKIE,
 } from "../../../_lib/shopify-session";
 import { saveShopifySession } from "../../../_lib/shopify-auth";
-import { getShopifyClientId, getShopifyClientSecret } from "../../../_lib/shopify-config";
+import {
+  getShopifyClientId,
+  getShopifyClientSecret,
+  getShopifyClientSecrets,
+} from "../../../_lib/shopify-config";
 
 function hasValidShopifyHmac(request: NextRequest, secret: string): boolean {
   const supplied = (request.nextUrl.searchParams.get("hmac") || "").toLowerCase();
@@ -224,7 +228,8 @@ export async function GET(
       );
     }
 
-    if (!hasValidShopifyHmac(request, apiSecret)) {
+    const hmacSecrets = getShopifyClientSecrets();
+    if (!hmacSecrets.some((secret) => hasValidShopifyHmac(request, secret))) {
       return redirectError(returnOrigin, "Shopify authorization signature is invalid.");
     }
 
