@@ -1,3 +1,4 @@
+import { getShopifyClientSecret } from "../_lib/shopify-config";
 import { NextResponse } from "next/server";
 import crypto from "crypto";
 import { deleteShopifyData } from "../_lib/shopify-auth";
@@ -9,7 +10,7 @@ function verifyShopifyHmac(
   body: string,
   hmacHeader: string | null
 ): boolean {
-  const secret = process.env.SHOPIFY_API_SECRET;
+  const secret = getShopifyClientSecret();
 
   if (!secret || !hmacHeader) {
     return false;
