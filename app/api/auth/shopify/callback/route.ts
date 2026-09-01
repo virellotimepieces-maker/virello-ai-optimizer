@@ -217,8 +217,9 @@ export async function GET(
     const cookieStateIsValid = Boolean(
       savedState && savedState === state && savedShop === shop
     );
-    const signedStateIsValid =
-      getShopFromSignedState(state, apiSecret) === shop;
+    const signedStateIsValid = getShopifyClientSecrets().some(
+      (secret) => getShopFromSignedState(state, secret) === shop
+    );
 
     if (!cookieStateIsValid && !signedStateIsValid) {
       console.error("SHOPIFY_OAUTH_STATE_MISMATCH");
@@ -249,7 +250,8 @@ export async function GET(
             new URLSearchParams({
               client_id: apiKey,
               // The same credential that verified Shopify's callback must be
-              // used to redeem its authorization code during secret rotation.
+              // used to redeem its authorization code. This matters during a
+              // controlled secret rotation while both credentials are valid.
               client_secret: verifiedSecret,
               code,
             }).toString(),
