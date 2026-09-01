@@ -1,5 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import { randomBytes } from "crypto";
+import { createHmac, randomBytes } from "crypto";
+
+function createSignedOAuthState(shop: string, secret: string) {
+  const payload = Buffer.from(
+    JSON.stringify({ shop, nonce: randomBytes(24).toString("hex"), timestamp: Date.now() })
+  ).toString("base64url");
+  const signature = createHmac("sha256", secret).update(payload).digest("base64url");
+  return `${payload}.${signature}`;
+}
 
 function cleanShopDomain(value: string) {
   return value
@@ -49,22 +57,22 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const apiKey =
-      process.env.SHOPIFY_API_KEY;
+    const apiKey = process.env.SHOPIFY_API_KEY;
+    const apiSecret = process.env.SHOPIFY_API_SECRET;
 
-    if (!apiKey) {
+    if (!apiKey || !apiSecret) {
       return NextResponse.json(
         {
           success: false,
           error:
-            "SHOPIFY_API_KEY is missing in Vercel Environment Variables.",
+            "SHOPIFY_API_KEY or SHOPIFY_API_SECRET is missing in Vercel Environment Variables.",
         },
         { status: 500 }
       );
     }
 
-    const state =
-      randomBytes(32).toString("hex");
+    // Signed state remains verifiable when mobile browsers partition OAuth cookies.
+    const state = createSignedOAuthState(shop, apiSecret);
 
     const redirectUri =
       getShopifyRedirectUri(request);
