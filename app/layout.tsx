@@ -22,7 +22,6 @@ export default function RootLayout({
           name="shopify-api-key"
           content={getShopifyClientId()}
         />
-        <script src="https://cdn.shopify.com/shopifycloud/app-bridge.js"></script>
       </head>
       <body>{children}</body>
     </html>
