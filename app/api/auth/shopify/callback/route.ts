@@ -318,3 +318,39 @@ export async function GET(
       "virello_shopify_oauth_state"
     );
 
+    response.cookies.delete(
+      "virello_shopify_oauth_shop"
+    );
+
+    response.cookies.delete(
+      "virello_return_origin"
+    );
+
+    response.headers.set(
+      "Cache-Control",
+      "no-store, no-cache, must-revalidate"
+    );
+
+    console.log(
+      "SHOPIFY_OAUTH_SUCCESS",
+      {
+        shop,
+        returnOrigin,
+      }
+    );
+
+    return response;
+  } catch (error) {
+    console.error(
+      "SHOPIFY_CALLBACK_ERROR:",
+      error
+    );
+
+    return redirectError(
+      returnOrigin,
+      error instanceof Error
+        ? error.message
+        : "Unable to complete Shopify connection."
+    );
+  }
+}
