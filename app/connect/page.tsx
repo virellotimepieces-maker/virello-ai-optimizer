@@ -203,16 +203,23 @@ export default function ConnectPage() {
      * Admin iframe. Navigate the top-level browsing context so mobile Admin
      * does not fail with net::ERR_BLOCKED_BY_RESPONSE.
      */
-    const opened = window.open(
-      authorizationUrl,
-      "_top"
-    );
-
-    if (!opened) {
-      window.location.assign(
-        authorizationUrl
+    try {
+      if (window.top) {
+        window.top.location.assign(
+          authorizationUrl
+        );
+        return;
+      }
+    } catch (error) {
+      console.error(
+        "SHOPIFY_TOP_NAVIGATION_ERROR",
+        error
       );
     }
+
+    window.location.assign(
+      authorizationUrl
+    );
   }
 
   function continueToVirello() {
