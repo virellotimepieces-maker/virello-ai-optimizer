@@ -187,7 +187,14 @@ export default function Home() {
         );
       }
 
-      window.location.assign(data.url);
+      const opened = window.open(
+        data.url,
+        "_top"
+      );
+
+      if (!opened) {
+        window.location.assign(data.url);
+      }
     } catch (err) {
       setError(
         err instanceof Error
@@ -221,7 +228,14 @@ export default function Home() {
         );
       }
 
-      window.location.assign(data.url);
+      const opened = window.open(
+        data.url,
+        "_top"
+      );
+
+      if (!opened) {
+        window.location.assign(data.url);
+      }
     } catch (err) {
       setError(
         err instanceof Error
