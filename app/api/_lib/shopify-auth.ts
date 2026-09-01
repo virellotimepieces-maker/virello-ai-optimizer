@@ -172,16 +172,24 @@ export async function authenticateShopifyRequest(
   requireAccessToken = true
 ): Promise<{ shop: string; accessToken: string; userId: string }> {
   const idToken = getShopifyIdToken(request);
+  let idTokenError: unknown = null;
 
   if (idToken) {
-    const identity = verifyShopifyIdToken(idToken);
-    if (!requireAccessToken) return { ...identity, accessToken: "" };
+    try {
+      const identity = verifyShopifyIdToken(idToken);
+      if (!requireAccessToken) return { ...identity, accessToken: "" };
 
-    const saved = await storedAccessToken(identity.shop);
-    return {
-      ...identity,
-      accessToken: saved || await exchangeOfflineToken(identity.shop, idToken),
-    };
+      const saved = await storedAccessToken(identity.shop);
+      return {
+        ...identity,
+        accessToken: saved || await exchangeOfflineToken(identity.shop, idToken),
+      };
+    } catch (error) {
+      // An older Shopify app configuration can send an ID token signed for a
+      // different app secret. Preserve secure standalone OAuth compatibility:
+      // use the encrypted, server-issued connection cookies when available.
+      idTokenError = error;
+    }
   }
 
   // Compatibility for merchants using Virello outside the embedded admin.
@@ -190,6 +198,9 @@ export async function authenticateShopifyRequest(
     request.cookies.get(SHOPIFY_TOKEN_COOKIE)?.value || ""
   );
   if (!shop || (requireAccessToken && !accessToken)) {
+    if (idTokenError instanceof Error) {
+      throw idTokenError;
+    }
     throw new ShopifyAuthError("Shopify connection is missing. Please open Virello from Shopify Admin.");
   }
 
