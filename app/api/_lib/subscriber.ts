@@ -685,6 +685,48 @@ export function buildSubscriberCookieValue(
   );
 }
 
+export async function getShopForSubscriberCookie(
+  request: NextRequest
+): Promise<string> {
+  try {
+    const cookieValue =
+      request.cookies.get(SUBSCRIBER_COOKIE)?.value || "";
+
+    if (!cookieValue) {
+      return "";
+    }
+
+    const payload = decodeSubscriberPayload(
+      cookieValue,
+      getCookieSecret(getStripeSecret())
+    );
+
+    if (!payload?.subscriptionId) {
+      return "";
+    }
+
+    const sql = database();
+    await ensureDatabaseSchema();
+
+    const rows = await sql`
+      SELECT shop
+      FROM shop_subscriptions
+      WHERE stripe_subscription_id = ${payload.subscriptionId}
+      LIMIT 1
+    `;
+
+    return normalizeShop(
+      String(rows[0]?.shop || "")
+    );
+  } catch (error) {
+    console.error(
+      "SUBSCRIBER_SHOP_LOOKUP_ERROR:",
+      error
+    );
+    return "";
+  }
+}
+
 export async function hasActiveSubscriber(
   request: NextRequest
 ): Promise<boolean> {
