@@ -23,6 +23,22 @@ function hasValidShopifyHmac(request: NextRequest, secret: string): boolean {
   return timingSafeEqual(Buffer.from(supplied, "hex"), Buffer.from(expected, "hex"));
 }
 
+function getShopFromSignedState(state: string, secret: string): string {
+  try {
+    const [payload, suppliedSignature, extra] = state.split(".");
+    if (!payload || !suppliedSignature || extra) return "";
+    const expectedSignature = createHmac("sha256", secret).update(payload).digest("base64url");
+    const supplied = Buffer.from(suppliedSignature);
+    const expected = Buffer.from(expectedSignature);
+    if (supplied.length !== expected.length || !timingSafeEqual(supplied, expected)) return "";
+    const parsed = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as { shop?: string; timestamp?: number };
+    if (!parsed.shop || !parsed.timestamp || Date.now() - parsed.timestamp > 10 * 60 * 1000) return "";
+    return cleanShopDomain(parsed.shop);
+  } catch {
+    return "";
+  }
+}
+
 function cleanShopDomain(value: string) {
   return value
     .trim()
@@ -125,51 +141,27 @@ export async function GET(
       );
     }
 
-    if (
-      !savedState ||
-      savedState !== state
-    ) {
-      console.error(
-        "SHOPIFY_OAUTH_STATE_MISMATCH"
-      );
+    const apiKey = process.env.SHOPIFY_API_KEY;
+    const apiSecret = process.env.SHOPIFY_API_SECRET;
 
-      return redirectError(
-        returnOrigin,
-        "Invalid Shopify OAuth state. Please start the connection again."
-      );
-    }
-
-    if (
-      !savedShop ||
-      savedShop !== shop
-    ) {
-      console.error(
-        "SHOPIFY_OAUTH_SHOP_MISMATCH",
-        {
-          savedShop,
-          shop,
-        }
-      );
-
-      return redirectError(
-        returnOrigin,
-        "Shopify store does not match the original store."
-      );
-    }
-
-    const apiKey =
-      process.env.SHOPIFY_API_KEY;
-
-    const apiSecret =
-      process.env.SHOPIFY_API_SECRET;
-
-    if (
-      !apiKey ||
-      !apiSecret
-    ) {
+    if (!apiKey || !apiSecret) {
       return redirectError(
         returnOrigin,
         "SHOPIFY_API_KEY or SHOPIFY_API_SECRET is missing in Vercel Environment Variables."
+      );
+    }
+
+    const cookieStateIsValid = Boolean(
+      savedState && savedState === state && savedShop === shop
+    );
+    const signedStateIsValid =
+      getShopFromSignedState(state, apiSecret) === shop;
+
+    if (!cookieStateIsValid && !signedStateIsValid) {
+      console.error("SHOPIFY_OAUTH_STATE_MISMATCH");
+      return redirectError(
+        returnOrigin,
+        "Invalid Shopify OAuth state. Please start the connection again."
       );
     }
 
