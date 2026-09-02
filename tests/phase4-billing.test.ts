@@ -150,6 +150,12 @@ describe("Phase 4 Stripe price and mode", () => {
       "https://app.virello.example"
     );
   });
+
+  it("requires APP_URL for Customer Portal return URLs", () => {
+    delete process.env.APP_URL;
+    expect(() => portalReturnUrl()).toThrow(/APP_URL is not configured/);
+    process.env.APP_URL = "https://app.virello.example";
+  });
 });
 
 describe("Phase 4 access matrix", () => {

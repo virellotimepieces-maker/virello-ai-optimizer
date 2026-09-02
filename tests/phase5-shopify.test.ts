@@ -341,28 +341,30 @@ describe("Phase 5 OAuth start for development shops", () => {
     expect(body.url).not.toContain("admin.shopify.com/store/");
   });
 
-  it("sets Location to {shop}.myshopify.com/admin/oauth/authorize, never admin.shopify.com/store", async () => {
-    const { GET } = await import("../app/api/auth/shopify/route");
-    const request = new NextRequest(
-      "https://app.virello.example/api/auth/shopify?shop=gfd1cp-1v.myshopify.com&flow=standalone",
-      { headers: { accept: "text/html" } }
-    );
-    const response = await GET(request);
-    expect(response.status).toBe(307);
-    const location = response.headers.get("location") || "";
-    const url = new URL(location);
-    expect(url.origin).toBe("https://gfd1cp-1v.myshopify.com");
-    expect(url.pathname).toBe("/admin/oauth/authorize");
-    expect(url.searchParams.get("client_id")).toBe("shopify-client-id");
-    expect(url.searchParams.get("scope")).toBe("read_products,write_products");
-    expect(url.searchParams.get("state")).toBeTruthy();
-    expect(url.searchParams.get("redirect_uri")).toBe(
-      "https://app.virello.example/api/auth/shopify/callback"
-    );
-    expect(location).toContain("https://gfd1cp-1v.myshopify.com/admin/oauth/authorize");
-    expect(location).not.toContain("admin.shopify.com/store/");
-    expect(location).not.toMatch(/https:\/\/gfd1cp-1v\.myshopify\.com\/(\?|$)/);
-  });
+  it.each(["gfd1cp-1v.myshopify.com", "bcya1v-xp.myshopify.com"])(
+    "sets Location to %s/admin/oauth/authorize, never admin.shopify.com/store",
+    async (shop) => {
+      const { GET } = await import("../app/api/auth/shopify/route");
+      const request = new NextRequest(
+        `https://app.virello.example/api/auth/shopify?shop=${shop}&flow=standalone`,
+        { headers: { accept: "text/html" } }
+      );
+      const response = await GET(request);
+      expect(response.status).toBe(307);
+      const location = response.headers.get("location") || "";
+      const url = new URL(location);
+      expect(url.origin).toBe(`https://${shop}`);
+      expect(url.pathname).toBe("/admin/oauth/authorize");
+      expect(url.searchParams.get("client_id")).toBe("shopify-client-id");
+      expect(url.searchParams.get("scope")).toBe("read_products,write_products");
+      expect(url.searchParams.get("state")).toBeTruthy();
+      expect(url.searchParams.get("redirect_uri")).toBe(
+        "https://app.virello.example/api/auth/shopify/callback"
+      );
+      expect(location).toContain(`https://${shop}/admin/oauth/authorize`);
+      expect(location).not.toContain("admin.shopify.com/store/");
+    }
+  );
 
   it("accepts the shop handle without the myshopify suffix", async () => {
     const { GET } = await import("../app/api/auth/shopify/route");

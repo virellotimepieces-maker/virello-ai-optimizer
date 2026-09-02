@@ -326,4 +326,10 @@ describe("APP_URL", () => {
     process.env.APP_URL = "https://app.virello.example/";
     expect(getAppUrl()).toBe("https://app.virello.example");
   });
+
+  it("does not fall back to the request origin when APP_URL is missing", () => {
+    delete process.env.APP_URL;
+    expect(() => getAppUrl("https://evil.example")).toThrow(/APP_URL is not configured/);
+    process.env.APP_URL = "https://app.virello.example";
+  });
 });

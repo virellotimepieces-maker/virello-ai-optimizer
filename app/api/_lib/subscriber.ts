@@ -217,10 +217,11 @@ export function subscriptionPrivilegeChanged(
 }
 
 export async function createStripeCheckoutSession(
-  origin: string,
+  _origin: string,
   shop: string,
   flow: "embedded" | "standalone" = "standalone"
 ): Promise<string> {
+  void _origin;
   const priceId = process.env.STRIPE_PRICE_ID;
 
   if (!priceId) {
@@ -249,7 +250,7 @@ export async function createStripeCheckoutSession(
     "1"
   );
 
-  const appUrl = getAppUrl(origin);
+  const appUrl = getAppUrl();
 
   body.set(
     "success_url",

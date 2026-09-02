@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAppUrl } from "../../_lib/app-url";
 import { isShopifyAdminAuthorizeUrl, normalizeShop } from "../../_lib/shop-domain";
 import {
   buildShopifyAuthorizeUrl,
@@ -97,7 +96,6 @@ export async function GET(request: NextRequest) {
     const authorize = buildShopifyAuthorizeUrl({
       shop,
       flow: "standalone",
-      fallbackOrigin: getAppUrl(request.nextUrl.origin),
     });
     if (
       !isShopifyAdminAuthorizeUrl(authorize.url) ||

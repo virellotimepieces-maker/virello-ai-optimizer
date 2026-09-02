@@ -41,7 +41,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json().catch(() => ({}));
     const identity = await resolveCheckoutShop(request, body);
     await assertRateLimit(tenantRateKey(request, "checkout", identity.shop), 15);
-    const origin = getAppUrl(new URL(request.url).origin);
+    const origin = getAppUrl();
     const checkoutUrl = await createStripeCheckoutSession(
       origin,
       identity.shop,
@@ -98,7 +98,7 @@ export async function GET(request: NextRequest) {
       revokeShopSessions: true,
     });
 
-    const appUrl = getAppUrl(request.nextUrl.origin);
+    const appUrl = getAppUrl();
     const response = NextResponse.redirect(
       checkoutSuccessUrl(appUrl, checkout.shop, checkout.flow)
     );
@@ -108,7 +108,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error("Stripe checkout verification error:", error);
     const details = getErrorDetails(error);
-    const redirectUrl = new URL("/", getAppUrl(request.nextUrl.origin));
+    const redirectUrl = new URL("/", getAppUrl());
     redirectUrl.searchParams.set("checkout", "verification_failed");
     redirectUrl.searchParams.set("error", details.message);
     const response = NextResponse.redirect(redirectUrl);

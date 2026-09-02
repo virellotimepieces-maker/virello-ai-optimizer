@@ -40,6 +40,11 @@ async function stripeRequest(path: string, body?: URLSearchParams) {
 async function assertPortalConfigurationMode(): Promise<void> {
   const configs = await stripeRequest("billing_portal/configurations?active=true&limit=10");
   const items = Array.isArray(configs?.data) ? configs.data : [];
+  if (items.length === 0) {
+    throw new Error(
+      "Stripe Customer Portal is not configured for this Stripe mode."
+    );
+  }
   for (const config of items) {
     if (typeof config?.livemode === "boolean") {
       assertLivemodeMatchesSecret(

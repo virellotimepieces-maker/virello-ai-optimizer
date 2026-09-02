@@ -135,7 +135,7 @@ export function applySessionCookie(
 ): void {
   const options = sessionCookieOptions({
     mode: requestCookieMode(request),
-    secure: isSecureAppUrl(request.nextUrl.origin) || process.env.NODE_ENV === "production",
+    secure: isSecureAppUrl() || process.env.NODE_ENV === "production",
   });
   response.cookies.set(SESSION_COOKIE, sessionId, options);
   clearLegacyCookies(response);

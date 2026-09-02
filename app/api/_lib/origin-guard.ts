@@ -74,7 +74,8 @@ export function isValidPortalReturnUrl(
 ): boolean {
   try {
     const parsed = new URL(candidate);
-    const allowed = new URL(getAppUrl(fallbackOrigin));
+    const allowed = new URL(getAppUrl());
+    void fallbackOrigin;
     return (
       parsed.origin === allowed.origin &&
       !parsed.username &&
@@ -86,8 +87,9 @@ export function isValidPortalReturnUrl(
   }
 }
 
-export function portalReturnUrl(fallbackOrigin = ""): string {
-  return getAppUrl(fallbackOrigin);
+export function portalReturnUrl(_fallbackOrigin = ""): string {
+  void _fallbackOrigin;
+  return getAppUrl();
 }
 
 export function resolvedPortalReturnUrl(

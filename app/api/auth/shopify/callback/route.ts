@@ -29,7 +29,7 @@ function redirectError(origin: string, message: string) {
 }
 
 export async function GET(request: NextRequest) {
-  const returnOrigin = getAppUrl(request.nextUrl.origin);
+  const returnOrigin = getAppUrl();
 
   try {
     const params = request.nextUrl.searchParams;

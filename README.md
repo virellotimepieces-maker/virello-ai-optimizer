@@ -24,7 +24,7 @@ cp .env.example .env.local
 npm run dev
 ```
 
-The app listens on **http://127.0.0.1:43217**. Fill `.env.local` with real values. Do not commit it. `APP_URL` should be the public https origin (Stripe return URLs, CSRF, redirect allowlisting). `STRIPE_PRICE_ID` must be a $29.99/month USD Price in the same mode as `STRIPE_SECRET_KEY`.
+The app listens on **http://127.0.0.1:43217**. Fill `.env.local` with real values. Do not commit it. `APP_URL` should be the public https origin (Stripe return URLs, CSRF, redirect allowlisting). Production must be `https://virello-ai-optimizer.vercel.app`. Do not use the browser Origin as a fallback. `STRIPE_PRICE_ID` must be a $29.99/month USD Price in the same mode as `STRIPE_SECRET_KEY`.
 
 ```bash
 npm test
@@ -60,7 +60,7 @@ Rollback order in a maintenance window (Neon PITR first): `007` → `006` → `0
 
 Set these in `.env.local` and in Vercel Preview/Production. Never commit values.
 
-- `APP_URL` (canonical public origin)
+- `APP_URL` (canonical public origin; Production: `https://virello-ai-optimizer.vercel.app`)
 - `DATABASE_URL`
 - `OPENAI_API_KEY`
 - `OPENAI_MODEL`

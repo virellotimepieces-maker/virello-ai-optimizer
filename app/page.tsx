@@ -180,10 +180,10 @@ export default function Home() {
     try {
       const response = await shopifyFetch("/api/stripe/portal", { method: "POST" });
       const data = await response.json().catch(() => null);
-      if (!response.ok || !data?.url) throw new Error(data?.error || copy.paymentError);
+      if (!response.ok || !data?.url) throw new Error(data?.error || copy.portalError);
       window.location.assign(data.url);
     } catch (err) {
-      showError("payment", err instanceof Error ? err.message : copy.paymentError);
+      showError("payment", err instanceof Error ? err.message : copy.portalError);
       setPortalLoading(false);
     }
   }

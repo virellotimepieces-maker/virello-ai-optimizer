@@ -13,6 +13,10 @@ export default defineConfig({
     url: "http://127.0.0.1:43217",
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
+    env: {
+      ...process.env,
+      APP_URL: "http://127.0.0.1:43217",
+    },
   },
   projects: [
     {

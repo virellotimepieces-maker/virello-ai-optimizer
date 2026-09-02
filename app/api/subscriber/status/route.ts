@@ -14,9 +14,9 @@ export async function GET(request: NextRequest) {
     const subscriber = await getActiveSubscriberStatus(request);
     let appUrl = "";
     try {
-      appUrl = getAppUrl(request.nextUrl.origin);
+      appUrl = getAppUrl();
     } catch {
-      appUrl = request.nextUrl.origin;
+      appUrl = "";
     }
     const response = NextResponse.json(
       {

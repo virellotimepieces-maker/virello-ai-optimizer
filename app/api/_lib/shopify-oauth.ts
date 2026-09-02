@@ -7,8 +7,9 @@ import {
 } from "./shopify-security";
 import { SHOPIFY_OAUTH_SCOPE } from "./shopify-scopes";
 
-export function shopifyCallbackUrl(fallbackOrigin = ""): string {
-  return `${getAppUrl(fallbackOrigin)}/api/auth/shopify/callback`;
+export function shopifyCallbackUrl(_fallbackOrigin = ""): string {
+  void _fallbackOrigin;
+  return `${getAppUrl()}/api/auth/shopify/callback`;
 }
 
 export function shopifyAdminAppUrl(shop: string, extra: Record<string, string> = {}): URL {

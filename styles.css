@@ -7,6 +7,7 @@ html {
   padding: 0;
   min-height: 100%;
   background: #f4f5f7;
+  overflow-x: hidden;
 }
 
 body {
@@ -110,6 +111,15 @@ textarea {
   font-weight: 750;
 }
 
+.topbar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  min-width: 0;
+}
+
 /* =========================
    HERO
 ========================= */
@@ -162,8 +172,8 @@ textarea {
   margin: 0;
 
   color: #69707a;
-  font-size: 16px;
-  line-height: 1.7;
+  font-size: clamp(16px, 1.4vw, 18px);
+  line-height: 1.6;
 }
 
 /* =========================
@@ -335,6 +345,21 @@ textarea {
 
   box-shadow:
     0 5px 18px rgba(15, 23, 42, 0.025);
+}
+
+.content-card > h2 {
+  margin: 0 0 8px;
+  color: #15171b;
+  font-size: clamp(22px, 2.4vw, 28px);
+  line-height: 1.2;
+  letter-spacing: -0.5px;
+}
+
+.content-card > p {
+  margin: 0 0 12px;
+  color: #5b616b;
+  font-size: 16px;
+  line-height: 1.5;
 }
 
 .card-title {
@@ -1086,57 +1111,95 @@ textarea {
 
 @media (max-width: 640px) {
   .topbar {
-    min-height: 60px;
-    padding: 0 14px;
-    gap: 10px;
+    min-height: 56px;
+    padding: 8px 12px;
+    gap: 8px;
+  }
+
+  .topbar-actions {
+    width: 100%;
+    justify-content: space-between;
+    gap: 8px;
   }
 
   .brand-small {
-    font-size: 7px;
+    font-size: 8px;
   }
 
   .brand-name {
-    font-size: 14px;
+    font-size: 15px;
     letter-spacing: -0.3px;
   }
 
   .shop-pill {
     max-width: 52%;
     padding: 7px 10px;
-    font-size: 8px;
+    font-size: 10px;
   }
 
   .hero-inner {
-    width: calc(100% - 28px);
-    padding: 27px 0 25px;
+    width: calc(100% - 24px);
+    padding: 20px 0 18px;
   }
 
   .eyebrow,
   .step-label {
-    font-size: 8px;
+    font-size: 10px;
     letter-spacing: 0.12em;
   }
 
   .hero h1 {
     max-width: 100%;
-
-    margin: 10px 0 11px;
-
-    font-size: clamp(31px, 9.5vw, 39px);
-    line-height: 1.02;
-    letter-spacing: -1.8px;
+    margin: 10px 0 12px;
+    font-size: clamp(36px, 8vw, 44px);
+    line-height: 1.12;
+    letter-spacing: -1.2px;
   }
 
   .hero p {
     max-width: 100%;
-
-    font-size: 12px;
-    line-height: 1.55;
+    font-size: clamp(16px, 4vw, 18px);
+    line-height: 1.5;
   }
 
   .workspace {
     width: calc(100% - 16px);
-    padding: 9px 0 32px;
+    padding: 12px 0 28px;
+  }
+
+  .content-card {
+    padding: 14px;
+    border-radius: 12px;
+  }
+
+  .content-card > h2 {
+    font-size: clamp(28px, 7vw, 34px);
+  }
+
+  .content-card > p {
+    font-size: 16px;
+  }
+
+  .subscribe-button,
+  .lang-button,
+  .secondary-button,
+  .generate-button,
+  .save-button {
+    width: auto;
+    min-height: 44px;
+    font-size: 14px;
+    white-space: normal;
+  }
+
+  .topbar .subscribe-button {
+    flex: 1 1 auto;
+    text-align: center;
+  }
+
+  .error-bar,
+  .success-bar {
+    margin: 8px 12px 0;
+    font-size: 14px;
   }
 
   .optimizer-panel {
@@ -1145,35 +1208,22 @@ textarea {
 
   .selected-product {
     min-height: auto;
-
-    padding: 16px 14px;
-
+    padding: 14px;
     align-items: stretch;
     flex-direction: column;
-
     gap: 12px;
   }
 
   .selected-product h2 {
     margin-top: 5px;
-
-    font-size: 17px;
+    font-size: 18px;
     line-height: 1.2;
   }
 
   .generate-button,
   .save-button {
     width: 100%;
-    min-height: 48px;
-
     border-radius: 10px;
-
-    font-size: 12px;
-  }
-
-  .content-card {
-    padding: 11px;
-    border-radius: 12px;
   }
 
   .platform-grid {
@@ -1182,40 +1232,9 @@ textarea {
 
   .platform-card {
     min-height: 88px;
-
     padding: 12px 14px;
-
     gap: 12px;
-
     border-radius: 13px;
-  }
-
-  .platform-icon {
-    width: 48px;
-    height: 48px;
-
-    flex-basis: 48px;
-
-    border-radius: 12px;
-
-    font-size: 15px;
-  }
-
-  .platform-info strong {
-    font-size: 14px;
-  }
-
-  .platform-info span {
-    font-size: 10px;
-  }
-
-  .platform-check {
-    width: 36px;
-    height: 36px;
-
-    flex-basis: 36px;
-
-    font-size: 15px;
   }
 
   .connect-actions {
@@ -1230,97 +1249,20 @@ textarea {
     padding: 12px;
   }
 
-  .result-field {
-    margin-top: 10px;
-    border-radius: 11px;
-  }
-
-  .field-header {
-    min-height: 37px;
-    padding: 7px 9px;
-  }
-
-  .field-header label {
-    font-size: 8px;
-  }
-
-  .content-card .result-field input.search-input {
-    min-height: 50px;
-    padding: 12px;
-    font-size: 13px;
-  }
-
-  .content-card .result-field textarea.search-input {
-    min-height: 120px;
-    padding: 12px;
-    font-size: 13px;
-  }
-
   .score-grid {
     grid-template-columns: 1fr;
     gap: 9px;
     margin-top: 10px;
   }
 
-  .score-grid > .search-input {
-    width: 100%;
-    height: 50px;
-    min-height: 50px;
-
-    padding: 0 12px;
-
-    border-radius: 11px;
-
-    font-size: 13px;
-  }
-
   .score-grid > .search-input:last-child {
     grid-column: auto;
   }
 
-  .score-overview {
-    margin-bottom: 10px;
-    padding: 15px;
-
-    align-items: flex-start;
-    flex-direction: column;
-
-    gap: 11px;
-
-    border-radius: 12px;
-  }
-
-  .score-overview h2 {
-    font-size: 17px;
-  }
-
-  .score-overview p {
-    font-size: 10px;
-    line-height: 1.5;
-  }
-
-  .overall-score strong {
-    font-size: 40px;
-  }
-
-  .results > .score-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .score-card {
-    padding: 11px;
-    border-radius: 10px;
-  }
-
   .two-column,
-  .analysis-grid {
-    grid-template-columns: 1fr;
-    gap: 9px;
-  }
-
+  .analysis-grid,
   .flow-grid {
     grid-template-columns: 1fr;
-    gap: 9px;
   }
 
   .card-title {
@@ -1339,32 +1281,11 @@ textarea {
 
   .secondary-button {
     width: 100%;
-    min-height: 45px;
   }
 
   .empty-result {
-    min-height: 260px;
-    padding: 25px 15px;
-  }
-
-  .empty-result h2 {
-    font-size: 18px;
-  }
-
-  .empty-result p {
-    font-size: 11px;
-  }
-
-  .field-value {
-    font-size: 12px;
-  }
-
-  .field-value.multiline {
-    min-height: 85px;
-  }
-
-  .small-button {
-    min-height: 34px;
+    min-height: 220px;
+    padding: 20px 12px;
   }
 }
 
@@ -1374,70 +1295,32 @@ textarea {
 
 @media (max-width: 380px) {
   .topbar {
-    padding: 0 12px;
-  }
-
-  .brand-name {
-    font-size: 14px;
-  }
-
-  .shop-pill {
-    max-width: 44%;
-    font-size: 8px;
+    padding: 8px 10px;
   }
 
   .hero-inner {
-    width: calc(100% - 24px);
-    padding: 24px 0 22px;
+    width: calc(100% - 20px);
+    padding: 16px 0 14px;
   }
 
   .hero h1 {
-    font-size: 30px;
-    letter-spacing: -1.6px;
+    font-size: 36px;
+    letter-spacing: -1.1px;
   }
 
-  .hero p {
-    font-size: 11.5px;
-  }
-
-  .workspace {
-    width: calc(100% - 10px);
-    padding-top: 7px;
-  }
-
-  .selected-product {
-    padding: 14px 12px;
-  }
-
-  .results {
-    padding: 10px;
+  .hero p,
+  .content-card > p {
+    font-size: 16px;
   }
 
   .content-card {
-    padding: 9px;
+    padding: 12px;
   }
 
-  .platform-card {
-    min-height: 82px;
-    padding: 10px 11px;
-  }
-
-  .platform-icon {
-    width: 44px;
-    height: 44px;
-    flex-basis: 44px;
-  }
-
-  .platform-check {
-    width: 34px;
-    height: 34px;
-    flex-basis: 34px;
+  .content-card > h2 {
+    font-size: 28px;
   }
 }
-
-/* =========================
-   TOUCH DEVICES
-========================= */
 
 @media (hover: none) and (pointer: coarse) {
   button {
@@ -1446,257 +1329,10 @@ textarea {
 
   .generate-button,
   .save-button,
-  .secondary-button {
-    min-height: 48px;
-  }
-
-  .small-button {
-    min-height: 34px;
-  }
-}
-
-/* =========================================================
-   FINAL MOBILE TYPOGRAPHY — COMPACT
-   Keeps the existing layout/functionality.
-   Only reduces oversized text and excessive spacing.
-========================================================= */
-
-@media (max-width: 640px) {
-  /* TOP BAR */
-
-  .brand-small {
-    font-size: 6px;
-    letter-spacing: 0.16em;
-  }
-
-  .brand-name {
-    font-size: 13px;
-    line-height: 1.1;
-    letter-spacing: -0.25px;
-  }
-
-  .shop-pill {
-    font-size: 8px;
-    padding: 6px 9px;
-  }
-
-  /* HERO */
-
-  .eyebrow,
-  .step-label {
-    font-size: 7px;
-    letter-spacing: 0.11em;
-  }
-
-  .hero h1 {
-    font-size: clamp(28px, 8.2vw, 35px);
-    line-height: 1.03;
-    letter-spacing: -1.45px;
-    margin: 9px 0 10px;
-  }
-
-  .hero p {
-    font-size: 11px;
-    line-height: 1.5;
-  }
-
-  .hero-inner {
-    padding-top: 23px;
-    padding-bottom: 21px;
-  }
-
-  /* CARDS */
-
-  .content-card {
-    padding: 10px;
-  }
-
-  .selected-product h2 {
-    font-size: 16px;
-    letter-spacing: -0.3px;
-  }
-
-  .selected-product p {
-    font-size: 10px;
-  }
-
-  /* BUTTONS */
-
-  .generate-button,
-  .save-button {
-    font-size: 11px;
-    min-height: 46px;
-  }
-
-  .small-button {
-    min-height: 32px;
-    font-size: 9px;
-    padding: 0 9px;
-  }
-
-  /* FORM */
-
-  .field-header {
-    min-height: 35px;
-    padding: 6px 8px;
-  }
-
-  .field-header label {
-    font-size: 7px;
-    letter-spacing: 0.06em;
-  }
-
-  .content-card .result-field input.search-input {
-    min-height: 46px;
-    padding: 10px;
-    font-size: 12px;
-  }
-
-  .content-card .result-field textarea.search-input {
-    min-height: 105px;
-    padding: 10px;
-    font-size: 12px;
-    line-height: 1.5;
-  }
-
-  .field-value {
-    min-height: 42px;
-    padding: 10px;
-    font-size: 11px;
-    line-height: 1.5;
-  }
-
-  .field-value.multiline {
-    min-height: 75px;
-  }
-
-  /* PRODUCT INPUTS */
-
-  .score-grid > .search-input {
-    height: 46px;
-    min-height: 46px;
-    padding: 0 10px;
-    font-size: 12px;
-  }
-
-  /* SCORE */
-
-  .score-overview {
-    padding: 13px;
-    gap: 9px;
-  }
-
-  .score-overview h2 {
-    font-size: 16px;
-    letter-spacing: -0.3px;
-  }
-
-  .score-overview p {
-    font-size: 9px;
-  }
-
-  .overall-score strong {
-    font-size: 36px;
-    letter-spacing: -1.8px;
-  }
-
-  .overall-score span {
-    font-size: 10px;
-  }
-
-  .score-card {
-    padding: 10px;
-  }
-
-  .score-header {
-    margin-bottom: 7px;
-  }
-
-  .score-header span,
-  .score-header strong {
-    font-size: 9px;
-  }
-
-  .score-track {
-    height: 5px;
-  }
-
-  /* PLATFORM */
-
-  .platform-info strong {
-    font-size: 13px;
-  }
-
-  .platform-info span {
-    font-size: 9px;
-  }
-
-  /* EMPTY / ANALYSIS */
-
-  .empty-result h2 {
-    font-size: 17px;
-  }
-
-  .empty-result p {
-    font-size: 10px;
-  }
-
-  .mini-card h3,
-  .analysis-card h3,
-  .reasoning-card h3 {
-    font-size: 11px;
-  }
-
-  .mini-card li,
-  .analysis-card li,
-  .analysis-card p,
-  .reasoning-card p {
-    font-size: 10px;
-  }
-}
-
-/* =========================
-   EXTRA SMALL PHONES
-========================= */
-
-@media (max-width: 380px) {
-  .brand-name {
-    font-size: 12px;
-  }
-
-  .hero h1 {
-    font-size: 27px;
-    letter-spacing: -1.25px;
-  }
-
-  .hero p {
-    font-size: 10.5px;
-  }
-
-  .content-card {
-    padding: 8px;
-  }
-
-  .selected-product h2 {
-    font-size: 15px;
-  }
-
-  .generate-button,
-  .save-button {
-    font-size: 10px;
-  }
-
-  .field-value {
-    font-size: 10.5px;
-  }
-
-  .content-card .result-field input.search-input,
-  .content-card .result-field textarea.search-input {
-    font-size: 11px;
-  }
-
-  .score-grid > .search-input {
-    font-size: 11px;
+  .secondary-button,
+  .subscribe-button,
+  .lang-button {
+    min-height: 44px;
   }
 }
 
@@ -1704,29 +1340,89 @@ textarea {
   display: inline-flex;
   gap: 6px;
   align-items: center;
+  flex-shrink: 0;
 }
 
 .lang-button,
 .secondary-button {
+  appearance: none;
+  -webkit-appearance: none;
   border: 1px solid #d6d8de;
   background: #fff;
   color: #17181c;
   border-radius: 999px;
-  padding: 8px 12px;
-  font-size: 12px;
-  font-weight: 600;
+  min-height: 44px;
+  min-width: 44px;
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 700;
   cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }
 
-.lang-button.active,
-.subscribe-button {
-  cursor: pointer;
+.lang-button:hover,
+.secondary-button:hover {
+  background: #f5f6f7;
+}
+
+.lang-button:focus-visible,
+.secondary-button:focus-visible,
+.subscribe-button:focus-visible {
+  outline: 2px solid #111318;
+  outline-offset: 2px;
+}
+
+.lang-button:disabled,
+.secondary-button:disabled,
+.subscribe-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
 }
 
 .lang-button.active {
   background: #17181c;
   color: #fff;
   border-color: #17181c;
+}
+
+.subscribe-button {
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: pointer;
+  min-height: 44px;
+  padding: 10px 16px;
+  border: 1px solid #111318;
+  border-radius: 12px;
+  background: #111318;
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 750;
+  line-height: 1.2;
+  white-space: nowrap;
+  box-shadow: 0 6px 14px rgba(17, 19, 24, 0.14);
+  transition: background 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.subscribe-button:hover:not(:disabled) {
+  background: #292d34;
+  border-color: #292d34;
+  transform: translateY(-1px);
+}
+
+.subscribe-button:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.error-bar {
+  margin: 12px 32px 0;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: #fff5f5;
+  color: #9b2c2c;
+  border: 1px solid #f1d0d0;
+  font-size: 14px;
+  line-height: 1.45;
 }
 
 .success-bar {
@@ -1757,8 +1453,10 @@ textarea {
   width: 100%;
   margin: 10px 0 14px;
   padding: 10px 12px;
+  min-height: 44px;
   border: 1px solid #d6d8de;
   border-radius: 10px;
+  font-size: 16px;
 }
 
 .review-grid {

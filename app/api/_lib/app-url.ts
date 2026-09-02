@@ -1,23 +1,32 @@
 export const SESSION_TTL_SECONDS = 60 * 60 * 24 * 32;
 
-export function getAppUrl(fallbackOrigin = ""): string {
+const APP_URL_ERROR = "APP_URL is not configured.";
+
+/**
+ * Canonical public origin from APP_URL only.
+ * Does not use the browser Origin/Referer or the incoming request host.
+ */
+export function getAppUrl(_fallbackOrigin = ""): string {
+  void _fallbackOrigin;
   const configured = process.env.APP_URL?.trim().replace(/\/+$/, "") || "";
-  if (configured) {
-    try {
-      const url = new URL(configured);
-      if (url.protocol === "http:" || url.protocol === "https:") {
-        return url.origin;
-      }
-    } catch {
-      // Fall through to the request origin when APP_URL is malformed.
+  if (!configured) {
+    throw new Error(APP_URL_ERROR);
+  }
+
+  try {
+    const url = new URL(configured);
+    if (
+      (url.protocol === "http:" || url.protocol === "https:") &&
+      !url.username &&
+      !url.password
+    ) {
+      return url.origin;
     }
+  } catch {
+    // Invalid APP_URL is a configuration error, not a request-origin fallback.
   }
 
-  if (fallbackOrigin) {
-    return new URL(fallbackOrigin).origin;
-  }
-
-  throw new Error("APP_URL is not configured.");
+  throw new Error(APP_URL_ERROR);
 }
 
 function originFromHost(value: string): string {
@@ -33,7 +42,7 @@ function originFromHost(value: string): string {
 export function listAllowedAppOrigins(fallbackOrigin = ""): string[] {
   const origins = new Set<string>();
   try {
-    origins.add(getAppUrl(fallbackOrigin));
+    origins.add(getAppUrl());
   } catch {
     // APP_URL may be unset in some unit tests.
   }
@@ -50,9 +59,9 @@ export function listAllowedAppOrigins(fallbackOrigin = ""): string[] {
   return [...origins];
 }
 
-export function isSecureAppUrl(fallbackOrigin = ""): boolean {
+export function isSecureAppUrl(): boolean {
   try {
-    return new URL(getAppUrl(fallbackOrigin)).protocol === "https:";
+    return new URL(getAppUrl()).protocol === "https:";
   } catch {
     return process.env.NODE_ENV === "production";
   }
