@@ -178,5 +178,7 @@ describe("Phase 8 hardening", () => {
     expect(COPY.en.checkoutNeedShop).toMatch(/myshopify\.com/);
     expect(COPY.en.invalidAuthorizeUrl).toMatch(/myshopify\.com\/admin\/oauth\/authorize/);
     expect(COPY.fil.invalidAuthorizeUrl).toMatch(/myshopify\.com\/admin\/oauth\/authorize/);
+    expect(COPY.en.oauthHmacHelp).toMatch(/Client secret/);
+    expect(COPY.fil.oauthHmacHelp).toMatch(/Client secret/);
   });
 });

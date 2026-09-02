@@ -12,8 +12,10 @@ import {
 import { saveShopifySession } from "../../../_lib/shopify-auth";
 import { billingForShop } from "../../../_lib/stripe-billing";
 import {
+  classifyShopifySecretKind,
   getShopifyClientId,
   getShopifyClientSecrets,
+  shopifySecretLooksLikeClientId,
 } from "../../../_lib/shopify-config";
 import { normalizeShop } from "../../../_lib/shop-domain";
 import {
@@ -30,6 +32,7 @@ function redirectError(
   diag?: ReturnType<typeof shopifyCallbackHmacDiagnostics> & {
     secretCount?: number;
     secretLengths?: number[];
+    secretKind?: string;
   }
 ) {
   console.error("SHOPIFY_OAUTH_CALLBACK_REJECTED", {
@@ -46,6 +49,7 @@ function redirectError(
           hmacHex: diag.hmacHex,
           secretCount: diag.secretCount,
           secretLengths: diag.secretLengths,
+          secretKind: diag.secretKind,
           messageCount: diag.messageCount,
           hasInvokeQuery: diag.hasInvokeQuery,
         }
@@ -61,6 +65,7 @@ function redirectError(
         `keys=${diag.paramKeys.join(",")}`,
         `hmac=${diag.hmacLength}${diag.hmacHex ? "hex" : ""}`,
         `secrets=${(diag.secretLengths || []).join(".")}`,
+        `secret=${diag.secretKind || "n"}`,
         `host=${diag.hostKind}:${diag.hostLength}`,
         `state=${diag.stateLength}`,
         `code=${diag.codeLength}`,
@@ -106,11 +111,22 @@ export async function GET(request: NextRequest) {
       verifyShopifyCallbackHmac(request, secret)
     );
     if (!verifiedSecret) {
-      return redirectError(returnOrigin, "Shopify authorization signature is invalid.", {
-        ...shopifyCallbackHmacDiagnostics(request),
-        secretCount: secrets.length,
-        secretLengths: secrets.map((value) => value.length).sort((a, b) => a - b),
-      });
+      const secretKind = classifyShopifySecretKind(secrets[0], apiKey);
+      const usedClientId = secrets.some((secret) =>
+        shopifySecretLooksLikeClientId(secret, apiKey)
+      );
+      return redirectError(
+        returnOrigin,
+        usedClientId
+          ? "SHOPIFY_API_SECRET is the Client ID, not the Client secret. Paste the Client secret from Shopify Dev Dashboard → this app → Settings."
+          : "Shopify authorization signature is invalid.",
+        {
+          ...shopifyCallbackHmacDiagnostics(request),
+          secretCount: secrets.length,
+          secretLengths: secrets.map((value) => value.length).sort((a, b) => a - b),
+          secretKind,
+        }
+      );
     }
 
     if (oauthError) {

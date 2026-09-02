@@ -49,3 +49,25 @@ export function getShopifyClientSecrets(): string[] {
     .map(cleanEnvironmentValue)
     .filter((value, index, values) => value && values.indexOf(value) === index);
 }
+
+export function shopifySecretLooksLikeClientId(
+  secret: string,
+  clientId = getShopifyClientId()
+): boolean {
+  if (!secret || !clientId) return false;
+  if (secret === clientId) return true;
+  for (const prefix of ["shpss_", "shpca_"]) {
+    if (secret === `${prefix}${clientId}`) return true;
+  }
+  return false;
+}
+
+export function classifyShopifySecretKind(
+  secret: string,
+  clientId = getShopifyClientId()
+): "id" | "shpss" | "hex" | "other" {
+  if (shopifySecretLooksLikeClientId(secret, clientId)) return "id";
+  if (secret.startsWith("shpss_") || secret.startsWith("shpca_")) return "shpss";
+  if (/^[a-f0-9]+$/i.test(secret)) return "hex";
+  return "other";
+}

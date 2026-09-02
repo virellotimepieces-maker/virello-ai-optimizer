@@ -475,6 +475,26 @@ describe("Phase 5 OAuth callback errors", () => {
     expect(location).toMatch(/oauth_diag=/);
   });
 
+  it("tells the merchant when SHOPIFY_API_SECRET is the Client ID", async () => {
+    process.env.SHOPIFY_API_KEY = "99a9fda60d48cb24828f243360fffc40";
+    process.env.SHOPIFY_API_SECRET = "99a9fda60d48cb24828f243360fffc40";
+    const params = new URLSearchParams({
+      code: "0907a61c0c8d55e99db179b68161bc00",
+      hmac: "0".repeat(64),
+      host: "YWRtaW4uc2hvcGlmeS5jb20vc3RvcmUvZ2ZkMWNwLTF5",
+      shop: "gfd1cp-1y.myshopify.com",
+      state: "0.6784241404160823",
+      timestamp: "1337178173",
+    });
+    const { GET } = await import("../app/api/auth/shopify/callback/route");
+    const response = await GET(
+      new NextRequest(`https://app.virello.example/api/auth/shopify/callback?${params}`)
+    );
+    const location = response.headers.get("location") || "";
+    expect(location).toMatch(/Client(\+|%20)ID/);
+    expect(location).toMatch(/secret=id|secret%3Did/);
+  });
+
   it("keeps the shop disconnected when Shopify sends no callback HMAC", async () => {
     const { GET } = await import("../app/api/auth/shopify/callback/route");
     const response = await GET(

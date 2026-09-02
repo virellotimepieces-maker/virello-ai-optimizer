@@ -24,7 +24,11 @@ import {
   isAllowedRedirectUrl,
   OriginGuardError,
 } from "../app/api/_lib/origin-guard";
-import { getShopifyClientSecrets } from "../app/api/_lib/shopify-config";
+import {
+  classifyShopifySecretKind,
+  getShopifyClientSecrets,
+  shopifySecretLooksLikeClientId,
+} from "../app/api/_lib/shopify-config";
 import {
   createSignedOAuthState,
   verifyShopifyCallbackHmac,
@@ -280,6 +284,18 @@ describe("Phase 3 Shopify security module", () => {
       `https://virello-ai-optimizer.vercel.app/api/auth/shopify/callback?${params.toString()}`
     );
     expect(verifyShopifyCallbackHmac(request, secret)).toBe(true);
+  });
+
+  it("detects when the stored Shopify secret is actually the Client ID", () => {
+    const clientId = "99a9fda60d48cb24828f243360fffc40";
+    expect(shopifySecretLooksLikeClientId(clientId, clientId)).toBe(true);
+    expect(
+      shopifySecretLooksLikeClientId(`shpss_${clientId}`, clientId)
+    ).toBe(true);
+    expect(
+      shopifySecretLooksLikeClientId("unrelated-client-secret-value", clientId)
+    ).toBe(false);
+    expect(classifyShopifySecretKind(clientId, clientId)).toBe("id");
   });
 
   it("verifies HMAC when the configured secret includes a Shopify shpss prefix", () => {

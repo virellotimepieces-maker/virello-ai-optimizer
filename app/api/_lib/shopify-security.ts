@@ -260,6 +260,24 @@ function shopifyApiJsAdminMessage(pairs: Array<[string, string]>): string {
   return processed.toString().replace(/\+/g, "%20");
 }
 
+function pairsFromSearchParams(params: URLSearchParams): Array<[string, string]> {
+  const pairs: Array<[string, string]> = [];
+  for (const key of [...new Set([...params.keys()])]) {
+    for (const value of params.getAll(key)) {
+      pairs.push([key, value]);
+    }
+  }
+  return pairs;
+}
+
+function officialSortedMessage(params: URLSearchParams): string {
+  return [...new Set([...params.keys()])]
+    .filter((key) => key !== "hmac" && key !== "signature")
+    .sort()
+    .map((key) => `${key}=${params.get(key) || ""}`)
+    .join("&");
+}
+
 function addEncodedMessages(messages: Set<string>, pairs: Array<[string, string]>): void {
   const usable = pairsForHmac(pairs);
   if (!usable.length) return;
@@ -274,6 +292,16 @@ function addEncodedMessages(messages: Set<string>, pairs: Array<[string, string]
   if (ruby) messages.add(ruby);
   const originalOrder = usable.map(([key, value]) => `${key}=${value}`).join("&");
   if (originalOrder) messages.add(originalOrder);
+  const proxyStyle = usable
+    .slice()
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([key, value]) => `${key}=${value}`)
+    .join("");
+  if (proxyStyle) messages.add(proxyStyle);
+  const withoutHost = shopifyDocsNodeMessage(
+    usable.filter(([key]) => decodeQueryKeepPlus(key) !== "host")
+  );
+  if (withoutHost) messages.add(withoutHost);
 }
 
 function addPairSetMessages(
@@ -360,6 +388,9 @@ function callbackQueryStrings(request: NextRequest): string[] {
 
 export function shopifyCallbackHmacMessages(request: NextRequest): string[] {
   const messages = new Set<string>();
+  const official = officialSortedMessage(request.nextUrl.searchParams);
+  if (official) messages.add(official);
+  addPairSetMessages(messages, pairsFromSearchParams(request.nextUrl.searchParams));
   addPairSetMessages(messages, [...request.nextUrl.searchParams.entries()]);
   addPairSetMessages(messages, pairsFromInvokeQuery(request.headers.get("x-invoke-query")));
   for (const search of callbackQueryStrings(request)) {

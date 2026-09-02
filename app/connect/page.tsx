@@ -287,6 +287,9 @@ export default function ConnectPage() {
       {error && /unauthorized access/i.test(error) && (
         <div className="error-bar error-shopify">{copy.oauthUnauthorizedHelp}</div>
       )}
+      {error && /signature is invalid|Client ID, not the Client secret/i.test(error) && (
+        <div className="error-bar error-shopify">{copy.oauthHmacHelp}</div>
+      )}
 
       <section className="hero">
         <div className="hero-inner">
