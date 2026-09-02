@@ -41,9 +41,25 @@ export function getShopifyClientId(): string {
   );
 }
 
+export function shopifyCredentialPresence(): {
+  apiKey: boolean;
+  apiSecret: boolean;
+  clientSecret: boolean;
+  previous: boolean;
+} {
+  return {
+    apiKey: Boolean(getShopifyClientId()),
+    apiSecret: Boolean(cleanShopifyCredential(readEnv("SHOPIFY_API_SECRET"))),
+    clientSecret: Boolean(cleanShopifyCredential(readEnv("SHOPIFY_CLIENT_SECRET"))),
+    previous: Boolean(cleanShopifyCredential(readEnv("SHOPIFY_API_SECRET_PREVIOUS"))),
+  };
+}
+
 export function getShopifyClientSecret(): string {
-  return cleanShopifyCredential(
-    readEnv("SHOPIFY_API_SECRET") || readEnv("SHOPIFY_CLIENT_SECRET")
+  return (
+    cleanShopifyCredential(readEnv("SHOPIFY_API_SECRET") || readEnv("SHOPIFY_CLIENT_SECRET")) ||
+    getShopifyClientSecrets()[0] ||
+    ""
   );
 }
 

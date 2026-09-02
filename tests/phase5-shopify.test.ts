@@ -85,15 +85,34 @@ describe("Phase 5 shop domains and OAuth", () => {
       secretLength?: number;
       looksLikeClientId?: boolean;
       clientId?: string;
+      apiSecret?: boolean;
     };
     expect(body.success).toBe(true);
     expect(body.secretKind).toBe("shpss");
     expect(body.secretLength).toBe("shpss_xxxx-secret-value".length);
     expect(body.looksLikeClientId).toBe(false);
+    expect(body.apiSecret).toBe(true);
     expect(body.clientId).toBe("99a9fda60d48cb24828f243360fffc40");
     const text = JSON.stringify(body);
     expect(text).not.toMatch(/xxxx-secret-value/);
     expect(text).not.toMatch(/shpss_/);
+  });
+
+  it("flags Production as unconfigured when only SHOPIFY_API_SECRET_PREVIOUS remains", async () => {
+    process.env.SHOPIFY_API_KEY = "99a9fda60d48cb24828f243360fffc40";
+    process.env.SHOPIFY_API_SECRET = "";
+    process.env.SHOPIFY_CLIENT_SECRET = "";
+    process.env.SHOPIFY_API_SECRET_PREVIOUS = "shpss_xxxx-previous-value";
+    const { GET } = await import("../app/api/auth/shopify/secret-status/route");
+    const response = await GET();
+    const body = (await response.json()) as {
+      configured?: boolean;
+      apiSecret?: boolean;
+      previous?: boolean;
+    };
+    expect(body.configured).toBe(false);
+    expect(body.apiSecret).toBe(false);
+    expect(body.previous).toBe(true);
   });
 
   it("rejects storefront roots and admin.shopify.com rewrites for gfd1cp-1v", () => {

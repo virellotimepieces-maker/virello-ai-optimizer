@@ -36,6 +36,8 @@ export default function ConnectPage() {
     secretKind?: string;
     secretLength?: number;
     looksLikeClientId?: boolean;
+    apiSecret?: boolean;
+    previous?: boolean;
   } | null>(null);
 
   async function saveLocales(nextUi: AppLocale, nextOutput: AppLocale) {
@@ -299,6 +301,10 @@ export default function ConnectPage() {
 
       {error && <div className="error-bar">{error}</div>}
       {error &&
+        /credentials are not configured|SHOPIFY_API_SECRET is missing/i.test(error) && (
+          <div className="error-bar error-shopify">{copy.secretStatusMissing}</div>
+        )}
+      {error &&
         /signature is invalid|Client ID, not the Client secret|does not match this Shopify app/i.test(
           error
         ) && (
@@ -416,10 +422,12 @@ export default function ConnectPage() {
               <p data-testid="shopify-secret-status">
                 {secretStatus.looksLikeClientId
                   ? copy.secretStatusWrong
-                  : copy.secretStatusReady
-                      .replace("{id}", secretStatus.clientId || "—")
-                      .replace("{kind}", secretStatus.secretKind || "missing")
-                      .replace("{length}", String(secretStatus.secretLength || 0))}
+                  : secretStatus.apiSecret
+                    ? copy.secretStatusReady
+                        .replace("{id}", secretStatus.clientId || "—")
+                        .replace("{kind}", secretStatus.secretKind || "missing")
+                        .replace("{length}", String(secretStatus.secretLength || 0))
+                    : copy.secretStatusMissing}
               </p>
             )}
             <p data-testid="store-binding-status">

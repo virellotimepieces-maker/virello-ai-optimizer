@@ -4,7 +4,7 @@ import {
   buildShopifyAuthorizeUrl,
   shopifyAdminAppUrl,
 } from "../../_lib/shopify-oauth";
-import { getShopifyClientId } from "../../_lib/shopify-config";
+import { getShopifyClientId, getShopifyClientSecret } from "../../_lib/shopify-config";
 import { getSessionBinding, setPendingShop } from "../../_lib/shop-binding";
 import { assertRateLimit, RateLimitError, tenantRateKey } from "../../_lib/rate-limit";
 
@@ -69,6 +69,17 @@ export async function GET(request: NextRequest) {
         {
           success: false,
           error: "SHOPIFY_API_KEY is not configured.",
+        },
+        500
+      );
+    }
+    if (!getShopifyClientSecret()) {
+      return oauthStartResponse(
+        request,
+        {
+          success: false,
+          error:
+            "SHOPIFY_API_SECRET is missing. In Vercel add it as Production only, then Redeploy Production without build cache.",
         },
         500
       );

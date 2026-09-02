@@ -79,7 +79,7 @@ Set these in `.env.local` and in Vercel Preview/Production. Never commit values.
 
 **Vercel: one `SHOPIFY_API_SECRET` per environment. Never two rows that both include Production.**
 
-If search shows two `SHOPIFY_API_SECRET` entries — one **Production** and one **Production and Preview** — Production is receiving two values. Keep the **Production-only** row (the current Client secret you just saved). Delete the overlapping **Production and Preview** row, or change that second row to **Preview only**. Then **Redeploy Production** without using an existing build cache. Do not paste the secret into git or chat. During a rotation, put the previous secret in `SHOPIFY_API_SECRET_PREVIOUS` instead of a second `SHOPIFY_API_SECRET` row.
+If search shows two `SHOPIFY_API_SECRET` entries — one **Production** and one **Production and Preview** — Production is receiving two values. Keep the **Production-only** row (the current Client secret you just saved). Delete the overlapping **Production and Preview** row, or change that second row to **Preview only**. The Production-only row must still exist after that. If Connect says **Shopify credentials are not configured**, Production no longer has `SHOPIFY_API_SECRET` — add it back as **Production only**, then **Redeploy Production** without using an existing build cache. Do not paste the secret into git or chat. During a rotation, put the previous secret in `SHOPIFY_API_SECRET_PREVIOUS` instead of a second `SHOPIFY_API_SECRET` row.
 
 ## Access matrix
 

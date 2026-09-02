@@ -3,6 +3,7 @@ import {
   classifyShopifySecretKind,
   getShopifyClientId,
   getShopifyClientSecrets,
+  shopifyCredentialPresence,
   shopifySecretLooksLikeClientId,
 } from "../../../_lib/shopify-config";
 
@@ -13,10 +14,11 @@ export async function GET() {
   const clientId = getShopifyClientId();
   const secrets = getShopifyClientSecrets();
   const primary = secrets[0] || "";
+  const present = shopifyCredentialPresence();
   return NextResponse.json(
     {
       success: true,
-      configured: Boolean(clientId && primary),
+      configured: Boolean(clientId && (present.apiSecret || present.clientSecret)),
       clientId: clientId || "",
       secretCount: secrets.length,
       secretKind: primary ? classifyShopifySecretKind(primary, clientId) : "missing",
@@ -24,6 +26,9 @@ export async function GET() {
       looksLikeClientId: secrets.some((secret) =>
         shopifySecretLooksLikeClientId(secret, clientId)
       ),
+      apiSecret: present.apiSecret,
+      clientSecret: present.clientSecret,
+      previous: present.previous,
     },
     { headers: { "Cache-Control": "no-store" } }
   );
