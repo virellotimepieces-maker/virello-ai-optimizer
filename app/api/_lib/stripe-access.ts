@@ -32,7 +32,8 @@ export type ProductAccessDecision = {
     | "incomplete"
     | "paused"
     | "invoice_failed"
-    | "ineligible";
+    | "ineligible"
+    | "missing_scopes";
 };
 
 export function canManageBilling(
@@ -102,6 +103,8 @@ export function productAccessDeniedMessage(reason: ProductAccessDecision["reason
   switch (reason) {
     case "not_installed":
       return "Reconnect Shopify before using Virello. Billing was not canceled.";
+    case "missing_scopes":
+      return "Shopify app is missing product permissions. Reconnect the store.";
     case "past_due":
       return "Subscription payment is past due. Update billing to continue.";
     case "unpaid":

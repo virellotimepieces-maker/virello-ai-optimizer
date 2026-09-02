@@ -195,10 +195,8 @@ export default function ConnectPage() {
     const authorizationUrl =
       `${window.location.origin}/api/auth/shopify?shop=${encodeURIComponent(
         cleanedShop
-      )}`;
+      )}&flow=standalone`;
 
-    // Managed embedded apps must launch in Shopify Admin so App Bridge can
-    // provide the signed session token used for token exchange.
     window.open(authorizationUrl, "_top");
   }
 

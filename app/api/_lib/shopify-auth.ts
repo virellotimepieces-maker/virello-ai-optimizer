@@ -66,7 +66,20 @@ export async function saveShopifySession(
   );
 }
 
-async function storedAccessToken(shop: string): Promise<string> {
+export async function storedShopifyScope(shop: string): Promise<string> {
+  const normalized = normalizeShop(shop);
+  const rows = await dbQuery<{ scope: string }>(
+    `SELECT scope
+     FROM shopify_sessions
+     WHERE shop = $1
+       AND revoked_at IS NULL
+     LIMIT 1`,
+    [normalized]
+  );
+  return String(rows[0]?.scope || "");
+}
+
+export async function storedAccessToken(shop: string): Promise<string> {
   const normalized = normalizeShop(shop);
   const rows = await dbQuery<{ encrypted_access_token: string }>(
     `SELECT encrypted_access_token

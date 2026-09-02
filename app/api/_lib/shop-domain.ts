@@ -1,4 +1,10 @@
 const SHOPIFY_SUFFIX = ".myshopify.com";
+const SHOP_NAME =
+  /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.myshopify\.com$/;
+
+export function isValidShopDomain(shop: string): boolean {
+  return SHOP_NAME.test(shop);
+}
 
 export function normalizeShop(value: string): string {
   const raw = value.trim().toLowerCase();
@@ -7,9 +13,8 @@ export function normalizeShop(value: string): string {
   try {
     const url = new URL(/^https?:\/\//i.test(raw) ? raw : `https://${raw}`);
     const host = url.hostname.toLowerCase().replace(/^www\./, "");
-    return host.endsWith(SHOPIFY_SUFFIX) && host !== SHOPIFY_SUFFIX
-      ? host
-      : "";
+    if (url.username || url.password) return "";
+    return isValidShopDomain(host) ? host : "";
   } catch {
     return "";
   }

@@ -75,96 +75,26 @@ export default function Home() {
     const connection = params.get("connected");
     const checkout = params.get("checkout");
     const shopFromUrl = params.get("shop") || "";
+    const embedded =
+      params.get("embedded") === "1" || Boolean(params.get("host"));
     const normalizedShop =
-      /^[a-z0-9][a-z0-9-]*\.myshopify\.com$/i.test(shopFromUrl)
+      /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.myshopify\.com$/i.test(shopFromUrl)
         ? shopFromUrl.toLowerCase()
         : "";
 
-    if (normalizedShop) {
-      window.localStorage.setItem(
-        "virello_shopify_shop",
-        normalizedShop
-      );
-    }
-
-    const rememberedShop =
-      normalizedShop ||
-      window.localStorage.getItem(
-        "virello_shopify_shop"
-      ) ||
-      "";
-
-    /*
-     * Shopify and Stripe can briefly return the mobile browser to the
-     * standalone Vercel origin. A standalone page has no App Bridge ID
-     * token, so return it to the embedded Shopify Admin app immediately.
-     */
     if (
+      embedded &&
       window.top === window.self &&
-      /^[a-z0-9][a-z0-9-]*\.myshopify\.com$/i.test(
-        rememberedShop
-      )
+      normalizedShop
     ) {
-      const storeHandle = rememberedShop.replace(
-        /\.myshopify\.com$/i,
-        ""
-      );
+      const storeHandle = normalizedShop.replace(/\.myshopify\.com$/i, "");
       const adminUrl = new URL(
-        `/store/${encodeURIComponent(
-          storeHandle
-        )}/apps/virello-ai-optimizer`,
+        `/store/${encodeURIComponent(storeHandle)}/apps/virello-ai-optimizer`,
         "https://admin.shopify.com"
       );
-      adminUrl.searchParams.set(
-        "shop",
-        rememberedShop
-      );
-      if (checkout) {
-        adminUrl.searchParams.set(
-          "checkout",
-          checkout
-        );
-      }
-      window.location.replace(
-        adminUrl.toString()
-      );
-      return;
-    }
-
-    if (window.top === window.self) {
-      async function recoverEmbeddedAdmin() {
-        try {
-          const response = await fetch(
-            "/api/shopify/admin-return",
-            {
-              method: "GET",
-              credentials: "include",
-              cache: "no-store",
-            }
-          );
-          const data = await response
-            .json()
-            .catch(() => null);
-
-          if (
-            response.ok &&
-            data?.success &&
-            typeof data.url === "string"
-          ) {
-            window.location.replace(data.url);
-            return;
-          }
-        } catch (error) {
-          console.error(
-            "SHOPIFY_ADMIN_RETURN_ERROR",
-            error
-          );
-        }
-
-        loadSubscriberStatus();
-      }
-
-      recoverEmbeddedAdmin();
+      adminUrl.searchParams.set("shop", normalizedShop);
+      if (checkout) adminUrl.searchParams.set("checkout", checkout);
+      window.location.replace(adminUrl.toString());
       return;
     }
 
@@ -460,6 +390,7 @@ export default function Home() {
             seoTitle: optimization.seoTitle || "",
             metaDescription:
               optimization.metaDescription || "",
+            confirmed: true,
           }),
         }
       );

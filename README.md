@@ -6,7 +6,11 @@ Subscription Shopify app: $29.99/month via Stripe, connect a store, import produ
 
 This is not a prompt clinic or Custom GPT rewriter.
 
-## Phase 4 (current)
+## Phase 5 (current)
+
+Shopify OAuth works for **standalone** (authorization-code + signed state, HMAC, `APP_URL` callback) and **embedded** (Admin launch + App Bridge token exchange). Offline tokens stay encrypted in Neon. Import is paginated with 429/throttle retries. Save is a single implementation (`/api/shopify/products` POST, `/api/shopify/save-product` re-exports it) and requires `confirmed: true` after review. Import/AI/save require an active install, `read_products`/`write_products`, and an eligible Stripe subscription. Shop identity is not stored in `localStorage`.
+
+## Phase 4
 
 Stripe Price must be **exactly $29.99 USD / month**. Test and live Stripe credentials, Price IDs, webhook events, checkout sessions, customers, subscriptions, and Customer Portal objects must stay in the same mode. Billing (customers, subscriptions, invoices, payment status, period, cancellation, webhook event IDs) is stored in Neon. Product access requires **both** an active Shopify install and an eligible Stripe subscription (`active` or `trialing`, with no failed last invoice). Uninstall revokes access and sessions immediately but does **not** cancel Stripe.
 
@@ -93,4 +97,4 @@ Subscribe → Manage Subscription after payment (survives refresh via `virello_s
 
 ## Deploy
 
-Next.js on Vercel (`vercel.json` framework only; no `outputDirectory`). Do not deploy this branch until Phase 4 is approved. Stripe webhook path: `/api/stripe/webhook`. Shopify webhook path: `/api/webhooks`. Shopify OAuth callback: `/api/auth/shopify/callback`.
+Next.js on Vercel (`vercel.json` framework only; no `outputDirectory`). Do not deploy this branch until Phase 8 is approved. Stripe webhook path: `/api/stripe/webhook`. Shopify webhook path: `/api/webhooks`. Shopify OAuth callback: `/api/auth/shopify/callback`.

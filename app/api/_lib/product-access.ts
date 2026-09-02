@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
-import { authenticateShopifyRequest } from "./shopify-auth";
+import { authenticateShopifyRequest, storedShopifyScope } from "./shopify-auth";
 import { isShopifyInstallationActive } from "./shops";
+import { hasRequiredShopifyScopes } from "./shopify-scopes";
 import {
   productAccessDeniedMessage,
   type ProductAccessDecision,
@@ -43,6 +44,15 @@ export async function requirePaidProductAccess(request: NextRequest): Promise<{
       "Shopify connection is missing. Reconnect the store to continue.",
       403,
       "not_installed"
+    );
+  }
+
+  const scope = await storedShopifyScope(shop);
+  if (!hasRequiredShopifyScopes(scope)) {
+    throw new ProductAccessError(
+      productAccessDeniedMessage("missing_scopes"),
+      403,
+      "missing_scopes"
     );
   }
 

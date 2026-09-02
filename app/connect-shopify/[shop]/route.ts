@@ -1,13 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-
-function normalizeShop(value: string): string {
-  return value
-    .trim()
-    .toLowerCase()
-    .replace(/^https?:\/\//, "")
-    .replace(/^www\./, "")
-    .replace(/\/+$/, "");
-}
+import { normalizeShop } from "../../api/_lib/shop-domain";
 
 export async function GET(
   request: NextRequest,
@@ -16,11 +8,12 @@ export async function GET(
   const { shop: rawShop } = await context.params;
   const shop = normalizeShop(decodeURIComponent(rawShop));
 
-  if (!/^[a-z0-9][a-z0-9-]*\.myshopify\.com$/i.test(shop)) {
+  if (!shop) {
     return NextResponse.redirect(new URL("/connect?error=invalid-shop", request.url));
   }
 
-  return NextResponse.redirect(
-    new URL(`/api/auth/shopify?shop=${encodeURIComponent(shop)}`, request.url)
-  );
+  const target = new URL("/api/auth/shopify", request.url);
+  target.searchParams.set("shop", shop);
+  target.searchParams.set("flow", "standalone");
+  return NextResponse.redirect(target);
 }

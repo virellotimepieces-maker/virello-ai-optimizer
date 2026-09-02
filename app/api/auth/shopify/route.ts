@@ -1,35 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getAppUrl } from "../../_lib/app-url";
+import { normalizeShop } from "../../_lib/shop-domain";
+import {
+  buildShopifyAuthorizeUrl,
+  shopifyAdminAppUrl,
+} from "../../_lib/shopify-oauth";
 import { getShopifyClientId } from "../../_lib/shopify-config";
-
-function cleanShopDomain(value: string) {
-  return value
-    .trim()
-    .toLowerCase()
-    .replace(/^https?:\/\//, "")
-    .replace(/^www\./, "")
-    .replace(/\/+$/, "")
-    .replace(/(\.myshopify\.com){2,}$/, ".myshopify.com");
-}
-
-function isValidShopDomain(shop: string) {
-  return /^([a-z0-9][a-z0-9-]*[a-z0-9]|[a-z0-9])\.myshopify\.com$/i.test(
-    shop
-  );
-}
 
 export async function GET(request: NextRequest) {
   try {
-    const rawShop =
-      request.nextUrl.searchParams.get("shop") || "";
-
-    const shop = cleanShopDomain(rawShop);
-
-    if (!shop || !isValidShopDomain(shop)) {
+    const shop = normalizeShop(request.nextUrl.searchParams.get("shop") || "");
+    if (!shop) {
       return NextResponse.json(
         {
           success: false,
-          error:
-            "Invalid Shopify store domain. Use your .myshopify.com domain.",
+          error: "Invalid Shopify store domain. Use your .myshopify.com domain.",
         },
         { status: 400 }
       );
@@ -40,52 +25,39 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(
         {
           success: false,
-          error: "SHOPIFY_API_KEY is missing in Vercel Environment Variables.",
+          error: "SHOPIFY_API_KEY is not configured.",
         },
         { status: 500 }
       );
     }
 
-    // This app uses Shopify managed installation. Launch the installed Admin
-    // app and let App Bridge issue an ID token; server APIs then exchange that
-    // ID token for the durable offline access token. Starting the legacy
-    // authorization-code flow here conflicts with managed installation and is
-    // especially fragile in Shopify's partitioned mobile browser.
-    const storeHandle = shop.replace(/\.myshopify\.com$/i, "");
-    const appHandle =
-      process.env.SHOPIFY_APP_HANDLE?.trim() || "virello-ai-optimizer";
-    const authorizationUrl = new URL(
-      `/store/${encodeURIComponent(storeHandle)}/apps/${encodeURIComponent(appHandle)}`,
-      "https://admin.shopify.com"
-    );
-    authorizationUrl.searchParams.set("shop", shop);
+    const embedded =
+      request.nextUrl.searchParams.get("embedded") === "1" ||
+      Boolean(request.nextUrl.searchParams.get("host"));
+    const flowParam = request.nextUrl.searchParams.get("flow");
+    const flow =
+      flowParam === "standalone"
+        ? "standalone"
+        : flowParam === "embedded" || embedded
+          ? "embedded"
+          : "standalone";
 
-    const response =
-      NextResponse.redirect(
-        authorizationUrl
-      );
+    if (flow === "embedded") {
+      const response = NextResponse.redirect(shopifyAdminAppUrl(shop));
+      response.headers.set("Cache-Control", "no-store, no-cache, must-revalidate");
+      return response;
+    }
 
-    response.headers.set(
-      "Cache-Control",
-      "no-store, no-cache, must-revalidate"
-    );
-
-    console.log(
-      "SHOPIFY_ADMIN_LAUNCH",
-      {
-        shop,
-        appHandle,
-        origin: request.nextUrl.origin,
-      }
-    );
-
+    const authorize = buildShopifyAuthorizeUrl({
+      shop,
+      flow: "standalone",
+      fallbackOrigin: getAppUrl(request.nextUrl.origin),
+    });
+    const response = NextResponse.redirect(authorize.url);
+    response.headers.set("Cache-Control", "no-store, no-cache, must-revalidate");
     return response;
   } catch (error) {
-    console.error(
-      "SHOPIFY_OAUTH_START_ERROR:",
-      error
-    );
-
+    console.error("SHOPIFY_OAUTH_START_ERROR:", error);
     return NextResponse.json(
       {
         success: false,

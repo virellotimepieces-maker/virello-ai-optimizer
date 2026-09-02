@@ -191,15 +191,30 @@ export function verifyShopifyCallbackHmac(
   return legacyRawMessage !== rawMessage && matches(legacyRawMessage);
 }
 
+export type ShopifyOAuthFlow = "standalone" | "embedded";
+
+export type SignedOAuthState = {
+  shop: string;
+  timestamp: number;
+  flow: ShopifyOAuthFlow;
+};
+
+const OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
+
 export function createSignedOAuthState(
   shop: string,
-  secret = getShopifyClientSecret()
+  secret = getShopifyClientSecret(),
+  flow: ShopifyOAuthFlow = "standalone"
 ): string {
   if (!secret) {
     throw new ShopifySecurityError("Shopify credentials are not configured.", 500);
   }
+  const normalized = normalizeShop(shop);
+  if (!normalized) {
+    throw new ShopifySecurityError("Invalid Shopify store.", 400);
+  }
   const payload = Buffer.from(
-    JSON.stringify({ shop, timestamp: Date.now() })
+    JSON.stringify({ shop: normalized, timestamp: Date.now(), flow })
   ).toString("base64url");
   const signature = createHmac("sha256", secret)
     .update(payload)
@@ -207,27 +222,41 @@ export function createSignedOAuthState(
   return `${payload}.${signature}`;
 }
 
-export function verifySignedOAuthState(
+export function parseSignedOAuthState(
   state: string,
   expectedShop: string,
   secret: string
-): boolean {
+): SignedOAuthState | null {
   try {
     const [payload, suppliedSignature, extra] = state.split(".");
-    if (!payload || !suppliedSignature || extra) return false;
+    if (!payload || !suppliedSignature || extra) return null;
     const expectedSignature = createHmac("sha256", secret)
       .update(payload)
       .digest("base64url");
     const supplied = Buffer.from(suppliedSignature);
     const expected = Buffer.from(expectedSignature);
-    if (!hmacEqual(supplied, expected)) return false;
+    if (!hmacEqual(supplied, expected)) return null;
     const parsed = JSON.parse(
       Buffer.from(payload, "base64url").toString("utf8")
-    ) as { shop?: string; timestamp?: number };
-    if (!parsed.shop || !parsed.timestamp) return false;
-    if (Date.now() - parsed.timestamp > 10 * 60 * 1000) return false;
-    return normalizeShop(parsed.shop) === normalizeShop(expectedShop);
+    ) as { shop?: string; timestamp?: number; flow?: string };
+    if (!parsed.shop || !parsed.timestamp) return null;
+    if (Date.now() - parsed.timestamp > OAUTH_STATE_TTL_MS) return null;
+    const shop = normalizeShop(parsed.shop);
+    if (!shop || shop !== normalizeShop(expectedShop)) return null;
+    return {
+      shop,
+      timestamp: parsed.timestamp,
+      flow: parsed.flow === "embedded" ? "embedded" : "standalone",
+    };
   } catch {
-    return false;
+    return null;
   }
+}
+
+export function verifySignedOAuthState(
+  state: string,
+  expectedShop: string,
+  secret: string
+): boolean {
+  return Boolean(parseSignedOAuthState(state, expectedShop, secret));
 }
