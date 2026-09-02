@@ -143,7 +143,7 @@ export const COPY: Record<AppLocale, Record<CopyKey, string>> = {
     checkoutNeedShop: "Enter your Shopify .myshopify.com domain before subscribing.",
     wrongHost: "Open Virello on the canonical app URL:",
     invalidAuthorizeUrl:
-      "Shopify authorization must open Admin OAuth, not the public storefront. Open Virello on the canonical app URL and try Connect Shopify again.",
+      "Shopify authorization must open {shop}.myshopify.com/admin/oauth/authorize, not the public storefront. Try Connect Shopify again.",
   },
   fil: {
     brandSmall: "VIRELLO AI",
@@ -217,7 +217,7 @@ export const COPY: Record<AppLocale, Record<CopyKey, string>> = {
     checkoutNeedShop: "Ilagay muna ang .myshopify.com domain bago mag-subscribe.",
     wrongHost: "Buksan ang Virello sa tamang app URL:",
     invalidAuthorizeUrl:
-      "Dapat sa Shopify Admin OAuth magbukas, hindi sa public storefront. Buksan ang Virello sa tamang app URL at subukan ulit ang Connect Shopify.",
+      "Dapat sa {shop}.myshopify.com/admin/oauth/authorize magbukas, hindi sa public storefront. Subukan ulit ang Connect Shopify.",
   },
 };
 

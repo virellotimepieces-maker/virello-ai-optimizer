@@ -40,35 +40,24 @@ export function normalizeShop(value: string): string {
   }
 }
 
-export function shopHandleFromDomain(shop: string): string {
-  const normalized = normalizeShop(shop);
-  if (!normalized) return "";
-  return normalized.replace(/\.myshopify\.com$/i, "");
-}
-
 export function isShopifyStorefrontHost(hostname: string): boolean {
   const host = hostname.trim().toLowerCase();
   return host.endsWith(".myshopify.com") && host !== ".myshopify.com";
 }
 
 /**
- * Standalone OAuth must start on Shopify Admin, never the public storefront.
- * `{shop}.myshopify.com/admin/oauth/authorize` 404s to the password page on
- * unified-admin / unpublished shops such as gfd1cp-1v.myshopify.com.
+ * Official standalone authorization-code URL:
+ * https://{shop}.myshopify.com/admin/oauth/authorize
+ * Never the public storefront root, and never admin.shopify.com/store/...
  */
 export function isShopifyAdminAuthorizeUrl(value: string): boolean {
   try {
     const url = new URL(value);
     if (url.protocol !== "https:") return false;
     if (url.username || url.password) return false;
-    if (url.hostname !== "admin.shopify.com") return false;
+    if (!isValidShopDomain(url.hostname)) return false;
     const path = url.pathname.replace(/\/+$/, "") || "/";
-    if (path === "/oauth/authorize" || path === "/admin/oauth/authorize") {
-      return true;
-    }
-    return /^\/store\/[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\/oauth\/authorize$/i.test(
-      path
-    );
+    return path === "/admin/oauth/authorize";
   } catch {
     return false;
   }

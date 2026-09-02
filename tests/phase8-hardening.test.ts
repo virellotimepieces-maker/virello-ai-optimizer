@@ -176,7 +176,7 @@ describe("Phase 8 hardening", () => {
     expect(COPY.fil.manage).toMatch(/I-manage/);
     expect(COPY.fil.emptyProducts).toBeTruthy();
     expect(COPY.en.checkoutNeedShop).toMatch(/myshopify\.com/);
-    expect(COPY.en.invalidAuthorizeUrl).toMatch(/Admin OAuth/);
-    expect(COPY.fil.invalidAuthorizeUrl).toMatch(/Admin OAuth/);
+    expect(COPY.en.invalidAuthorizeUrl).toMatch(/myshopify\.com\/admin\/oauth\/authorize/);
+    expect(COPY.fil.invalidAuthorizeUrl).toMatch(/myshopify\.com\/admin\/oauth\/authorize/);
   });
 });

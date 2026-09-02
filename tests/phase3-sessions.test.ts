@@ -138,7 +138,7 @@ describe("Phase 3 Shopify security module", () => {
     expect(isAllowedRedirectUrl("https://gfd1cp-1v.myshopify.com/")).toBe(false);
     expect(
       isAllowedRedirectUrl(
-        "https://admin.shopify.com/store/gfd1cp-1v/oauth/authorize"
+        "https://gfd1cp-1v.myshopify.com/admin/oauth/authorize"
       )
     ).toBe(true);
   });

@@ -1,4 +1,4 @@
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { NextRequest } from "next/server";
 import { normalizeShop } from "./shop-domain";
 import {
@@ -214,7 +214,12 @@ export function createSignedOAuthState(
     throw new ShopifySecurityError("Invalid Shopify store.", 400);
   }
   const payload = Buffer.from(
-    JSON.stringify({ shop: normalized, timestamp: Date.now(), flow })
+    JSON.stringify({
+      shop: normalized,
+      timestamp: Date.now(),
+      flow,
+      nonce: randomBytes(16).toString("hex"),
+    })
   ).toString("base64url");
   const signature = createHmac("sha256", secret)
     .update(payload)

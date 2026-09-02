@@ -47,6 +47,13 @@ export async function GET(request: NextRequest) {
       return redirectError(returnOrigin, "Shopify credentials are not configured.");
     }
 
+    const verifiedSecret = secrets.find((secret) =>
+      verifyShopifyCallbackHmac(request, secret)
+    );
+    if (!verifiedSecret) {
+      return redirectError(returnOrigin, "Shopify authorization signature is invalid.");
+    }
+
     const signed = secrets
       .map((secret) => parseSignedOAuthState(state, shop, secret))
       .find(Boolean);
@@ -55,13 +62,6 @@ export async function GET(request: NextRequest) {
         returnOrigin,
         "Invalid Shopify OAuth state. Please start the connection again."
       );
-    }
-
-    const verifiedSecret = secrets.find((secret) =>
-      verifyShopifyCallbackHmac(request, secret)
-    );
-    if (!verifiedSecret) {
-      return redirectError(returnOrigin, "Shopify authorization signature is invalid.");
     }
 
     const tokenResponse = await fetch(`https://${shop}/admin/oauth/access_token`, {

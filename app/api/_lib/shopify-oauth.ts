@@ -1,9 +1,5 @@
 import { getAppUrl } from "./app-url";
-import {
-  isShopifyAdminAuthorizeUrl,
-  normalizeShop,
-  shopHandleFromDomain,
-} from "./shop-domain";
+import { isShopifyAdminAuthorizeUrl, normalizeShop } from "./shop-domain";
 import { getShopifyClientId, getShopifyClientSecret } from "./shopify-config";
 import {
   createSignedOAuthState,
@@ -50,25 +46,15 @@ export function buildShopifyAuthorizeUrl(input: {
   }
   const flow = input.flow === "embedded" ? "embedded" : "standalone";
   const state = createSignedOAuthState(shop, secret, flow);
-  const handle = shopHandleFromDomain(shop);
-  if (!handle) {
-    throw new Error("Invalid Shopify store domain.");
-  }
-  // Unified Admin OAuth. Do not use https://{shop}/admin/oauth/authorize —
-  // unpublished and new shops serve the public storefront 404 there.
-  const url = new URL(
-    `/store/${encodeURIComponent(handle)}/oauth/authorize`,
-    "https://admin.shopify.com"
-  );
+  const url = new URL(`https://${shop}/admin/oauth/authorize`);
   url.searchParams.set("client_id", apiKey);
   url.searchParams.set("scope", SHOPIFY_OAUTH_SCOPE);
   url.searchParams.set("redirect_uri", shopifyCallbackUrl(input.fallbackOrigin));
   url.searchParams.set("state", state);
-  url.searchParams.set("shop", shop);
   const authorizeUrl = url.toString();
   if (!isShopifyAdminAuthorizeUrl(authorizeUrl)) {
     throw new Error(
-      "Shopify authorization must start on admin.shopify.com, not the storefront."
+      "Shopify authorization must start at {shop}.myshopify.com/admin/oauth/authorize."
     );
   }
   return { url: authorizeUrl, shop, state };

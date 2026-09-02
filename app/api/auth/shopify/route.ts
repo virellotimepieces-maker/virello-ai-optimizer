@@ -99,13 +99,16 @@ export async function GET(request: NextRequest) {
       flow: "standalone",
       fallbackOrigin: getAppUrl(request.nextUrl.origin),
     });
-    if (!isShopifyAdminAuthorizeUrl(authorize.url)) {
+    if (
+      !isShopifyAdminAuthorizeUrl(authorize.url) ||
+      authorize.url.includes("admin.shopify.com/store/")
+    ) {
       return oauthStartResponse(
         request,
         {
           success: false,
           error:
-            "Shopify authorization must start on admin.shopify.com, not the storefront.",
+            "Shopify authorization must start at {shop}.myshopify.com/admin/oauth/authorize.",
         },
         500
       );
