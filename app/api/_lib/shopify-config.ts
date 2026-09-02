@@ -1,12 +1,24 @@
 function cleanEnvironmentValue(value?: string): string {
-  const trimmed = value?.trim() || "";
+  let trimmed = (value ?? "")
+    .replace(/^\uFEFF/, "")
+    .replace(/\r/g, "")
+    .replace(/[\u200B-\u200D\uFEFF]/g, "")
+    .trim();
+
+  if (trimmed.includes("\n")) {
+    const lines = trimmed
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean);
+    trimmed = lines[lines.length - 1] || trimmed;
+  }
 
   if (
     trimmed.length >= 2 &&
     ((trimmed.startsWith('"') && trimmed.endsWith('"')) ||
       (trimmed.startsWith("'") && trimmed.endsWith("'")))
   ) {
-    return trimmed.slice(1, -1).trim();
+    trimmed = trimmed.slice(1, -1).replace(/^\uFEFF/, "").trim();
   }
 
   return trimmed;

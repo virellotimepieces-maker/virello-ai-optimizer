@@ -124,68 +124,169 @@ export function verifyShopifyWebhookHmac(
   });
 }
 
-function shopifyHmacEscape(value: string): string {
+function shopifyHmacEscapeAll(value: string): string {
   return value.replace(/%/g, "%25").replace(/&/g, "%26").replace(/=/g, "%3D");
 }
 
-function rawQueryPairs(search: string): string[] {
-  return search
-    .replace(/^\?/, "")
+function shopifyHmacEscapeValueLegacy(value: string): string {
+  return value.replace(/%/g, "%25").replace(/&/g, "%26");
+}
+
+function hmacHexEqual(suppliedHex: string, expectedHex: string): boolean {
+  const supplied = Buffer.from(suppliedHex, "hex");
+  const expected = Buffer.from(expectedHex, "hex");
+  return (
+    supplied.length === 32 &&
+    expected.length === 32 &&
+    hmacEqual(supplied, expected)
+  );
+}
+
+function splitRawQuery(search: string): Array<[string, string]> {
+  const query = search.replace(/^\?/, "");
+  if (!query) return [];
+  return query
     .split("&")
     .filter(Boolean)
-    .filter((part) => {
-      const rawKey = part.split("=", 1)[0];
-      try {
-        const key = decodeURIComponent(rawKey);
-        return key !== "hmac" && key !== "signature";
-      } catch {
-        return rawKey !== "hmac" && rawKey !== "signature";
+    .map((part) => {
+      const index = part.indexOf("=");
+      if (index === -1) return [part, ""];
+      return [part.slice(0, index), part.slice(index + 1)];
+    });
+}
+
+function decodeQueryKeepPlus(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
+function decodeQueryForm(value: string): string {
+  try {
+    return decodeURIComponent(value.replace(/\+/g, "%20"));
+  } catch {
+    return value;
+  }
+}
+
+function isHmacOrSignature(key: string): boolean {
+  const decoded = decodeQueryKeepPlus(key);
+  return decoded === "hmac" || decoded === "signature" || key === "hmac" || key === "signature";
+}
+
+function sortedOAuthMessage(
+  pairs: Array<[string, string]>,
+  escapeMode: "none" | "values-and-keys" | "keys-eq-only"
+): string {
+  return pairs
+    .filter(([key]) => !isHmacOrSignature(key))
+    .map(([key, value]) => {
+      if (escapeMode === "none") return `${key}=${value}`;
+      if (escapeMode === "keys-eq-only") {
+        return `${shopifyHmacEscapeAll(key)}=${shopifyHmacEscapeValueLegacy(value)}`;
       }
+      return `${shopifyHmacEscapeAll(key)}=${shopifyHmacEscapeAll(value)}`;
     })
-    .sort();
+    .sort()
+    .join("&");
+}
+
+function addPairSetMessages(
+  messages: Set<string>,
+  pairs: Array<[string, string]>
+): void {
+  if (!pairs.length) return;
+  const decodedKeepPlus = pairs.map(
+    ([key, value]) => [decodeQueryKeepPlus(key), decodeQueryKeepPlus(value)] as [string, string]
+  );
+  const decodedForm = pairs.map(
+    ([key, value]) => [decodeQueryForm(key), decodeQueryForm(value)] as [string, string]
+  );
+  for (const decoded of [pairs, decodedKeepPlus, decodedForm]) {
+    messages.add(sortedOAuthMessage(decoded, "none"));
+    messages.add(sortedOAuthMessage(decoded, "values-and-keys"));
+    messages.add(sortedOAuthMessage(decoded, "keys-eq-only"));
+  }
+  const raw = pairs
+    .filter(([key]) => !isHmacOrSignature(key))
+    .map(([key, value]) => `${key}=${value}`)
+    .sort()
+    .join("&");
+  if (raw) messages.add(raw);
+}
+
+function callbackQueryStrings(request: NextRequest): string[] {
+  const found = new Set<string>();
+  const add = (value?: string | null) => {
+    if (!value) return;
+    let query = value.trim();
+    if (query.startsWith("?")) query = query.slice(1);
+    const uriIndex = query.indexOf("?");
+    if (uriIndex >= 0 && (query.startsWith("/") || query.startsWith("http"))) {
+      query = query.slice(uriIndex + 1);
+    }
+    if (query) found.add(query);
+  };
+
+  add(request.nextUrl.search);
+  try {
+    add(new URL(request.url).search);
+  } catch {
+    /* ignore invalid request URLs */
+  }
+
+  const invokeQuery = request.headers.get("x-invoke-query");
+  add(invokeQuery);
+  if (invokeQuery) {
+    try {
+      add(decodeURIComponent(invokeQuery));
+    } catch {
+      /* ignore */
+    }
+  }
+
+  for (const header of ["x-forwarded-uri", "x-original-uri", "x-invoke-path"]) {
+    add(request.headers.get(header));
+  }
+
+  return [...found];
 }
 
 export function shopifyCallbackHmacMessages(request: NextRequest): string[] {
   const messages = new Set<string>();
-  const decoded = [...request.nextUrl.searchParams.entries()]
-    .filter(([key]) => key !== "hmac" && key !== "signature")
-    .sort(
-      ([leftKey, leftValue], [rightKey, rightValue]) =>
-        leftKey.localeCompare(rightKey) || leftValue.localeCompare(rightValue)
-    );
-
-  if (decoded.length) {
-    messages.add(decoded.map(([key, value]) => `${key}=${value}`).join("&"));
-    messages.add(
-      decoded
-        .map(([key, value]) => `${shopifyHmacEscape(key)}=${shopifyHmacEscape(value)}`)
-        .join("&")
-    );
-    const encoded = new URLSearchParams();
-    for (const [key, value] of decoded) encoded.append(key, value);
-    messages.add(encoded.toString());
+  addPairSetMessages(messages, [...request.nextUrl.searchParams.entries()]);
+  for (const search of callbackQueryStrings(request)) {
+    addPairSetMessages(messages, splitRawQuery(search));
   }
-
-  for (const search of [request.nextUrl.search, new URL(request.url).search]) {
-    const raw = rawQueryPairs(search).join("&");
-    if (raw) messages.add(raw);
-  }
-
-  return [...messages];
+  return [...messages].filter(Boolean);
 }
 
 export function verifyShopifyCallbackHmac(
   request: NextRequest,
   secret: string
 ): boolean {
-  const supplied = (request.nextUrl.searchParams.get("hmac") || "").toLowerCase();
-  if (!/^[a-f0-9]{64}$/i.test(supplied)) return false;
+  if (!secret) return false;
+  let hmac = (request.nextUrl.searchParams.get("hmac") || "").toLowerCase();
+  if (!/^[a-f0-9]{64}$/.test(hmac)) {
+    for (const search of callbackQueryStrings(request)) {
+      const found = splitRawQuery(search).find(
+        ([key]) => decodeQueryKeepPlus(key) === "hmac"
+      )?.[1];
+      if (!found) continue;
+      const decoded = decodeQueryKeepPlus(found).toLowerCase();
+      if (/^[a-f0-9]{64}$/.test(decoded)) {
+        hmac = decoded;
+        break;
+      }
+    }
+  }
+  if (!/^[a-f0-9]{64}$/.test(hmac)) return false;
 
-  const suppliedBuffer = Buffer.from(supplied);
   return shopifyCallbackHmacMessages(request).some((message) => {
     const expected = createHmac("sha256", secret).update(message).digest("hex");
-    const expectedBuffer = Buffer.from(expected);
-    return hmacEqual(suppliedBuffer, expectedBuffer);
+    return hmacHexEqual(hmac, expected);
   });
 }
 

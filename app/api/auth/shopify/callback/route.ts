@@ -18,6 +18,7 @@ import {
 import { normalizeShop } from "../../../_lib/shop-domain";
 import {
   parseSignedOAuthState,
+  shopifyCallbackHmacMessages,
   verifyShopifyCallbackHmac,
 } from "../../../_lib/shopify-security";
 import { shopifyAdminAppUrl, shopifyCallbackUrl } from "../../../_lib/shopify-oauth";
@@ -74,7 +75,15 @@ export async function GET(request: NextRequest) {
         hasCode: Boolean(code),
         hasShop: Boolean(shop),
         hasState: Boolean(state),
+        hasHost: Boolean(params.get("host")),
+        hasTimestamp: Boolean(params.get("timestamp")),
         hasError: Boolean(oauthError),
+        hmacLength: suppliedHmac.length,
+        hmacHex: /^[a-f0-9]{64}$/i.test(suppliedHmac),
+        secretCount: secrets.length,
+        secretLengths: secrets.map((value) => value.length).sort((a, b) => a - b),
+        messageCount: shopifyCallbackHmacMessages(request).length,
+        hasInvokeQuery: Boolean(request.headers.get("x-invoke-query")),
       });
       return redirectError(returnOrigin, "Shopify authorization signature is invalid.");
     }
