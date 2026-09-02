@@ -1,43 +1,54 @@
 # Virello AI Optimizer
 
-Full deploy-ready Next.js source project for e-commerce product optimization.
+Gawing tama ang Shopify product listings mo.
 
-Includes product title, description, keywords, SEO title, meta description, bulk optimization, CSV import/export, responsive dashboard, and an optional OpenAI-compatible AI API route.
+Subscription Shopify app: $29.99/month via Stripe, connect a store, import products, review AI title/description/SEO/tags/conversion copy, then save to Shopify. Works in **Shopify Admin (embedded)** and as a **standalone dashboard**.
 
-## Run
+This is not a prompt clinic or Custom GPT rewriter.
+
+## Phase 1 recovery
+
+Branch `shopify-rebuild` restores the last Shopify/Stripe baseline (`a2e6428`) and prepares the repo shape. WooCommerce routes and deploy zip archives were removed. Monthly paid AI allowance is **1000**.
+
+## Run locally
+
+```bash
 npm install
+cp .env.example .env.local
 npm run dev
-
-## Production environment
-
-Configure these variables in Vercel before accepting subscribers:
-
-```env
-OPENAI_API_KEY=your_openai_key
-OPENAI_MODEL=gpt-5.4
-STRIPE_SECRET_KEY=sk_live_...
-STRIPE_PRICE_ID=price_...
-STRIPE_WEBHOOK_SECRET=whsec_...
-SUBSCRIBER_COOKIE_SECRET=a-long-random-secret
-DATABASE_URL=postgresql://...
-AI_SUBSCRIBER_USAGE_LIMIT=1000
-SHOPIFY_API_KEY=...
-SHOPIFY_API_SECRET=...
 ```
 
-The production server initializes the required tables automatically. The SQL files in
-`migrations/` are retained for auditing and manual database administration.
+Fill `.env.local` with real values. Do not commit it.
 
-Shopify access tokens are encrypted using a key derived from the Shopify app secret.
-Rotating the Shopify app secret invalidates stored sessions and requires merchants to reconnect.
+```bash
+npm test
+npm run security:check
+npm run build
+```
 
-Shopify uses managed installation, App Bridge ID tokens, offline token exchange, and
-server-side encrypted sessions. Deploy `shopify.app.toml` with Shopify CLI before app
-review so the embedded setting, scopes, redirect URL, and mandatory webhooks are active.
+## Environment variable names
 
-In Stripe, configure the production webhook endpoint as
-`https://virello-ai-optimizer.vercel.app/api/stripe/webhook` and subscribe to checkout,
-subscription, and invoice events.
+Set these in `.env.local` and Vercel. Do not put values in git.
+
+- `APP_URL`
+- `DATABASE_URL`
+- `OPENAI_API_KEY`
+- `OPENAI_MODEL`
+- `STRIPE_SECRET_KEY`
+- `STRIPE_PRICE_ID`
+- `STRIPE_WEBHOOK_SECRET`
+- `SUBSCRIBER_COOKIE_SECRET`
+- `AI_SUBSCRIBER_USAGE_LIMIT` (paid allowance; default 1000)
+- `SHOPIFY_API_KEY` / `SHOPIFY_CLIENT_ID`
+- `SHOPIFY_API_SECRET` / `SHOPIFY_CLIENT_SECRET`
+- `SHOPIFY_API_SECRET_PREVIOUS`
+- `SHOPIFY_APP_HANDLE`
+- `SHOPIFY_TOKEN_ENCRYPTION_KEY`
+
+## Customer flow
+
+Subscribe → Manage Subscription after payment → Connect Shopify (embedded Admin or standalone) → Import → Optimize → Review → Save to Shopify.
 
 ## Deploy
-Upload the EXTRACTED contents of this project to GitHub, connect the repository to Vercel, then deploy.
+
+Next.js on Vercel. Do not deploy this branch until Phase 1 is approved. Stripe webhook path: `/api/stripe/webhook`. Shopify OAuth callback: `/api/auth/shopify/callback`.

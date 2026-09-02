@@ -81,7 +81,6 @@ function getCookieSecrets(): string[] {
   const secrets = [
     process.env.SUBSCRIBER_COOKIE_SECRET,
     process.env.SHOPIFY_TOKEN_ENCRYPTION_KEY,
-    process.env.STRIPE_SECRET_KEY,
   ]
     .map((value) => value?.trim() || "")
     .filter((value, index, values) =>
@@ -108,8 +107,12 @@ function decodeConfiguredSubscriberPayload(value: string): SubscriberPayload | n
   return null;
 }
 
-function getUsageLimit(): number {
-  return 1000;
+export function getUsageLimit(): number {
+  const raw = process.env.AI_SUBSCRIBER_USAGE_LIMIT?.trim();
+  if (!raw) return 1000;
+  const parsed = Number(raw);
+  if (!Number.isInteger(parsed) || parsed < 1) return 1000;
+  return parsed;
 }
 
 function signPayload(

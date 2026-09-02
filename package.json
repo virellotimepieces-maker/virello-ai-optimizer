@@ -2,14 +2,19 @@
   "name": "virello-ai-optimizer",
   "version": "1.0.0",
   "private": true,
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev --port 43217",
     "build": "next build",
-    "start": "next start"
+    "start": "next start --port 43217",
+    "test": "vitest run",
+    "security:check": "node scripts/security-check.mjs"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.0.2",
-    "next": "15.5.21",
+    "next": "15.5.25",
     "react": "19.1.1",
     "react-dom": "19.1.1"
   },
@@ -17,6 +22,7 @@
     "@types/node": "^22.0.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
-    "typescript": "^5.0.0"
+    "typescript": "^5.0.0",
+    "vitest": "^3.2.4"
   }
 }
