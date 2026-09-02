@@ -1,7 +1,10 @@
 import { createHmac, timingSafeEqual } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
-import { database, ensureDatabaseSchema } from "./database";
+import { dbQuery } from "./database";
 import { authenticateShopifyRequest, normalizeShop } from "./shopify-auth";
+import { upsertShop } from "./shops";
+import { consumeAiUsage, peekAiUsage } from "./usage";
+import { getUsageLimit, type SubscriberUsage } from "./usage-limit";
 
 class ApiError extends Error {
   status: number;
@@ -51,11 +54,7 @@ export type CheckoutSubscription = {
   subscription: SubscriptionSnapshot;
 };
 
-export type SubscriberUsage = {
-  limit: number;
-  used: number;
-  remaining: number;
-};
+export type { SubscriberUsage };
 
 export type ActiveSubscriberStatus = {
   active: boolean;
@@ -107,13 +106,7 @@ function decodeConfiguredSubscriberPayload(value: string): SubscriberPayload | n
   return null;
 }
 
-export function getUsageLimit(): number {
-  const raw = process.env.AI_SUBSCRIBER_USAGE_LIMIT?.trim();
-  if (!raw) return 1000;
-  const parsed = Number(raw);
-  if (!Number.isInteger(parsed) || parsed < 1) return 1000;
-  return parsed;
-}
+export { getUsageLimit };
 
 function signPayload(
   encodedPayload: string,
@@ -482,43 +475,73 @@ export async function getCheckoutSubscription(
   return { shop, subscription: normalizeSubscription(subscription) };
 }
 
+function subscriberCookieFromUsage(
+  subscription: SubscriptionSnapshot,
+  usage: SubscriberUsage
+): string {
+  const payload: SubscriberPayload = {
+    v: 1,
+    subscriptionId: subscription.subscriptionId,
+    customerId: subscription.customerId,
+    status: subscription.status,
+    currentPeriodStart: subscription.currentPeriodStart,
+    currentPeriodEnd: subscription.currentPeriodEnd,
+    usageCount: usage.used,
+    usagePeriodStart: subscription.currentPeriodStart,
+    refreshedAt: Date.now(),
+  };
+
+  return encodeSubscriberPayload(payload, getCookieSecret());
+}
+
 export async function saveShopSubscription(
   shop: string,
   subscription: SubscriptionSnapshot
 ): Promise<void> {
-  const normalizedShop = normalizeShop(shop);
-  if (!normalizedShop) throw new ApiError("Invalid Shopify store.", 400);
-  const sql = database();
-  await ensureDatabaseSchema();
-  await sql`
-    INSERT INTO shop_subscriptions (
-      shop, stripe_customer_id, stripe_subscription_id, status,
-      current_period_start, current_period_end, updated_at
-    ) VALUES (
-      ${normalizedShop}, ${subscription.customerId}, ${subscription.subscriptionId},
-      ${subscription.status}, ${subscription.currentPeriodStart},
-      ${subscription.currentPeriodEnd}, NOW()
-    )
-    ON CONFLICT (shop) DO UPDATE SET
-      stripe_customer_id = EXCLUDED.stripe_customer_id,
-      stripe_subscription_id = EXCLUDED.stripe_subscription_id,
-      status = EXCLUDED.status,
-      current_period_start = EXCLUDED.current_period_start,
-      current_period_end = EXCLUDED.current_period_end,
-      updated_at = NOW()
-  `;
+  const normalizedShop = await upsertShop(shop);
+  await dbQuery(
+    `INSERT INTO shop_subscriptions (
+       shop, stripe_customer_id, stripe_subscription_id, status,
+       current_period_start, current_period_end, updated_at
+     ) VALUES ($1, $2, $3, $4, $5, $6, NOW())
+     ON CONFLICT (shop) DO UPDATE SET
+       stripe_customer_id = EXCLUDED.stripe_customer_id,
+       stripe_subscription_id = EXCLUDED.stripe_subscription_id,
+       status = EXCLUDED.status,
+       current_period_start = EXCLUDED.current_period_start,
+       current_period_end = EXCLUDED.current_period_end,
+       updated_at = NOW()`,
+    [
+      normalizedShop,
+      subscription.customerId,
+      subscription.subscriptionId,
+      subscription.status,
+      subscription.currentPeriodStart,
+      subscription.currentPeriodEnd,
+    ]
+  );
 }
 
-export async function subscriptionForShop(shop: string): Promise<SubscriptionSnapshot | null> {
-  const sql = database();
-  await ensureDatabaseSchema();
-  const rows = await sql`
-    SELECT stripe_customer_id, stripe_subscription_id, status,
-           current_period_start, current_period_end
-    FROM shop_subscriptions
-    WHERE shop = ${shop}
-    LIMIT 1
-  `;
+export async function subscriptionForShop(
+  shop: string
+): Promise<SubscriptionSnapshot | null> {
+  const normalizedShop = normalizeShop(shop);
+  if (!normalizedShop) return null;
+
+  const rows = await dbQuery<{
+    stripe_customer_id: string;
+    stripe_subscription_id: string;
+    status: string;
+    current_period_start: number | string;
+    current_period_end: number | string;
+  }>(
+    `SELECT stripe_customer_id, stripe_subscription_id, status,
+            current_period_start, current_period_end
+     FROM shop_subscriptions
+     WHERE shop = $1
+     LIMIT 1`,
+    [normalizedShop]
+  );
   if (!rows.length) return null;
   return {
     customerId: String(rows[0].stripe_customer_id),
@@ -529,73 +552,25 @@ export async function subscriptionForShop(shop: string): Promise<SubscriptionSna
   };
 }
 
-export async function refreshShopSubscription(shop: string): Promise<SubscriptionSnapshot | null> {
+export async function refreshShopSubscription(
+  shop: string
+): Promise<SubscriptionSnapshot | null> {
   const saved = await subscriptionForShop(shop);
   if (!saved) return null;
-  const fresh = normalizeSubscription(await stripeRequest<any>(
-    `subscriptions/${encodeURIComponent(saved.subscriptionId)}`
-  ));
+  const fresh = normalizeSubscription(
+    await stripeRequest<any>(
+      `subscriptions/${encodeURIComponent(saved.subscriptionId)}`
+    )
+  );
   await saveShopSubscription(shop, fresh);
   return fresh;
-}
-
-async function updateUsageState(
-  subscription: SubscriptionSnapshot
-): Promise<SubscriberUsage> {
-  const sql = database();
-  await ensureDatabaseSchema();
-  const limit = getUsageLimit();
-
-  const rows = await sql`
-    INSERT INTO subscriber_usage (
-      subscription_id,
-      period_start,
-      usage_count,
-      updated_at
-    )
-    VALUES (
-      ${subscription.subscriptionId},
-      ${subscription.currentPeriodStart},
-      1,
-      NOW()
-    )
-    ON CONFLICT (subscription_id, period_start)
-    DO UPDATE SET
-      usage_count = subscriber_usage.usage_count + 1,
-      updated_at = NOW()
-    WHERE subscriber_usage.usage_count < ${limit}
-    RETURNING usage_count
-  `;
-
-  if (rows.length === 0) {
-    throw new ApiError(
-      "You have reached your AI usage limit for the current billing period.",
-      429
-    );
-  }
-
-  const used = Number(rows[0].usage_count);
-
-  if (!Number.isFinite(used)) {
-    throw new ApiError(
-      "Unable to determine subscriber usage.",
-      500
-    );
-  }
-
-  return {
-    used,
-    limit,
-    remaining: Math.max(
-      0,
-      limit - used
-    ),
-  };
 }
 
 export async function authorizeSubscriberForAI(
   request: NextRequest
 ): Promise<{
+  shop: string;
+  subscription: SubscriptionSnapshot;
   cookieValue: string;
   usage: SubscriberUsage;
 }> {
@@ -613,41 +588,61 @@ export async function authorizeSubscriberForAI(
   const refreshedSubscription = await refreshShopSubscription(shop);
 
   if (!refreshedSubscription) {
-    throw new ApiError("An active subscription is required to use AI optimization.", 402);
+    throw new ApiError(
+      "An active subscription is required to use AI optimization.",
+      402
+    );
   }
 
-  ensureActiveStatus(
-    refreshedSubscription.status
+  ensureActiveStatus(refreshedSubscription.status);
+
+  const usage = await peekAiUsage(
+    shop,
+    refreshedSubscription.subscriptionId,
+    refreshedSubscription.currentPeriodStart
   );
 
-  const usage =
-    await updateUsageState(
-      refreshedSubscription
+  if (usage.remaining <= 0) {
+    throw new ApiError(
+      "You have reached your AI usage limit for the current billing period.",
+      429
     );
-
-  const payload: SubscriberPayload = {
-    v: 1,
-    subscriptionId:
-      refreshedSubscription.subscriptionId,
-    customerId:
-      refreshedSubscription.customerId,
-    status:
-      refreshedSubscription.status,
-    currentPeriodStart:
-      refreshedSubscription.currentPeriodStart,
-    currentPeriodEnd:
-      refreshedSubscription.currentPeriodEnd,
-    usageCount: usage.used,
-    usagePeriodStart:
-      refreshedSubscription.currentPeriodStart,
-    refreshedAt: Date.now(),
-  };
+  }
 
   return {
-    cookieValue:
-      encodeSubscriberPayload(payload, getCookieSecret()),
+    shop,
+    subscription: refreshedSubscription,
+    cookieValue: subscriberCookieFromUsage(refreshedSubscription, usage),
     usage,
   };
+}
+
+export async function recordSuccessfulAiOptimization(
+  shop: string,
+  subscription: SubscriptionSnapshot
+): Promise<{
+  cookieValue: string;
+  usage: SubscriberUsage;
+}> {
+  try {
+    const usage = await consumeAiUsage(
+      shop,
+      subscription.subscriptionId,
+      subscription.currentPeriodStart
+    );
+    return {
+      usage,
+      cookieValue: subscriberCookieFromUsage(subscription, usage),
+    };
+  } catch (error) {
+    const status = (error as { status?: number }).status;
+    throw new ApiError(
+      error instanceof Error
+        ? error.message
+        : "Unable to record AI usage.",
+      status === 429 ? 429 : 500
+    );
+  }
 }
 
 export function setSubscriberCookie(
@@ -736,19 +731,15 @@ export async function getShopForSubscriberCookie(
       return "";
     }
 
-    const sql = database();
-    await ensureDatabaseSchema();
-
-    const rows = await sql`
-      SELECT shop
-      FROM shop_subscriptions
-      WHERE stripe_subscription_id = ${payload.subscriptionId}
-      LIMIT 1
-    `;
-
-    return normalizeShop(
-      String(rows[0]?.shop || "")
+    const rows = await dbQuery<{ shop: string }>(
+      `SELECT shop
+       FROM shop_subscriptions
+       WHERE stripe_subscription_id = $1
+       LIMIT 1`,
+      [payload.subscriptionId]
     );
+
+    return normalizeShop(String(rows[0]?.shop || ""));
   } catch (error) {
     console.error(
       "SUBSCRIBER_SHOP_LOOKUP_ERROR:",

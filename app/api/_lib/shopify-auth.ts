@@ -1,6 +1,6 @@
 import { createHmac, timingSafeEqual } from "crypto";
 import { NextRequest } from "next/server";
-import { database, ensureDatabaseSchema } from "./database";
+import { dbQuery } from "./database";
 import {
   getShopifyClientId,
   getShopifyClientSecret,
@@ -11,28 +11,15 @@ import {
   encryptShopifyToken,
   SHOPIFY_TOKEN_COOKIE,
 } from "./shopify-session";
+import { normalizeShop } from "./shop-domain";
+import { revokeShopifyInstallation, upsertShop } from "./shops";
 
-const SHOPIFY_SUFFIX = ".myshopify.com";
+export { normalizeShop } from "./shop-domain";
 
 export class ShopifyAuthError extends Error {
   constructor(message: string, public status = 401) {
     super(message);
     this.name = "ShopifyAuthError";
-  }
-}
-
-export function normalizeShop(value: string): string {
-  const raw = value.trim().toLowerCase();
-  if (!raw) return "";
-
-  try {
-    const url = new URL(/^https?:\/\//i.test(raw) ? raw : `https://${raw}`);
-    const host = url.hostname.toLowerCase().replace(/^www\./, "");
-    return host.endsWith(SHOPIFY_SUFFIX) && host !== SHOPIFY_SUFFIX
-      ? host
-      : "";
-  } catch {
-    return "";
   }
 }
 
@@ -118,33 +105,38 @@ export async function saveShopifySession(
   accessToken: string,
   scope = ""
 ): Promise<void> {
-  const normalized = normalizeShop(shop);
-  if (!normalized || !accessToken) {
+  const normalized = await upsertShop(shop, { scopes: scope });
+  if (!accessToken) {
     throw new ShopifyAuthError("Cannot save an invalid Shopify session.", 400);
   }
 
-  const sql = database();
-  await ensureDatabaseSchema();
   const encrypted = encryptShopifyToken(accessToken);
-  await sql`
-    INSERT INTO shopify_sessions (shop, encrypted_access_token, scope, updated_at)
-    VALUES (${normalized}, ${encrypted}, ${scope}, NOW())
-    ON CONFLICT (shop) DO UPDATE SET
-      encrypted_access_token = EXCLUDED.encrypted_access_token,
-      scope = EXCLUDED.scope,
-      updated_at = NOW()
-  `;
+  await dbQuery(
+    `INSERT INTO shopify_sessions (
+       shop, encrypted_access_token, scope, token_version, encryption_kid,
+       revoked_at, installed_at, updated_at
+     ) VALUES ($1, $2, $3, 1, 'v1', NULL, NOW(), NOW())
+     ON CONFLICT (shop) DO UPDATE SET
+       encrypted_access_token = EXCLUDED.encrypted_access_token,
+       scope = EXCLUDED.scope,
+       token_version = shopify_sessions.token_version + 1,
+       encryption_kid = 'v1',
+       revoked_at = NULL,
+       updated_at = NOW()`,
+    [normalized, encrypted, scope]
+  );
 }
 
 async function storedAccessToken(shop: string): Promise<string> {
-  const sql = database();
-  await ensureDatabaseSchema();
-  const rows = await sql`
-    SELECT encrypted_access_token
-    FROM shopify_sessions
-    WHERE shop = ${shop}
-    LIMIT 1
-  `;
+  const normalized = normalizeShop(shop);
+  const rows = await dbQuery<{ encrypted_access_token: string }>(
+    `SELECT encrypted_access_token
+     FROM shopify_sessions
+     WHERE shop = $1
+       AND revoked_at IS NULL
+     LIMIT 1`,
+    [normalized]
+  );
   return decryptShopifyToken(String(rows[0]?.encrypted_access_token || ""));
 }
 
@@ -242,10 +234,5 @@ export async function authenticateShopifyRequest(
 }
 
 export async function deleteShopifyData(shop: string): Promise<void> {
-  const normalized = normalizeShop(shop);
-  if (!normalized) return;
-  const sql = database();
-  await ensureDatabaseSchema();
-  await sql`DELETE FROM shopify_sessions WHERE shop = ${normalized}`;
-  await sql`DELETE FROM shop_subscriptions WHERE shop = ${normalized}`;
+  await revokeShopifyInstallation(shop);
 }

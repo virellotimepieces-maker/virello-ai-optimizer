@@ -6,9 +6,11 @@ Subscription Shopify app: $29.99/month via Stripe, connect a store, import produ
 
 This is not a prompt clinic or Custom GPT rewriter.
 
-## Phase 1 recovery
+## Phase 2 (current)
 
-Branch `shopify-rebuild` restores the last Shopify/Stripe baseline (`a2e6428`) and prepares the repo shape. WooCommerce routes and deploy zip archives were removed. Monthly paid AI allowance is **1000**.
+Versioned Neon migrations, tenant-isolated shops / sessions / subscriptions / usage, uninstall that **revokes** the Shopify installation without deleting billing history, webhook idempotency, and atomic monthly AI quota of **1000** successful optimizations. Failed AI requests do not consume quota.
+
+Branch: `shopify-rebuild`. Do not merge to `main` and do not deploy until approved.
 
 ## Run locally
 
@@ -23,8 +25,30 @@ Fill `.env.local` with real values. Do not commit it.
 ```bash
 npm test
 npm run security:check
+npx tsc --noEmit
 npm run build
 ```
+
+## Database migrations
+
+SQL files live in `migrations/`, applied in filename order by `app/api/_lib/migrate.ts` on first database use.
+
+| File | Purpose |
+| --- | --- |
+| `001_subscriber_usage.sql` | Monthly AI usage counters |
+| `002_shopify_accounts.sql` | Shopify sessions, Stripe shop subscriptions, Stripe webhook ids |
+| `003_phase2_schema.sql` | `shops`, `app_sessions`, `webhook_events`, FKs, indexes, revoke columns |
+| `003_phase2_schema.down.sql` | Phase 2 rollback only |
+
+### Rollback Phase 2
+
+1. Stop writes (pause the app or put Neon in a maintenance window).
+2. Take a Neon point-in-time or logical backup.
+3. Run `migrations/003_phase2_schema.down.sql` against the database.
+4. Confirm `shop_subscriptions` and `subscriber_usage` still hold billing rows.
+5. Ship the previous application revision.
+
+The down file drops `shops`, `app_sessions`, and `webhook_events`. It does **not** delete Stripe customer or subscription records created before Phase 2.
 
 ## Environment variable names
 
@@ -51,4 +75,4 @@ Subscribe → Manage Subscription after payment → Connect Shopify (embedded Ad
 
 ## Deploy
 
-Next.js on Vercel. Do not deploy this branch until Phase 1 is approved. Stripe webhook path: `/api/stripe/webhook`. Shopify OAuth callback: `/api/auth/shopify/callback`.
+Next.js on Vercel. Do not deploy this branch until Phase 2 is approved. Stripe webhook path: `/api/stripe/webhook`. Shopify webhook path: `/api/webhooks`. Shopify OAuth callback: `/api/auth/shopify/callback`.

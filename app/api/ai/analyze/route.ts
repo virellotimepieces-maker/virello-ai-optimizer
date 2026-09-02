@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   authorizeSubscriberForAI,
+  recordSuccessfulAiOptimization,
   setSubscriberCookie,
 } from "../../_lib/subscriber";
 
@@ -528,11 +529,9 @@ export async function POST(
      * SUBSCRIBER AUTHORIZATION
      * ============================================================
      *
-     * This must happen before the OpenAI request.
-     *
-     * Non-subscribers, invalid sessions, canceled subscriptions,
-     * unpaid subscriptions, and users who reached their usage
-     * limit are blocked by authorizeSubscriberForAI().
+     * Peek remaining quota before calling the model.
+     * Failed OpenAI requests must not consume allowance.
+     * Successful optimizations consume one unit atomically.
      */
 
     const subscriberAuthorization =
@@ -1369,9 +1368,14 @@ Return the complete structured optimization.
      * SUCCESS RESPONSE
      * ============================================================
      *
-     * Refresh the signed subscriber cookie using
-     * the latest verified subscription and usage state.
+     * Consume one monthly AI unit only after a usable result.
+     * Refresh the signed subscriber cookie with the new usage.
      */
+
+    const recorded = await recordSuccessfulAiOptimization(
+      subscriberAuthorization.shop,
+      subscriberAuthorization.subscription
+    );
 
     const response =
       NextResponse.json(
@@ -1380,7 +1384,7 @@ Return the complete structured optimization.
           audience,
           result,
           usage:
-            subscriberAuthorization.usage,
+            recorded.usage,
         },
         {
           status: 200,
@@ -1394,7 +1398,7 @@ Return the complete structured optimization.
 
     setSubscriberCookie(
       response,
-      subscriberAuthorization.cookieValue
+      recorded.cookieValue
     );
 
     return response;
