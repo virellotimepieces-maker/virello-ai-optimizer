@@ -77,6 +77,10 @@ Set these in `.env.local` and in Vercel Preview/Production. Never commit values.
 - `SHOPIFY_APP_HANDLE`
 - `SHOPIFY_TOKEN_ENCRYPTION_KEY`
 
+**Vercel: one `SHOPIFY_API_SECRET` per environment. Never two rows that both include Production.**
+
+If search shows two `SHOPIFY_API_SECRET` entries — one **Production** and one **Production and Preview** — Production is receiving two values. Keep the **Production-only** row (the current Client secret you just saved). Delete the overlapping **Production and Preview** row, or change that second row to **Preview only**. Then **Redeploy Production** without using an existing build cache. Do not paste the secret into git or chat. During a rotation, put the previous secret in `SHOPIFY_API_SECRET_PREVIOUS` instead of a second `SHOPIFY_API_SECRET` row.
+
 ## Access matrix
 
 | Stripe status | Product access (if Shopify is installed) | Manage Subscription |
@@ -114,7 +118,7 @@ If Shopify shows **Unauthorized Access**, enable legacy install on the live app 
 5. **Allowed redirection URL(s):** `https://virello-ai-optimizer.vercel.app/api/auth/shopify/callback`
 6. Scopes: `read_products`, `write_products`.
 7. Click **Release**.
-8. Confirm **Settings → Client secret** is the secret stored as Vercel Production `SHOPIFY_API_SECRET` for that same Client ID (do not paste secrets into git or chat).
+8. Confirm **Settings → Client secret** is the **only** Vercel Production `SHOPIFY_API_SECRET` (Production-only row). If a second `SHOPIFY_API_SECRET` is also scoped to Production (for example Production and Preview), delete or rescope that overlapping row, then Redeploy Production without build cache. Do not paste secrets into git or chat.
 9. **Distribution** / **Test on development store** must include `gfd1cp-1y.myshopify.com`. Install while logged into that store as staff who can install apps.
 
 ## Deploy
