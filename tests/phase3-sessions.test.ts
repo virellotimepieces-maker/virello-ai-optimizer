@@ -112,6 +112,30 @@ describe("Phase 3 Shopify security module", () => {
     ).toBe(true);
   });
 
+  it("verifies callback HMAC when host padding is percent-encoded", () => {
+    const secret = "shopify-client-secret-value";
+    const shop = "gfd1cp-1y.myshopify.com";
+    const host = Buffer.from("admin.shopify.com/store/gfd1cp-1y").toString("base64");
+    const pairs = [
+      ["code", "auth-code"],
+      ["host", host],
+      ["shop", shop],
+      ["state", "nonce.signature"],
+      ["timestamp", "1700000000"],
+    ] as const;
+    const escaped = pairs
+      .map(([key, value]) => `${key}=${value.replace(/%/g, "%25").replace(/&/g, "%26").replace(/=/g, "%3D")}`)
+      .sort()
+      .join("&");
+    const hmac = createHmac("sha256", secret).update(escaped).digest("hex");
+    const encodedHost = encodeURIComponent(host);
+    const request = new NextRequest(
+      `https://app.virello.example/api/auth/shopify/callback?code=auth-code&hmac=${hmac}&host=${encodedHost}&shop=${shop}&state=nonce.signature&timestamp=1700000000`
+    );
+    expect(verifyShopifyCallbackHmac(request, secret)).toBe(true);
+    expect(verifyShopifyCallbackHmac(request, "wrong-secret-value-here")).toBe(false);
+  });
+
   it("signs and verifies OAuth state for the expected shop only", () => {
     const state = createSignedOAuthState(
       SHOP_A,

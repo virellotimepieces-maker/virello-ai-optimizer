@@ -124,6 +124,56 @@ export function verifyShopifyWebhookHmac(
   });
 }
 
+function shopifyHmacEscape(value: string): string {
+  return value.replace(/%/g, "%25").replace(/&/g, "%26").replace(/=/g, "%3D");
+}
+
+function rawQueryPairs(search: string): string[] {
+  return search
+    .replace(/^\?/, "")
+    .split("&")
+    .filter(Boolean)
+    .filter((part) => {
+      const rawKey = part.split("=", 1)[0];
+      try {
+        const key = decodeURIComponent(rawKey);
+        return key !== "hmac" && key !== "signature";
+      } catch {
+        return rawKey !== "hmac" && rawKey !== "signature";
+      }
+    })
+    .sort();
+}
+
+export function shopifyCallbackHmacMessages(request: NextRequest): string[] {
+  const messages = new Set<string>();
+  const decoded = [...request.nextUrl.searchParams.entries()]
+    .filter(([key]) => key !== "hmac" && key !== "signature")
+    .sort(
+      ([leftKey, leftValue], [rightKey, rightValue]) =>
+        leftKey.localeCompare(rightKey) || leftValue.localeCompare(rightValue)
+    );
+
+  if (decoded.length) {
+    messages.add(decoded.map(([key, value]) => `${key}=${value}`).join("&"));
+    messages.add(
+      decoded
+        .map(([key, value]) => `${shopifyHmacEscape(key)}=${shopifyHmacEscape(value)}`)
+        .join("&")
+    );
+    const encoded = new URLSearchParams();
+    for (const [key, value] of decoded) encoded.append(key, value);
+    messages.add(encoded.toString());
+  }
+
+  for (const search of [request.nextUrl.search, new URL(request.url).search]) {
+    const raw = rawQueryPairs(search).join("&");
+    if (raw) messages.add(raw);
+  }
+
+  return [...messages];
+}
+
 export function verifyShopifyCallbackHmac(
   request: NextRequest,
   secret: string
@@ -132,63 +182,11 @@ export function verifyShopifyCallbackHmac(
   if (!/^[a-f0-9]{64}$/i.test(supplied)) return false;
 
   const suppliedBuffer = Buffer.from(supplied);
-
-  const matches = (message: string) => {
+  return shopifyCallbackHmacMessages(request).some((message) => {
     const expected = createHmac("sha256", secret).update(message).digest("hex");
     const expectedBuffer = Buffer.from(expected);
     return hmacEqual(suppliedBuffer, expectedBuffer);
-  };
-
-  const allDecodedEntries = [...request.nextUrl.searchParams.entries()]
-    .filter(([key]) => key !== "hmac")
-    .sort(
-      ([leftKey, leftValue], [rightKey, rightValue]) =>
-        leftKey.localeCompare(rightKey) || leftValue.localeCompare(rightValue)
-    );
-
-  const decodedMessage = allDecodedEntries
-    .map(([key, value]) => `${key}=${value}`)
-    .join("&");
-  if (matches(decodedMessage)) return true;
-
-  const legacyDecodedMessage = allDecodedEntries
-    .filter(([key]) => key !== "signature")
-    .map(([key, value]) => `${key}=${value}`)
-    .join("&");
-  if (legacyDecodedMessage !== decodedMessage && matches(legacyDecodedMessage)) {
-    return true;
-  }
-
-  const rawMessage = request.nextUrl.search
-    .replace(/^\?/, "")
-    .split("&")
-    .filter(Boolean)
-    .filter((part) => {
-      const rawKey = part.split("=", 1)[0];
-      try {
-        return decodeURIComponent(rawKey) !== "hmac";
-      } catch {
-        return rawKey !== "hmac";
-      }
-    })
-    .sort()
-    .join("&");
-
-  if (rawMessage !== decodedMessage && matches(rawMessage)) return true;
-
-  const legacyRawMessage = rawMessage
-    .split("&")
-    .filter((part) => {
-      const rawKey = part.split("=", 1)[0];
-      try {
-        return decodeURIComponent(rawKey) !== "signature";
-      } catch {
-        return rawKey !== "signature";
-      }
-    })
-    .join("&");
-
-  return legacyRawMessage !== rawMessage && matches(legacyRawMessage);
+  });
 }
 
 export type ShopifyOAuthFlow = "standalone" | "embedded";

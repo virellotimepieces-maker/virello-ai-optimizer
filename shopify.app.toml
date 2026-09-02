@@ -6,11 +6,11 @@ application_url = "https://virello-ai-optimizer.vercel.app"
 
 embedded = true
 
-use_legacy_install_flow = false
-
 [access_scopes]
-
 scopes = "read_products,write_products"
+# Standalone Connect uses authorization-code grant. Managed install rejects
+# {shop}.myshopify.com/admin/oauth/authorize with Unauthorized Access.
+use_legacy_install_flow = true
 
 [auth]
 
@@ -22,5 +22,6 @@ redirect_urls = [
 api_version = "2026-07"
 
 [[webhooks.subscriptions]]
-topics = ["app/uninstalled", "customers/data_request", "customers/redact", "shop/redact"]
+topics = ["app/uninstalled"]
+compliance_topics = ["customers/data_request", "customers/redact", "shop/redact"]
 uri = "/api/webhooks"

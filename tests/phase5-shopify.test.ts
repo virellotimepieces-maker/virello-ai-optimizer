@@ -393,4 +393,97 @@ describe("Phase 5 OAuth start for development shops", () => {
     expect(body.success).toBe(false);
     expect(body.error).toMatch(/Invalid Shopify store/i);
   });
+
+  it("builds the official authorize URL for gfd1cp-1y.myshopify.com", async () => {
+    const { GET } = await import("../app/api/auth/shopify/route");
+    const request = new NextRequest(
+      "https://app.virello.example/api/auth/shopify?shop=gfd1cp-1y.myshopify.com&flow=standalone",
+      { headers: { accept: "application/json" } }
+    );
+    const response = await GET(request);
+    const body = (await response.json()) as { success: boolean; url?: string; shop?: string };
+    expect(response.status).toBe(200);
+    expect(body.success).toBe(true);
+    expect(body.shop).toBe("gfd1cp-1y.myshopify.com");
+    const url = new URL(body.url || "");
+    expect(url.origin).toBe("https://gfd1cp-1y.myshopify.com");
+    expect(url.pathname).toBe("/admin/oauth/authorize");
+    expect(url.searchParams.get("redirect_uri")).toBe(
+      "https://app.virello.example/api/auth/shopify/callback"
+    );
+    expect(body.url).not.toContain("admin.shopify.com/store/");
+  });
+
+  it("declares legacy install flow so standalone authorization-code grant is allowed", () => {
+    const toml = readFileSync("shopify.app.toml", "utf8");
+    expect(toml).toMatch(/\[access_scopes\][\s\S]*use_legacy_install_flow\s*=\s*true/);
+    expect(toml).toMatch(
+      /https:\/\/virello-ai-optimizer\.vercel\.app\/api\/auth\/shopify\/callback/
+    );
+    expect(toml).not.toMatch(/use_legacy_install_flow\s*=\s*false/);
+    expect(toml).toMatch(/compliance_topics\s*=\s*\[[^\]]*customers\/data_request/);
+  });
+});
+
+describe("Phase 5 OAuth callback errors", () => {
+  beforeEach(() => {
+    process.env.APP_URL = "https://app.virello.example";
+    process.env.SHOPIFY_API_KEY = "shopify-client-id";
+    process.env.SHOPIFY_API_SECRET = SECRET;
+  });
+
+  it("surfaces Shopify Unauthorized Access after a valid callback HMAC", async () => {
+    const shop = "gfd1cp-1y.myshopify.com";
+    const params = new URLSearchParams({
+      error: "access_denied",
+      error_description: "Unauthorized Access",
+      shop,
+      state: createSignedOAuthState(shop, SECRET, "standalone"),
+      timestamp: "1700000000",
+    });
+    const message = [...params.entries()]
+      .filter(([key]) => key !== "hmac")
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([key, value]) => `${key}=${value}`)
+      .join("&");
+    params.set("hmac", createHmac("sha256", SECRET).update(message).digest("hex"));
+    const { GET } = await import("../app/api/auth/shopify/callback/route");
+    const response = await GET(
+      new NextRequest(`https://app.virello.example/api/auth/shopify/callback?${params}`)
+    );
+    expect(response.status).toBe(307);
+    const location = response.headers.get("location") || "";
+    expect(location).toContain("/connect");
+    expect(location).toMatch(/Unauthorized(\+|%20)Access/);
+  });
+
+  it("rejects a callback with a forged HMAC", async () => {
+    const params = new URLSearchParams({
+      code: "auth-code",
+      shop: "gfd1cp-1y.myshopify.com",
+      state: createSignedOAuthState("gfd1cp-1y.myshopify.com", SECRET, "standalone"),
+      hmac: "0".repeat(64),
+    });
+    const { GET } = await import("../app/api/auth/shopify/callback/route");
+    const response = await GET(
+      new NextRequest(`https://app.virello.example/api/auth/shopify/callback?${params}`)
+    );
+    const location = response.headers.get("location") || "";
+    expect(location).toMatch(/signature(\+|%20)is(\+|%20)invalid/i);
+  });
+
+  it("forwards the legacy callback path with Shopify's raw query string", async () => {
+    const { GET } = await import("../app/api/auth/callback/route");
+    const raw =
+      "code=auth-code&hmac=abc&host=YWRtaW4uc2hvcGlmeS5jb20vc3RvcmUvZ2ZkMWNwLTF5%3D&shop=gfd1cp-1y.myshopify.com";
+    const response = await GET(
+      new NextRequest(`https://app.virello.example/api/auth/callback?${raw}`)
+    );
+    expect(response.status).toBeGreaterThanOrEqual(300);
+    expect(response.status).toBeLessThan(400);
+    const location = response.headers.get("location") || "";
+    const forwarded = new URL(location);
+    expect(forwarded.pathname).toBe("/api/auth/shopify/callback");
+    expect(forwarded.search).toBe(`?${raw}`);
+  });
 });

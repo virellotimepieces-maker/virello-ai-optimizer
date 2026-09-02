@@ -39,10 +39,8 @@ export async function GET(request: NextRequest) {
     const code = params.get("code") || "";
     const shop = normalizeShop(params.get("shop") || "");
     const state = params.get("state") || "";
-
-    if (!code || !shop || !state) {
-      return redirectError(returnOrigin, "Shopify authorization response is incomplete.");
-    }
+    const oauthError = params.get("error") || "";
+    const oauthErrorDescription = params.get("error_description") || "";
 
     const apiKey = getShopifyClientId();
     const secrets = getShopifyClientSecrets();
@@ -54,7 +52,26 @@ export async function GET(request: NextRequest) {
       verifyShopifyCallbackHmac(request, secret)
     );
     if (!verifiedSecret) {
+      console.error("SHOPIFY_OAUTH_CALLBACK_REJECTED", {
+        message: "Shopify authorization signature is invalid.",
+        paramKeys: [...params.keys()].sort(),
+        hasCode: Boolean(code),
+        hasShop: Boolean(shop),
+        hasState: Boolean(state),
+        hasError: Boolean(oauthError),
+      });
       return redirectError(returnOrigin, "Shopify authorization signature is invalid.");
+    }
+
+    if (oauthError) {
+      return redirectError(
+        returnOrigin,
+        oauthErrorDescription || oauthError
+      );
+    }
+
+    if (!code || !shop || !state) {
+      return redirectError(returnOrigin, "Shopify authorization response is incomplete.");
     }
 
     const signed = secrets
