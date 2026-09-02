@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { shopifyFetch } from "./shopify-fetch";
 import { COPY } from "./i18n";
 import type { AppLocale } from "./api/_lib/locales";
+import { normalizeShop } from "./api/_lib/shop-domain";
 
 type Product = {
   id: string;
@@ -38,7 +39,7 @@ type AnalyzePayload = {
 };
 
 function normalizeShopInput(value: string) {
-  return value.trim().toLowerCase().replace(/^https?:\/\//, "").replace(/^www\./, "").replace(/\/.*$/, "");
+  return normalizeShop(value);
 }
 
 export default function Home() {
@@ -54,6 +55,7 @@ export default function Home() {
   const [checking, setChecking] = useState(true);
 
   const [shopInput, setShopInput] = useState("");
+  const [canonicalUrl, setCanonicalUrl] = useState("");
   const [products, setProducts] = useState<Product[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
   const [hasNextPage, setHasNextPage] = useState(false);
@@ -126,6 +128,9 @@ export default function Home() {
         setShopInstalled(Boolean(status?.shopInstalled));
         setShop(typeof status?.shop === "string" ? status.shop : "");
         setUsage(status?.usage ?? null);
+        if (typeof status?.appUrl === "string" && status.appUrl && window.location.origin !== status.appUrl) {
+          setCanonicalUrl(status.appUrl);
+        }
         if (checkout === "success" && status?.canManage) {
           setMessage(copy.subscriptionActivated);
         }
@@ -141,7 +146,7 @@ export default function Home() {
   async function startCheckout() {
     if (checkoutLoading || canManage) return;
     const cleaned = normalizeShopInput(shopInput || shop);
-    if (!/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.myshopify\.com$/i.test(cleaned)) {
+    if (!cleaned) {
       showError("shopify", copy.checkoutNeedShop);
       return;
     }
@@ -183,16 +188,32 @@ export default function Home() {
     }
   }
 
-  function connectShopify() {
+  async function connectShopify() {
+    if (connecting) return;
     const cleaned = normalizeShopInput(shopInput || shop);
-    if (!/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.myshopify\.com$/i.test(cleaned)) {
-      showError("shopify", copy.shopPlaceholder);
+    if (!cleaned) {
+      showError("shopify", copy.invalidShop);
       return;
     }
+    setShopInput(cleaned);
     setConnecting(true);
-    window.location.assign(
-      `/api/auth/shopify?shop=${encodeURIComponent(cleaned)}&flow=standalone`
-    );
+    setError("");
+    try {
+      const response = await shopifyFetch(
+        `/api/auth/shopify?shop=${encodeURIComponent(cleaned)}&flow=standalone`,
+        { headers: { Accept: "application/json" }, cache: "no-store" }
+      );
+      const data = await response.json().catch(() => null);
+      if (!response.ok || !data?.url) {
+        showError("shopify", data?.error || copy.shopifyError);
+        return;
+      }
+      window.location.assign(data.url);
+    } catch (err) {
+      showError("shopify", err instanceof Error ? err.message : copy.shopifyError);
+    } finally {
+      setConnecting(false);
+    }
   }
 
   async function importProducts(nextCursor = "") {
@@ -363,6 +384,11 @@ export default function Home() {
       {error && (
         <div className={`error-bar error-${errorKind || "generic"}`}>
           {errorKind === "quota" ? copy.quotaError : error}
+        </div>
+      )}
+      {canonicalUrl && (
+        <div className="error-bar">
+          {copy.wrongHost} <a href={canonicalUrl}>{canonicalUrl}</a>
         </div>
       )}
       {message && !error && <div className="success-bar">{message}</div>}

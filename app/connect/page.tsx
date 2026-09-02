@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { shopifyFetch } from "../shopify-fetch";
 import { COPY } from "../i18n";
 import type { AppLocale } from "../api/_lib/locales";
+import { normalizeShop } from "../api/_lib/shop-domain";
 
 type ConnectionStatus = {
   success?: boolean;
@@ -68,7 +69,7 @@ export default function ConnectPage() {
 
     if (!subscriberActive) {
       const cleaned = cleanShopDomain(shop);
-      if (!/^[a-z0-9][a-z0-9-]*\.myshopify\.com$/i.test(cleaned)) {
+      if (!cleaned) {
         setError(copy.checkoutNeedShop);
         return;
       }
@@ -134,27 +135,35 @@ export default function ConnectPage() {
   }
 
   function cleanShopDomain(value: string) {
-    return value
-      .trim()
-      .toLowerCase()
-      .replace(/^https?:\/\//, "")
-      .replace(/^www\./, "")
-      .replace(/\/+$/, "");
+    return normalizeShop(value);
   }
 
-  function connectShopify() {
+  async function connectShopify() {
     if (connecting) return;
     const cleanedShop = cleanShopDomain(shop);
-    if (!/^[a-z0-9][a-z0-9-]*\.myshopify\.com$/i.test(cleanedShop)) {
+    if (!cleanedShop) {
       setError(copy.invalidShop);
       return;
     }
+    setShop(cleanedShop);
     setConnecting(true);
     setError("");
-    window.open(
-      `${window.location.origin}/api/auth/shopify?shop=${encodeURIComponent(cleanedShop)}&flow=standalone`,
-      "_top"
-    );
+    try {
+      const response = await shopifyFetch(
+        `/api/auth/shopify?shop=${encodeURIComponent(cleanedShop)}&flow=standalone`,
+        { headers: { Accept: "application/json" }, cache: "no-store" }
+      );
+      const data = await response.json().catch(() => null);
+      if (!response.ok || !data?.url) {
+        setError(data?.error || copy.shopifyError);
+        setConnecting(false);
+        return;
+      }
+      window.location.assign(data.url);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : copy.shopifyError);
+      setConnecting(false);
+    }
   }
 
   function continueToVirello() {

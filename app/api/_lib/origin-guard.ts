@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { getAppUrl } from "./app-url";
+import { getAppUrl, listAllowedAppOrigins } from "./app-url";
 
 export class OriginGuardError extends Error {
   status = 403;
@@ -33,12 +33,7 @@ export function isAllowedAppOrigin(
   const origin = originOf(candidate);
   if (!origin) return false;
 
-  const allowed = new Set<string>();
-  try {
-    allowed.add(getAppUrl(fallbackOrigin));
-  } catch {
-    if (fallbackOrigin) allowed.add(new URL(fallbackOrigin).origin);
-  }
+  const allowed = new Set(listAllowedAppOrigins(fallbackOrigin));
 
   if (allowed.has(origin)) return true;
 

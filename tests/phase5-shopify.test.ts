@@ -58,7 +58,11 @@ describe("Phase 5 shop domains and OAuth", () => {
     expect(normalizeShop("https://Store-One.myshopify.com/admin")).toBe(
       "store-one.myshopify.com"
     );
-    expect(normalizeShop("a.myshopify.com")).toBe("a.myshopify.com");
+    expect(normalizeShop("gfd1cp-1v.myshopify.com")).toBe("gfd1cp-1v.myshopify.com");
+    expect(normalizeShop("gfd1cp-1v")).toBe("gfd1cp-1v.myshopify.com");
+    expect(normalizeShop("https://admin.shopify.com/store/gfd1cp-1v")).toBe(
+      "gfd1cp-1v.myshopify.com"
+    );
     expect(normalizeShop("-bad.myshopify.com")).toBe("");
     expect(normalizeShop("bad-.myshopify.com")).toBe("");
     expect(normalizeShop("example.com")).toBe("");
@@ -267,5 +271,63 @@ describe("Phase 5 import, save, and access", () => {
     expect(existsSync("app/api/stores/products/route.ts")).toBe(false);
     expect(readFileSync("app/page.tsx", "utf8")).toMatch(/\/api\/shopify\/products/);
     expect(readFileSync("app/page.tsx", "utf8")).not.toMatch(/save-product/);
+    expect(page).toMatch(/Accept:\s*"application\/json"/);
+    expect(connect).toMatch(/Accept:\s*"application\/json"/);
+  });
+});
+
+describe("Phase 5 OAuth start for development shops", () => {
+  beforeEach(async () => {
+    process.env.APP_URL = "https://app.virello.example";
+    process.env.SHOPIFY_API_KEY = "shopify-client-id";
+    process.env.SHOPIFY_API_SECRET = SECRET;
+    await usePglite();
+  });
+
+  afterEach(() => {
+    clearTestDatabase();
+  });
+
+  it("returns a Shopify authorize URL for gfd1cp-1v.myshopify.com", async () => {
+    const { GET } = await import("../app/api/auth/shopify/route");
+    const request = new NextRequest(
+      "https://app.virello.example/api/auth/shopify?shop=gfd1cp-1v.myshopify.com&flow=standalone",
+      { headers: { accept: "application/json" } }
+    );
+    const response = await GET(request);
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as { success: boolean; shop?: string; url?: string };
+    expect(body.success).toBe(true);
+    expect(body.shop).toBe("gfd1cp-1v.myshopify.com");
+    expect(body.url).toContain("https://gfd1cp-1v.myshopify.com/admin/oauth/authorize");
+    expect(body.url).toContain(
+      "redirect_uri=https%3A%2F%2Fapp.virello.example%2Fapi%2Fauth%2Fshopify%2Fcallback"
+    );
+  });
+
+  it("accepts the shop handle without the myshopify suffix", async () => {
+    const { GET } = await import("../app/api/auth/shopify/route");
+    const request = new NextRequest(
+      "https://app.virello.example/api/auth/shopify?shop=gfd1cp-1v&flow=standalone",
+      { headers: { accept: "application/json" } }
+    );
+    const response = await GET(request);
+    const body = (await response.json()) as { shop?: string; url?: string };
+    expect(response.status).toBe(200);
+    expect(body.shop).toBe("gfd1cp-1v.myshopify.com");
+    expect(body.url).toContain("gfd1cp-1v.myshopify.com");
+  });
+
+  it("returns a visible JSON error for an invalid shop", async () => {
+    const { GET } = await import("../app/api/auth/shopify/route");
+    const request = new NextRequest(
+      "https://app.virello.example/api/auth/shopify?shop=example.com&flow=standalone",
+      { headers: { accept: "application/json" } }
+    );
+    const response = await GET(request);
+    expect(response.status).toBe(400);
+    const body = (await response.json()) as { success: boolean; error?: string };
+    expect(body.success).toBe(false);
+    expect(body.error).toMatch(/Invalid Shopify store/i);
   });
 });

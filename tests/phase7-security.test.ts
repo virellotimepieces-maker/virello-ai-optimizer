@@ -41,6 +41,13 @@ describe("Phase 7 authorization and abuse controls", () => {
       headers: { origin: "https://app.virello.example" },
     });
     expect(() => assertSafeMutation(allowed)).not.toThrow();
+    process.env.ALLOWED_APP_ORIGINS = "https://alias.vercel.app";
+    const alias = new NextRequest("https://app.virello.example/api/ai/analyze", {
+      method: "POST",
+      headers: { origin: "https://alias.vercel.app" },
+    });
+    expect(() => assertSafeMutation(alias)).not.toThrow();
+    delete process.env.ALLOWED_APP_ORIGINS;
   });
 
   it("rejects unconfirmed saves and non-Shopify product IDs", () => {

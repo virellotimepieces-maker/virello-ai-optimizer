@@ -1,20 +1,40 @@
-const SHOPIFY_SUFFIX = ".myshopify.com";
+const SHOP_HANDLE = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/;
 const SHOP_NAME =
   /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.myshopify\.com$/;
 
+export function isValidShopHandle(handle: string): boolean {
+  return handle.length >= 1 && handle.length <= 60 && SHOP_HANDLE.test(handle);
+}
+
 export function isValidShopDomain(shop: string): boolean {
   return SHOP_NAME.test(shop);
+}
+
+export function shopHandleToDomain(handle: string): string {
+  const normalized = handle.trim().toLowerCase();
+  return isValidShopHandle(normalized) ? `${normalized}.myshopify.com` : "";
 }
 
 export function normalizeShop(value: string): string {
   const raw = value.trim().toLowerCase();
   if (!raw) return "";
 
+  if (!raw.includes(".") && !raw.includes("/")) {
+    return shopHandleToDomain(raw);
+  }
+
   try {
     const url = new URL(/^https?:\/\//i.test(raw) ? raw : `https://${raw}`);
-    const host = url.hostname.toLowerCase().replace(/^www\./, "");
     if (url.username || url.password) return "";
-    return isValidShopDomain(host) ? host : "";
+    const host = url.hostname.toLowerCase().replace(/^www\./, "");
+
+    if (host === "admin.shopify.com") {
+      const store = url.pathname.match(/^\/store\/([a-z0-9](?:[a-z0-9-]*[a-z0-9])?)/i);
+      return store ? shopHandleToDomain(store[1]) : "";
+    }
+
+    if (isValidShopDomain(host)) return host;
+    return "";
   } catch {
     return "";
   }

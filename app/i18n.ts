@@ -66,7 +66,8 @@ export type CopyKey =
   | "invalidShop"
   | "portalError"
   | "notConnected"
-  | "checkoutNeedShop";
+  | "checkoutNeedShop"
+  | "wrongHost";
 
 export const COPY: Record<AppLocale, Record<CopyKey, string>> = {
   en: {
@@ -139,6 +140,7 @@ export const COPY: Record<AppLocale, Record<CopyKey, string>> = {
     portalError: "Unable to open subscription management.",
     notConnected: "Not connected yet.",
     checkoutNeedShop: "Enter your Shopify .myshopify.com domain before subscribing.",
+    wrongHost: "Open Virello on the canonical app URL:",
   },
   fil: {
     brandSmall: "VIRELLO AI",
@@ -210,6 +212,7 @@ export const COPY: Record<AppLocale, Record<CopyKey, string>> = {
     portalError: "Hindi mabuksan ang subscription management.",
     notConnected: "Hindi pa nakakonekta.",
     checkoutNeedShop: "Ilagay muna ang .myshopify.com domain bago mag-subscribe.",
+    wrongHost: "Buksan ang Virello sa tamang app URL:",
   },
 };
 

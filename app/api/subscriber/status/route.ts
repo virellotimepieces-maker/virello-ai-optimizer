@@ -3,6 +3,7 @@ import {
   clearLegacyCookies,
   ensureAppSessionCookie,
 } from "../../_lib/app-session";
+import { getAppUrl } from "../../_lib/app-url";
 import { getActiveSubscriberStatus } from "../../_lib/subscriber";
 
 export const runtime = "nodejs";
@@ -11,6 +12,12 @@ export const dynamic = "force-dynamic";
 export async function GET(request: NextRequest) {
   try {
     const subscriber = await getActiveSubscriberStatus(request);
+    let appUrl = "";
+    try {
+      appUrl = getAppUrl(request.nextUrl.origin);
+    } catch {
+      appUrl = request.nextUrl.origin;
+    }
     const response = NextResponse.json(
       {
         success: true,
@@ -23,6 +30,7 @@ export async function GET(request: NextRequest) {
         shop: subscriber.shop,
         usage: subscriber.usage ?? null,
         reason: subscriber.reason ?? null,
+        appUrl,
       },
       { headers: { "Cache-Control": "no-store" } }
     );

@@ -9,38 +9,65 @@ import { getShopifyClientId } from "../../_lib/shopify-config";
 import { shopFromSessionCookie } from "../../_lib/app-session";
 import { assertRateLimit, RateLimitError, tenantRateKey } from "../../_lib/rate-limit";
 
+function wantsJson(request: NextRequest): boolean {
+  const accept = request.headers.get("accept") || "";
+  return (
+    request.nextUrl.searchParams.get("format") === "json" ||
+    (accept.includes("application/json") && !accept.includes("text/html"))
+  );
+}
+
+function oauthStartResponse(
+  request: NextRequest,
+  payload: { success: boolean; error?: string; url?: string; shop?: string },
+  status: number
+) {
+  if (payload.success && payload.url && !wantsJson(request)) {
+    const response = NextResponse.redirect(payload.url, 307);
+    response.headers.set("Cache-Control", "no-store, no-cache, must-revalidate");
+    return response;
+  }
+  return NextResponse.json(payload, {
+    status: payload.success ? 200 : status,
+    headers: { "Cache-Control": "no-store, no-cache, must-revalidate" },
+  });
+}
+
 export async function GET(request: NextRequest) {
   try {
     const shop = normalizeShop(request.nextUrl.searchParams.get("shop") || "");
     const sessionShop = await shopFromSessionCookie(request);
     if (sessionShop && shop && sessionShop !== shop) {
-      return NextResponse.json(
+      return oauthStartResponse(
+        request,
         {
           success: false,
           error: "This Virello session is already linked to a different Shopify store.",
         },
-        { status: 403 }
+        403
       );
     }
     await assertRateLimit(tenantRateKey(request, "oauth", shop || sessionShop), 30);
     if (!shop) {
-      return NextResponse.json(
+      return oauthStartResponse(
+        request,
         {
           success: false,
           error: "Invalid Shopify store domain. Use your .myshopify.com domain.",
         },
-        { status: 400 }
+        400
       );
     }
 
     const apiKey = getShopifyClientId();
     if (!apiKey) {
-      return NextResponse.json(
+      return oauthStartResponse(
+        request,
         {
           success: false,
           error: "SHOPIFY_API_KEY is not configured.",
         },
-        { status: 500 }
+        500
       );
     }
 
@@ -56,9 +83,15 @@ export async function GET(request: NextRequest) {
           : "standalone";
 
     if (flow === "embedded") {
-      const response = NextResponse.redirect(shopifyAdminAppUrl(shop));
-      response.headers.set("Cache-Control", "no-store, no-cache, must-revalidate");
-      return response;
+      return oauthStartResponse(
+        request,
+        {
+          success: true,
+          url: shopifyAdminAppUrl(shop).toString(),
+          shop,
+        },
+        307
+      );
     }
 
     const authorize = buildShopifyAuthorizeUrl({
@@ -66,13 +99,16 @@ export async function GET(request: NextRequest) {
       flow: "standalone",
       fallbackOrigin: getAppUrl(request.nextUrl.origin),
     });
-    const response = NextResponse.redirect(authorize.url);
-    response.headers.set("Cache-Control", "no-store, no-cache, must-revalidate");
-    return response;
+    return oauthStartResponse(
+      request,
+      { success: true, url: authorize.url, shop },
+      307
+    );
   } catch (error) {
     console.error("SHOPIFY_OAUTH_START_ERROR:", error);
     const status = error instanceof RateLimitError ? error.status : 500;
-    return NextResponse.json(
+    return oauthStartResponse(
+      request,
       {
         success: false,
         error:
@@ -80,7 +116,7 @@ export async function GET(request: NextRequest) {
             ? error.message
             : "Unable to start Shopify authorization.",
       },
-      { status }
+      status
     );
   }
 }
