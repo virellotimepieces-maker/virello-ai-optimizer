@@ -18,17 +18,51 @@ import {
 import { normalizeShop } from "../../../_lib/shop-domain";
 import {
   parseSignedOAuthState,
-  shopifyCallbackHmacMessages,
+  shopifyCallbackHmacDiagnostics,
   verifyShopifyCallbackHmac,
 } from "../../../_lib/shopify-security";
 import { shopifyAdminAppUrl, shopifyCallbackUrl } from "../../../_lib/shopify-oauth";
 import { hasRequiredShopifyScopes } from "../../../_lib/shopify-scopes";
 
-function redirectError(origin: string, message: string) {
-  console.error("SHOPIFY_OAUTH_CALLBACK_REJECTED", { message });
+function redirectError(
+  origin: string,
+  message: string,
+  diag?: ReturnType<typeof shopifyCallbackHmacDiagnostics> & {
+    secretCount?: number;
+    secretLengths?: number[];
+  }
+) {
+  console.error("SHOPIFY_OAUTH_CALLBACK_REJECTED", {
+    message,
+    ...(diag
+      ? {
+          paramKeys: diag.paramKeys,
+          hasHost: diag.hasHost,
+          hmacLength: diag.hmacLength,
+          hmacHex: diag.hmacHex,
+          secretCount: diag.secretCount,
+          secretLengths: diag.secretLengths,
+          messageCount: diag.messageCount,
+          hasInvokeQuery: diag.hasInvokeQuery,
+        }
+      : {}),
+  });
   const url = new URL("/connect", origin);
   url.searchParams.set("status", "error");
   url.searchParams.set("error_description", message);
+  if (diag) {
+    url.searchParams.set(
+      "oauth_diag",
+      [
+        `keys=${diag.paramKeys.join(",")}`,
+        `hmac=${diag.hmacLength}${diag.hmacHex ? "hex" : ""}`,
+        `secrets=${(diag.secretLengths || []).join(".")}`,
+        `msgs=${diag.messageCount}`,
+        `invoke=${diag.hasInvokeQuery ? "1" : "0"}`,
+        `host=${diag.hasHost ? "1" : "0"}`,
+      ].join(";")
+    );
+  }
   return NextResponse.redirect(url);
 }
 
@@ -51,17 +85,14 @@ export async function GET(request: NextRequest) {
 
     const suppliedHmac = params.get("hmac") || "";
     if (!suppliedHmac) {
-      console.error("SHOPIFY_OAUTH_CALLBACK_REJECTED", {
-        message: "Shopify authorization was cancelled or did not complete.",
-        paramKeys: [...params.keys()].sort(),
-        hasCode: Boolean(code),
-        hasShop: Boolean(shop),
-        hasState: Boolean(state),
-        hasError: Boolean(oauthError),
-      });
       return redirectError(
         returnOrigin,
-        "Shopify authorization was cancelled or did not complete. The store is still disconnected."
+        "Shopify authorization was cancelled or did not complete. The store is still disconnected.",
+        {
+          ...shopifyCallbackHmacDiagnostics(request),
+          secretCount: secrets.length,
+          secretLengths: secrets.map((value) => value.length).sort((a, b) => a - b),
+        }
       );
     }
 
@@ -69,23 +100,11 @@ export async function GET(request: NextRequest) {
       verifyShopifyCallbackHmac(request, secret)
     );
     if (!verifiedSecret) {
-      console.error("SHOPIFY_OAUTH_CALLBACK_REJECTED", {
-        message: "Shopify authorization signature is invalid.",
-        paramKeys: [...params.keys()].sort(),
-        hasCode: Boolean(code),
-        hasShop: Boolean(shop),
-        hasState: Boolean(state),
-        hasHost: Boolean(params.get("host")),
-        hasTimestamp: Boolean(params.get("timestamp")),
-        hasError: Boolean(oauthError),
-        hmacLength: suppliedHmac.length,
-        hmacHex: /^[a-f0-9]{64}$/i.test(suppliedHmac),
+      return redirectError(returnOrigin, "Shopify authorization signature is invalid.", {
+        ...shopifyCallbackHmacDiagnostics(request),
         secretCount: secrets.length,
         secretLengths: secrets.map((value) => value.length).sort((a, b) => a - b),
-        messageCount: shopifyCallbackHmacMessages(request).length,
-        hasInvokeQuery: Boolean(request.headers.get("x-invoke-query")),
       });
-      return redirectError(returnOrigin, "Shopify authorization signature is invalid.");
     }
 
     if (oauthError) {

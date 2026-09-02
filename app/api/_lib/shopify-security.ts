@@ -176,6 +176,69 @@ function isHmacOrSignature(key: string): boolean {
   return decoded === "hmac" || decoded === "signature" || key === "hmac" || key === "signature";
 }
 
+const OAUTH_SIGNED_KEYS = ["code", "host", "shop", "state", "timestamp"] as const;
+
+function isFrameworkQueryKey(key: string): boolean {
+  const decoded = decodeQueryKeepPlus(key);
+  return (
+    decoded === "_rsc" ||
+    decoded === "rsc" ||
+    decoded.startsWith("nxtP") ||
+    decoded.startsWith("nxtI") ||
+    decoded.startsWith("__next")
+  );
+}
+
+function isPlausibleShopifyHostParam(value: string): boolean {
+  if (!value) return false;
+  const lower = value.toLowerCase();
+  if (
+    lower.includes("vercel.app") ||
+    lower.includes("localhost") ||
+    /\.myshopify\.com$/i.test(value) ||
+    lower.includes("admin.shopify.com")
+  ) {
+    return false;
+  }
+  return /^[A-Za-z0-9+/_=-]+$/.test(value);
+}
+
+function sanitizeHmacPairs(pairs: Array<[string, string]>): Array<[string, string]> {
+  return pairs.filter(([key, value]) => {
+    if (isHmacOrSignature(key) || isFrameworkQueryKey(key)) return false;
+    const decodedKey = decodeQueryKeepPlus(key);
+    if (decodedKey === "host") {
+      return isPlausibleShopifyHostParam(value) || isPlausibleShopifyHostParam(decodeQueryKeepPlus(value));
+    }
+    return true;
+  });
+}
+
+function canonicalOAuthPairs(pairs: Array<[string, string]>): Array<[string, string]> {
+  const values = new Map<string, string>();
+  for (const [key, value] of sanitizeHmacPairs(pairs)) {
+    const decodedKey = decodeQueryKeepPlus(key);
+    if ((OAUTH_SIGNED_KEYS as readonly string[]).includes(decodedKey) && !values.has(decodedKey)) {
+      values.set(decodedKey, decodeQueryKeepPlus(value));
+    }
+  }
+  return OAUTH_SIGNED_KEYS.filter((key) => values.has(key)).map(
+    (key) => [key, values.get(key) || ""] as [string, string]
+  );
+}
+
+function rubyWwwFormComponent(value: string): string {
+  return encodeURIComponent(value).replace(/%20/g, "+").replace(/%2A/g, "*");
+}
+
+function rubyWwwFormMessage(pairs: Array<[string, string]>): string {
+  return pairs
+    .filter(([key]) => !isHmacOrSignature(key))
+    .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
+    .map(([key, value]) => `${rubyWwwFormComponent(key)}=${rubyWwwFormComponent(value)}`)
+    .join("&");
+}
+
 function sortedOAuthMessage(
   pairs: Array<[string, string]>,
   escapeMode: "none" | "values-and-keys" | "keys-eq-only"
@@ -212,26 +275,34 @@ function shopifyApiJsAdminMessage(pairs: Array<[string, string]>): string {
   return processed.toString().replace(/\+/g, "%20");
 }
 
+function addEncodedMessages(messages: Set<string>, pairs: Array<[string, string]>): void {
+  if (!pairs.length) return;
+  messages.add(sortedOAuthMessage(pairs, "none"));
+  messages.add(sortedOAuthMessage(pairs, "values-and-keys"));
+  messages.add(sortedOAuthMessage(pairs, "keys-eq-only"));
+  const apiJs = shopifyApiJsAdminMessage(pairs);
+  if (apiJs) messages.add(apiJs);
+  const ruby = rubyWwwFormMessage(pairs);
+  if (ruby) messages.add(ruby);
+}
+
 function addPairSetMessages(
   messages: Set<string>,
   pairs: Array<[string, string]>
 ): void {
   if (!pairs.length) return;
-  const decodedKeepPlus = pairs.map(
+  const sanitized = sanitizeHmacPairs(pairs);
+  const decodedKeepPlus = sanitized.map(
     ([key, value]) => [decodeQueryKeepPlus(key), decodeQueryKeepPlus(value)] as [string, string]
   );
-  const decodedForm = pairs.map(
+  const decodedForm = sanitized.map(
     ([key, value]) => [decodeQueryForm(key), decodeQueryForm(value)] as [string, string]
   );
-  for (const decoded of [pairs, decodedKeepPlus, decodedForm]) {
-    messages.add(sortedOAuthMessage(decoded, "none"));
-    messages.add(sortedOAuthMessage(decoded, "values-and-keys"));
-    messages.add(sortedOAuthMessage(decoded, "keys-eq-only"));
-    const apiJs = shopifyApiJsAdminMessage(decoded);
-    if (apiJs) messages.add(apiJs);
+  for (const decoded of [sanitized, decodedKeepPlus, decodedForm]) {
+    addEncodedMessages(messages, decoded);
   }
-  const raw = pairs
-    .filter(([key]) => !isHmacOrSignature(key))
+  addEncodedMessages(messages, canonicalOAuthPairs(pairs));
+  const raw = sanitized
     .map(([key, value]) => `${key}=${value}`)
     .sort()
     .join("&");
@@ -313,6 +384,34 @@ export function shopifyCallbackHmacMessages(request: NextRequest): string[] {
   return [...messages].filter(Boolean);
 }
 
+export function shopifyCallbackHmacDiagnostics(request: NextRequest): {
+  paramKeys: string[];
+  hmacLength: number;
+  hmacHex: boolean;
+  messageCount: number;
+  hasInvokeQuery: boolean;
+  hasHost: boolean;
+} {
+  const params = request.nextUrl.searchParams;
+  const suppliedHmac = (params.get("hmac") || "").trim();
+  return {
+    paramKeys: [...params.keys()].sort(),
+    hmacLength: suppliedHmac.length,
+    hmacHex: /^[a-f0-9]{64}$/i.test(suppliedHmac),
+    messageCount: shopifyCallbackHmacMessages(request).length,
+    hasInvokeQuery: Boolean(request.headers.get("x-invoke-query")),
+    hasHost: Boolean(params.get("host")),
+  };
+}
+
+function hmacKeyMaterials(secret: string): Array<string | Buffer> {
+  const keys: Array<string | Buffer> = [secret];
+  if (/^[a-f0-9]+$/i.test(secret) && secret.length % 2 === 0 && secret.length >= 16) {
+    keys.push(Buffer.from(secret, "hex"));
+  }
+  return keys;
+}
+
 export function verifyShopifyCallbackHmac(
   request: NextRequest,
   secret: string
@@ -343,10 +442,13 @@ export function verifyShopifyCallbackHmac(
   }
   if (!/^[a-f0-9]{64}$/.test(hmac)) return false;
 
-  return shopifyCallbackHmacMessages(request).some((message) => {
-    const expected = createHmac("sha256", secret).update(message).digest("hex");
-    return hmacHexEqual(hmac, expected);
-  });
+  const messages = shopifyCallbackHmacMessages(request);
+  return hmacKeyMaterials(secret).some((key) =>
+    messages.some((message) => {
+      const expected = createHmac("sha256", key).update(message).digest("hex");
+      return hmacHexEqual(hmac, expected);
+    })
+  );
 }
 
 export type ShopifyOAuthFlow = "standalone" | "embedded";

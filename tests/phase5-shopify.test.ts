@@ -472,6 +472,7 @@ describe("Phase 5 OAuth callback errors", () => {
     );
     const location = response.headers.get("location") || "";
     expect(location).toMatch(/signature(\+|%20)is(\+|%20)invalid/i);
+    expect(location).toMatch(/oauth_diag=/);
   });
 
   it("keeps the shop disconnected when Shopify sends no callback HMAC", async () => {

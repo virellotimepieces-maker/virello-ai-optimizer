@@ -29,6 +29,7 @@ export default function ConnectPage() {
   const [shop, setShop] = useState("");
   const [status, setStatus] = useState<ConnectionStatus | null>(null);
   const [error, setError] = useState("");
+  const [oauthDiag, setOauthDiag] = useState("");
 
   async function saveLocales(nextUi: AppLocale, nextOutput: AppLocale) {
     setUi(nextUi);
@@ -44,7 +45,9 @@ export default function ConnectPage() {
     const params = new URLSearchParams(window.location.search);
     const shopFromUrl = params.get("shop");
     const oauthError = params.get("error_description");
+    const diag = params.get("oauth_diag");
     if (oauthError) setError(oauthError);
+    if (diag) setOauthDiag(diag);
     if (shopFromUrl) setShop(cleanShopDomain(shopFromUrl));
 
     async function bootstrap() {
@@ -271,6 +274,11 @@ export default function ConnectPage() {
       </header>
 
       {error && <div className="error-bar">{error}</div>}
+      {error && oauthDiag && (
+        <p className="hero-hint" data-testid="oauth-diag">
+          Signature check: {oauthDiag}
+        </p>
+      )}
       {error && /unauthorized access/i.test(error) && (
         <div className="error-bar error-shopify">{copy.oauthUnauthorizedHelp}</div>
       )}

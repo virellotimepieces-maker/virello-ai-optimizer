@@ -1,3 +1,5 @@
+const QUOTE_CHARS = `"'` + "\u201C\u201D\u2018\u2019";
+
 function cleanEnvironmentValue(value?: string): string {
   let trimmed = (value ?? "")
     .replace(/^\uFEFF/, "")
@@ -13,10 +15,10 @@ function cleanEnvironmentValue(value?: string): string {
     trimmed = lines[lines.length - 1] || trimmed;
   }
 
-  if (
+  while (
     trimmed.length >= 2 &&
-    ((trimmed.startsWith('"') && trimmed.endsWith('"')) ||
-      (trimmed.startsWith("'") && trimmed.endsWith("'")))
+    QUOTE_CHARS.includes(trimmed[0]) &&
+    QUOTE_CHARS.includes(trimmed[trimmed.length - 1])
   ) {
     trimmed = trimmed.slice(1, -1).replace(/^\uFEFF/, "").trim();
   }
