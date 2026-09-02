@@ -11,6 +11,7 @@
     "start": "next start --port 43217",
     "test": "vitest run",
     "test:e2e": "playwright test",
+    "lint": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
     "security:check": "node scripts/security-check.mjs"
   },

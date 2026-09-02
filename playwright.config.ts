@@ -11,7 +11,7 @@ export default defineConfig({
   webServer: {
     command: "npx next dev --port 43217",
     url: "http://127.0.0.1:43217",
-    reuseExistingServer: true,
+    reuseExistingServer: !process.env.CI,
     timeout: 120_000,
   },
   projects: [
