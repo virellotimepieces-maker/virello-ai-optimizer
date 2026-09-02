@@ -12,7 +12,7 @@ import {
   type OptimizerProduct,
 } from "../../_lib/optimizer";
 import { parseAppLocale } from "../../_lib/locales";
-import { assertRateLimit, clientKey, RateLimitError } from "../../_lib/rate-limit";
+import { assertRateLimit, RateLimitError, tenantRateKey } from "../../_lib/rate-limit";
 
 export const runtime = "nodejs";
 
@@ -26,7 +26,8 @@ function errorResponse(message: string, status: number) {
 export async function POST(request: NextRequest) {
   try {
     assertSafeMutation(request);
-    assertRateLimit(clientKey(request, "ai"), 20);
+    const subscriber = await authorizeSubscriberForAI(request);
+    await assertRateLimit(tenantRateKey(request, "ai", subscriber.shop), 20);
     const body = await request.json().catch(() => ({}));
     const source = body?.product && typeof body.product === "object" ? body.product : body;
     const product: OptimizerProduct = {
@@ -39,7 +40,6 @@ export async function POST(request: NextRequest) {
       price: typeof source.price === "string" ? source.price : "",
     };
 
-    const subscriber = await authorizeSubscriberForAI(request);
     const outputLocale = parseAppLocale(body.outputLocale || body.output);
     const result = await optimizeProduct(product, outputLocale);
     const recorded = await recordSuccessfulAiOptimization(

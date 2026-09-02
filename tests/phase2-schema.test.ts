@@ -76,6 +76,7 @@ describe("Phase 2 database behavior", () => {
         "app_sessions",
         "stripe_customers",
         "stripe_invoices",
+        "rate_limit_buckets",
       ])
     );
 
@@ -89,6 +90,7 @@ describe("Phase 2 database behavior", () => {
       "004_phase3_sessions",
       "005_phase4_billing",
       "006_phase6_locales",
+      "007_rate_limits",
     ]);
   });
 

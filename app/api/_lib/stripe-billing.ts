@@ -43,15 +43,24 @@ export async function upsertStripeCustomer(input: {
   email?: string | null;
 }): Promise<void> {
   const shop = await upsertShop(input.shop, { markInstalled: false });
+  const existing = await dbQuery<{ shop: string }>(
+    `SELECT shop FROM stripe_customers WHERE stripe_customer_id = $1 LIMIT 1`,
+    [input.customerId]
+  );
+  const boundShop = normalizeShop(String(existing[0]?.shop || ""));
+  if (boundShop && boundShop !== shop) {
+    throw new Error("Stripe customer is already bound to a different Shopify store.");
+  }
   await dbQuery(
     `INSERT INTO stripe_customers (
        stripe_customer_id, shop, livemode, email, created_at, updated_at
      ) VALUES ($1, $2, $3, $4, NOW(), NOW())
      ON CONFLICT (stripe_customer_id) DO UPDATE SET
-       shop = EXCLUDED.shop,
+       shop = stripe_customers.shop,
        livemode = EXCLUDED.livemode,
        email = COALESCE(EXCLUDED.email, stripe_customers.email),
-       updated_at = NOW()`,
+       updated_at = NOW()
+     WHERE stripe_customers.shop = EXCLUDED.shop`,
     [input.customerId, shop, input.livemode, input.email ?? null]
   );
 }

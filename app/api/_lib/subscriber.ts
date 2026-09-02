@@ -19,6 +19,7 @@ import { assertConfiguredStripePrice } from "./stripe-price";
 import { assertLivemodeMatchesSecret, configuredStripeMode } from "./stripe-mode";
 import { requirePaidProductAccess } from "./product-access";
 import { decodeLegacySubscriberCookie } from "./legacy-subscriber-cookie";
+import { checkoutCancelUrl, type CheckoutFlow } from "./checkout-shop";
 
 class ApiError extends Error {
   status: number;
@@ -42,6 +43,7 @@ type SubscriptionSnapshot = {
 
 export type CheckoutSubscription = {
   shop: string;
+  flow: CheckoutFlow;
   subscription: SubscriptionSnapshot;
   livemode: boolean;
 };
@@ -214,26 +216,10 @@ export function subscriptionPrivilegeChanged(
   );
 }
 
-function getEmbeddedShopifyAppUrl(
-  shop: string,
-  checkout: "cancelled"
-): string {
-  const storeHandle = shop.replace(/\.myshopify\.com$/i, "");
-  const appHandle =
-    process.env.SHOPIFY_APP_HANDLE?.trim() ||
-    "virello-ai-optimizer";
-  const url = new URL(
-    `/store/${encodeURIComponent(storeHandle)}/apps/${encodeURIComponent(appHandle)}`,
-    "https://admin.shopify.com"
-  );
-  url.searchParams.set("shop", shop);
-  url.searchParams.set("checkout", checkout);
-  return url.toString();
-}
-
 export async function createStripeCheckoutSession(
   origin: string,
-  shop: string
+  shop: string,
+  flow: "embedded" | "standalone" = "standalone"
 ): Promise<string> {
   const priceId = process.env.STRIPE_PRICE_ID;
 
@@ -272,7 +258,7 @@ export async function createStripeCheckoutSession(
 
   body.set(
     "cancel_url",
-    getEmbeddedShopifyAppUrl(shop, "cancelled")
+    checkoutCancelUrl(appUrl, shop, flow)
   );
 
   body.set(
@@ -282,7 +268,9 @@ export async function createStripeCheckoutSession(
 
   body.set("client_reference_id", shop);
   body.set("metadata[shop]", shop);
+  body.set("metadata[flow]", flow);
   body.set("subscription_data[metadata][shop]", shop);
+  body.set("subscription_data[metadata][flow]", flow);
 
   const session =
     await stripeRequest<{ url?: string }>(
@@ -376,8 +364,15 @@ export async function getCheckoutSubscription(
     throw new ApiError("Stripe checkout is not linked to a Shopify store.", 400);
   }
 
+  const flow: CheckoutFlow =
+    checkoutSession?.metadata?.flow === "embedded" ||
+    subscription?.metadata?.flow === "embedded"
+      ? "embedded"
+      : "standalone";
+
   return {
     shop,
+    flow,
     subscription: normalizeSubscription(subscription),
     livemode: checkoutSession.livemode,
   };

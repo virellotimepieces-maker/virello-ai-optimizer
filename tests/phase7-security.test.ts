@@ -1,28 +1,34 @@
-import { describe, expect, it, beforeEach } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { NextRequest } from "next/server";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { assertSafeMutation, OriginGuardError } from "../app/api/_lib/origin-guard";
 import { parseSaveProductInput } from "../app/api/_lib/shopify-products";
+import { assertStripeMode, configuredStripeMode } from "../app/api/_lib/stripe-mode";
+import { resolvedPortalReturnUrl } from "../app/api/_lib/origin-guard";
+import { clearTestDatabase, usePglite } from "./helpers/pglite";
 import {
   assertRateLimit,
   resetRateLimitForTests,
   RateLimitError,
 } from "../app/api/_lib/rate-limit";
-import { assertStripeMode, configuredStripeMode } from "../app/api/_lib/stripe-mode";
-import { resolvedPortalReturnUrl } from "../app/api/_lib/origin-guard";
 
 describe("Phase 7 authorization and abuse controls", () => {
-  beforeEach(() => {
-    resetRateLimitForTests();
+  beforeEach(async () => {
     process.env.APP_URL = "https://app.virello.example";
+    await usePglite();
+    await resetRateLimitForTests();
   });
 
-  it("rate-limits repeated clients", () => {
-    assertRateLimit("ai:1", 2, 60_000);
-    assertRateLimit("ai:1", 2, 60_000);
-    expect(() => assertRateLimit("ai:1", 2, 60_000)).toThrow(RateLimitError);
-    assertRateLimit("ai:2", 2, 60_000);
+  afterEach(() => {
+    clearTestDatabase();
+  });
+
+  it("rate-limits repeated clients", async () => {
+    await assertRateLimit("ai:1", 2, 60_000);
+    await assertRateLimit("ai:1", 2, 60_000);
+    await expect(assertRateLimit("ai:1", 2, 60_000)).rejects.toBeInstanceOf(RateLimitError);
+    await assertRateLimit("ai:2", 2, 60_000);
   });
 
   it("rejects mutation requests without an allowed origin", () => {

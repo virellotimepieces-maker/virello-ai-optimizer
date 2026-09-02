@@ -8,7 +8,7 @@ This is not a prompt clinic or Custom GPT rewriter.
 
 ## What this branch includes
 
-**Phase 5.** Shopify OAuth for **standalone** (authorization-code + signed state, HMAC, `APP_URL` callback) and **embedded** (Admin launch + App Bridge token exchange). Offline tokens stay encrypted in Neon. Import is paginated with 429/throttle retries. Save is a single implementation (`/api/shopify/products` POST; `/api/shopify/save-product` re-exports it) and requires `confirmed: true` after review. Import/AI/save require an active install, `read_products`/`write_products`, and an eligible Stripe subscription. Shop identity is not stored in `localStorage`.
+**Phase 5.** Shopify OAuth for **standalone** (authorization-code + signed state, HMAC, `APP_URL` callback) and **embedded** (Admin launch + App Bridge token exchange). Offline tokens stay encrypted in Neon. Import is paginated with 429/throttle retries. Save is a single implementation (`POST /api/shopify/products`) and requires `confirmed: true` after review. Import/AI/save require an active install, `read_products`/`write_products`, and an eligible Stripe subscription. Shop identity is not stored in `localStorage`.
 
 **Phase 6.** Server-side OpenAI optimizer (key never sent to the browser) writes title, description, SEO, tags, and conversion copy without inventing facts. Failed AI calls do not consume the 1000 monthly uses. The dashboard is FIL/EN for interface and product-output language separately, with Connect, Subscribe/Manage, Import, Optimize, Review, and Save states.
 
@@ -51,10 +51,10 @@ SQL files live in `migrations/`, applied in filename order by `app/api/_lib/migr
 | `004_phase3_sessions.down.sql` | Phase 3 index rollback |
 | `005_phase4_billing.sql` | `stripe_customers`, `stripe_invoices`, livemode, invoice/cancellation, event ordering |
 | `005_phase4_billing.down.sql` | Phase 4 rollback (does not delete `shop_subscriptions` billing rows) |
-| `006_phase6_locales.sql` | Shop UI and product-output locales |
-| `006_phase6_locales.down.sql` | Phase 6 locale column rollback |
+| `007_rate_limits.sql` | Tenant-isolated serverless rate-limit buckets |
+| `007_rate_limits.down.sql` | Phase 8 rate-limit rollback |
 
-Rollback order in a maintenance window (Neon PITR first): `006` → `005` → `004` → `003`. Down files for `005`/`003` do not delete `shop_subscriptions` billing rows.
+Rollback order in a maintenance window (Neon PITR first): `007` → `006` → `005` → `004` → `003`. Down files for `005`/`003` do not delete `shop_subscriptions` billing rows.
 
 ## Environment-variable names
 

@@ -1,6 +1,6 @@
 import { createHmac } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { NextRequest } from "next/server";
 import { issueAppSession } from "../app/api/_lib/app-session";
 import {
@@ -263,7 +263,9 @@ describe("Phase 5 import, save, and access", () => {
     expect(page).not.toMatch(/localStorage/);
     expect(connect).not.toMatch(/localStorage/);
     expect(page).not.toMatch(/virello_shopify_shop/);
-    const saveProduct = readFileSync("app/api/shopify/save-product/route.ts", "utf8");
-    expect(saveProduct).toMatch(/export \{ POST \} from "\.\.\/products\/route"/);
+    expect(existsSync("app/api/shopify/save-product/route.ts")).toBe(false);
+    expect(existsSync("app/api/stores/products/route.ts")).toBe(false);
+    expect(readFileSync("app/page.tsx", "utf8")).toMatch(/\/api\/shopify\/products/);
+    expect(readFileSync("app/page.tsx", "utf8")).not.toMatch(/save-product/);
   });
 });

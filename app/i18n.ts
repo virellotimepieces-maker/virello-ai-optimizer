@@ -38,7 +38,35 @@ export type CopyKey =
   | "original"
   | "proposed"
   | "usage"
-  | "standaloneHint";
+  | "standaloneHint"
+  | "subscriptionActivated"
+  | "productsLoaded"
+  | "checkingShopify"
+  | "shopDomainLabel"
+  | "connectHeadline"
+  | "connectSubhead"
+  | "connectedHeadline"
+  | "connectedBody"
+  | "connectedStore"
+  | "connectionComplete"
+  | "shopifyConnectedSuccessfully"
+  | "shopifyReady"
+  | "continueToVirello"
+  | "whatsNext"
+  | "startOptimizing"
+  | "nextBody"
+  | "stepImport"
+  | "stepImportBody"
+  | "stepOptimize"
+  | "stepOptimizeBody"
+  | "stepReview"
+  | "stepReviewBody"
+  | "stepApply"
+  | "stepApplyBody"
+  | "invalidShop"
+  | "portalError"
+  | "notConnected"
+  | "checkoutNeedShop";
 
 export const COPY: Record<AppLocale, Record<CopyKey, string>> = {
   en: {
@@ -81,6 +109,36 @@ export const COPY: Record<AppLocale, Record<CopyKey, string>> = {
     proposed: "Proposed",
     usage: "AI uses this period",
     standaloneHint: "Works in Shopify Admin and as a standalone dashboard.",
+    subscriptionActivated: "Subscription activated successfully.",
+    productsLoaded: "products loaded.",
+    checkingShopify: "Checking Shopify connection...",
+    shopDomainLabel: "Shopify store domain",
+    connectHeadline: "Connect your Shopify store",
+    connectSubhead:
+      "Connect your Shopify store to import products and optimize them with Virello AI.",
+    connectedHeadline: "Your Shopify store is connected.",
+    connectedBody: "Your Shopify store has been successfully connected to Virello AI Optimizer.",
+    connectedStore: "Connected store",
+    connectionComplete: "CONNECTION COMPLETE",
+    shopifyConnectedSuccessfully: "Shopify connected successfully",
+    shopifyReady: "Virello can now work with your Shopify store.",
+    continueToVirello: "Continue to Virello",
+    whatsNext: "WHAT'S NEXT?",
+    startOptimizing: "Start optimizing your Shopify products.",
+    nextBody:
+      "Import your products, optimize them with AI, review the recommendations and apply the changes to Shopify.",
+    stepImport: "1. Import",
+    stepImportBody: "Import your Shopify products.",
+    stepOptimize: "2. Optimize",
+    stepOptimizeBody: "Generate SEO titles, descriptions and more.",
+    stepReview: "3. Review",
+    stepReviewBody: "Review AI recommendations.",
+    stepApply: "4. Apply",
+    stepApplyBody: "Publish changes to Shopify.",
+    invalidShop: "Use your Shopify .myshopify.com domain.",
+    portalError: "Unable to open subscription management.",
+    notConnected: "Not connected yet.",
+    checkoutNeedShop: "Enter your Shopify .myshopify.com domain before subscribing.",
   },
   fil: {
     brandSmall: "VIRELLO AI",
@@ -90,7 +148,7 @@ export const COPY: Record<AppLocale, Record<CopyKey, string>> = {
     subhead:
       "Mag-subscribe, ikonekta ang store, mag-import ng products, i-review ang AI title, description, SEO at tags, tapos i-save sa Shopify.",
     subscribe: "Mag-subscribe",
-    manage: "Manage Subscription",
+    manage: "I-manage ang Subscription",
     checking: "Tinitingnan...",
     opening: "Binubuksan...",
     connectShopify: "Ikonekta ang Shopify",
@@ -122,6 +180,36 @@ export const COPY: Record<AppLocale, Record<CopyKey, string>> = {
     proposed: "Mungkahi",
     usage: "AI uses ngayong period",
     standaloneHint: "Gumagana sa Shopify Admin at sa standalone dashboard.",
+    subscriptionActivated: "Aktibo na ang subscription.",
+    productsLoaded: "products ang na-load.",
+    checkingShopify: "Tinitingnan ang koneksyon sa Shopify...",
+    shopDomainLabel: "Domain ng Shopify store",
+    connectHeadline: "Ikonekta ang iyong Shopify store",
+    connectSubhead:
+      "Ikonekta ang Shopify store para mag-import ng products at i-optimize ang mga ito gamit ang Virello AI.",
+    connectedHeadline: "Nakakonekta na ang iyong Shopify store.",
+    connectedBody: "Matagumpay nang nakakonekta ang Shopify store sa Virello AI Optimizer.",
+    connectedStore: "Nakakonektang store",
+    connectionComplete: "TAPOS NA ANG KONEKSYON",
+    shopifyConnectedSuccessfully: "Matagumpay ang koneksyon sa Shopify",
+    shopifyReady: "Pwede nang magtrabaho ang Virello sa iyong Shopify store.",
+    continueToVirello: "Magpatuloy sa Virello",
+    whatsNext: "ANO ANG SUSUNOD?",
+    startOptimizing: "Simulan ang pag-optimize ng Shopify products.",
+    nextBody:
+      "Mag-import ng products, i-optimize gamit ang AI, i-review ang mungkahi, tapos i-apply sa Shopify.",
+    stepImport: "1. Import",
+    stepImportBody: "I-import ang iyong Shopify products.",
+    stepOptimize: "2. Optimize",
+    stepOptimizeBody: "Gumawa ng SEO titles, descriptions, at iba pa.",
+    stepReview: "3. Review",
+    stepReviewBody: "I-review ang mga mungkahi ng AI.",
+    stepApply: "4. Apply",
+    stepApplyBody: "I-publish ang mga pagbabago sa Shopify.",
+    invalidShop: "Gamitin ang .myshopify.com domain ng store.",
+    portalError: "Hindi mabuksan ang subscription management.",
+    notConnected: "Hindi pa nakakonekta.",
+    checkoutNeedShop: "Ilagay muna ang .myshopify.com domain bago mag-subscribe.",
   },
 };
 

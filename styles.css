@@ -1746,6 +1746,13 @@ textarea {
   align-items: stretch;
 }
 
+.input-label {
+  display: block;
+  margin: 8px 0 0;
+  font-size: 12px;
+  font-weight: 800;
+}
+
 .shop-input {
   width: 100%;
   margin: 10px 0 14px;

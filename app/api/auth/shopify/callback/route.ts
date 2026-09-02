@@ -4,6 +4,7 @@ import {
   applySessionCookie,
   issueAppSession,
   readSessionId,
+  shopFromSessionCookie,
 } from "../../../_lib/app-session";
 import { saveShopifySession } from "../../../_lib/shopify-auth";
 import {
@@ -92,6 +93,14 @@ export async function GET(request: NextRequest) {
       return redirectError(
         returnOrigin,
         "Virello needs read_products and write_products. Reinstall and approve those scopes."
+      );
+    }
+
+    const sessionShop = await shopFromSessionCookie(request);
+    if (sessionShop && sessionShop !== shop) {
+      return redirectError(
+        returnOrigin,
+        "This Virello session is already linked to a different Shopify store."
       );
     }
 

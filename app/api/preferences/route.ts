@@ -9,7 +9,7 @@ import {
 import { getShopLocales, saveShopLocales } from "../_lib/shops";
 import { shopFromSessionCookie } from "../_lib/app-session";
 import { authenticateShopifyRequest } from "../_lib/shopify-auth";
-import { assertRateLimit, clientKey, RateLimitError } from "../_lib/rate-limit";
+import { assertRateLimit, RateLimitError, tenantRateKey } from "../_lib/rate-limit";
 
 function localeCookie(name: string, value: AppLocale) {
   return {
@@ -59,11 +59,11 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     assertSafeMutation(request);
-    assertRateLimit(clientKey(request, "prefs"), 60);
+    const shop = await currentShop(request);
+    await assertRateLimit(tenantRateKey(request, "prefs", shop), 60);
     const body = await request.json().catch(() => ({}));
     const ui = parseAppLocale(body.ui);
     const output = parseAppLocale(body.output);
-    const shop = await currentShop(request);
     if (shop) await saveShopLocales(shop, ui, output);
     const response = NextResponse.json({ success: true, ui, output, shop: shop || null });
     applyLocaleCookies(response, ui, output);

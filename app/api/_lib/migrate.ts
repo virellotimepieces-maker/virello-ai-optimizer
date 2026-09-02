@@ -127,3 +127,7 @@ export async function rollbackPhase4(exec: SqlExec): Promise<void> {
 export async function rollbackPhase6(exec: SqlExec): Promise<void> {
   await rollbackSqlFile(exec, "006_phase6_locales.down.sql");
 }
+
+export async function rollbackPhase8RateLimits(exec: SqlExec): Promise<void> {
+  await rollbackSqlFile(exec, "007_rate_limits.down.sql");
+}

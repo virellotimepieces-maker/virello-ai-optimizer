@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { shopifyFetch } from "./shopify-fetch";
-import { COPY, t, type CopyKey } from "./i18n";
+import { COPY } from "./i18n";
 import type { AppLocale } from "./api/_lib/locales";
 
 type Product = {
@@ -75,10 +75,6 @@ export default function Home() {
 
   const selected = products.find((product) => product.id === selectedId) || null;
 
-  function label(key: CopyKey) {
-    return t(ui, key);
-  }
-
   function showError(kind: typeof errorKind, text: string) {
     setErrorKind(kind);
     setError(text);
@@ -131,7 +127,7 @@ export default function Home() {
         setShop(typeof status?.shop === "string" ? status.shop : "");
         setUsage(status?.usage ?? null);
         if (checkout === "success" && status?.canManage) {
-          setMessage("Subscription activated successfully.");
+          setMessage(copy.subscriptionActivated);
         }
       } catch {
         setCanManage(false);
@@ -144,10 +140,22 @@ export default function Home() {
 
   async function startCheckout() {
     if (checkoutLoading || canManage) return;
+    const cleaned = normalizeShopInput(shopInput || shop);
+    if (!/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.myshopify\.com$/i.test(cleaned)) {
+      showError("shopify", copy.checkoutNeedShop);
+      return;
+    }
     setCheckoutLoading(true);
     setError("");
     try {
-      const response = await shopifyFetch("/api/stripe/checkout", { method: "POST" });
+      const response = await shopifyFetch("/api/stripe/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          shop: cleaned,
+          flow: new URLSearchParams(window.location.search).get("embedded") === "1" ? "embedded" : "standalone",
+        }),
+      });
       const data = await response.json().catch(() => null);
       if (!response.ok || !data?.url) {
         showError(response.status === 402 ? "payment" : "", data?.error || copy.paymentError);
@@ -215,7 +223,7 @@ export default function Home() {
       setShop(data.shop || shop);
       setShopInstalled(true);
       setMessage(
-        incoming.length ? `${incoming.length} products loaded.` : copy.emptyProducts
+        incoming.length ? `${incoming.length} ${copy.productsLoaded}` : copy.emptyProducts
       );
     } catch (err) {
       showError("shopify", err instanceof Error ? err.message : copy.shopifyError);
@@ -372,7 +380,7 @@ export default function Home() {
         <div className="workspace-grid dashboard-grid">
           <article className="content-card">
             <h2>{copy.connectShopify}</h2>
-            <p>{shopInstalled && shop ? `${copy.connected}: ${shop}` : copy.shopifyError}</p>
+            <p>{shopInstalled && shop ? `${copy.connected}: ${shop}` : copy.notConnected}</p>
             <input
               className="shop-input"
               value={shopInput}

@@ -5,10 +5,14 @@ import {
   issueAppSession,
   readSessionId,
 } from "../../_lib/app-session";
+import {
+  CheckoutShopError,
+  checkoutSuccessUrl,
+  resolveCheckoutShop,
+} from "../../_lib/checkout-shop";
 import { OriginGuardError, assertSafeMutation } from "../../_lib/origin-guard";
-import { assertRateLimit, clientKey } from "../../_lib/rate-limit";
+import { assertRateLimit, tenantRateKey } from "../../_lib/rate-limit";
 import { applySubscriptionEvent } from "../../_lib/stripe-events";
-import { authenticateShopifyRequest } from "../../_lib/shopify-auth";
 import { revokeAppSessionsForShop } from "../../_lib/shops";
 import {
   clearSubscriberCookie,
@@ -18,19 +22,6 @@ import {
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-function getEmbeddedShopifyAppUrl(shop: string, checkout: "success"): URL {
-  const storeHandle = shop.replace(/\.myshopify\.com$/i, "");
-  const appHandle =
-    process.env.SHOPIFY_APP_HANDLE?.trim() || "virello-ai-optimizer";
-  const url = new URL(
-    `/store/${encodeURIComponent(storeHandle)}/apps/${encodeURIComponent(appHandle)}`,
-    "https://admin.shopify.com"
-  );
-  url.searchParams.set("shop", shop);
-  url.searchParams.set("checkout", checkout);
-  return url;
-}
 
 function getErrorDetails(error: unknown): { message: string; status: number } {
   const candidate = error as { message?: unknown; status?: unknown };
@@ -47,20 +38,27 @@ function getErrorDetails(error: unknown): { message: string; status: number } {
 export async function POST(request: NextRequest) {
   try {
     assertSafeMutation(request);
-    assertRateLimit(clientKey(request, "checkout"), 15);
+    const body = await request.json().catch(() => ({}));
+    const identity = await resolveCheckoutShop(request, body);
+    await assertRateLimit(tenantRateKey(request, "checkout", identity.shop), 15);
     const origin = getAppUrl(new URL(request.url).origin);
-    const { shop } = await authenticateShopifyRequest(request, false);
-    const checkoutUrl = await createStripeCheckoutSession(origin, shop);
+    const checkoutUrl = await createStripeCheckoutSession(
+      origin,
+      identity.shop,
+      identity.flow
+    );
 
     return NextResponse.json(
-      { success: true, url: checkoutUrl },
+      { success: true, url: checkoutUrl, shop: identity.shop, flow: identity.flow },
       { headers: { "Cache-Control": "no-store" } }
     );
   } catch (error) {
     console.error("Stripe checkout error:", error);
     const details = getErrorDetails(error);
     const status =
-      error instanceof OriginGuardError ? error.status : details.status;
+      error instanceof OriginGuardError || error instanceof CheckoutShopError
+        ? error.status
+        : details.status;
     return NextResponse.json(
       { success: false, error: details.message },
       { status, headers: { "Cache-Control": "no-store" } }
@@ -86,6 +84,7 @@ export async function GET(request: NextRequest) {
         current_period_start: checkout.subscription.currentPeriodStart,
         current_period_end: checkout.subscription.currentPeriodEnd,
         livemode: checkout.livemode,
+        metadata: { shop: checkout.shop },
       },
       eventCreated: Math.floor(Date.now() / 1000),
       livemode: checkout.livemode,
@@ -99,8 +98,9 @@ export async function GET(request: NextRequest) {
       revokeShopSessions: true,
     });
 
+    const appUrl = getAppUrl(request.nextUrl.origin);
     const response = NextResponse.redirect(
-      getEmbeddedShopifyAppUrl(checkout.shop, "success")
+      checkoutSuccessUrl(appUrl, checkout.shop, checkout.flow)
     );
     applySessionCookie(response, appSessionId, request);
     response.headers.set("Cache-Control", "no-store");

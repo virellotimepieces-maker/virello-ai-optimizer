@@ -6,12 +6,23 @@ import {
   shopifyAdminAppUrl,
 } from "../../_lib/shopify-oauth";
 import { getShopifyClientId } from "../../_lib/shopify-config";
-import { assertRateLimit, clientKey, RateLimitError } from "../../_lib/rate-limit";
+import { shopFromSessionCookie } from "../../_lib/app-session";
+import { assertRateLimit, RateLimitError, tenantRateKey } from "../../_lib/rate-limit";
 
 export async function GET(request: NextRequest) {
   try {
     const shop = normalizeShop(request.nextUrl.searchParams.get("shop") || "");
-    assertRateLimit(clientKey(request, "oauth"), 30);
+    const sessionShop = await shopFromSessionCookie(request);
+    if (sessionShop && shop && sessionShop !== shop) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "This Virello session is already linked to a different Shopify store.",
+        },
+        { status: 403 }
+      );
+    }
+    await assertRateLimit(tenantRateKey(request, "oauth", shop || sessionShop), 30);
     if (!shop) {
       return NextResponse.json(
         {

@@ -13,7 +13,11 @@ test.describe("Virello dashboard", () => {
 
   test("connect page is reachable from standalone", async ({ page }) => {
     await page.goto("/connect");
-    await expect(page.getByRole("button", { name: /Subscribe|Manage Subscription/i })).toBeVisible();
+    await expect(page.getByRole("button", { name: /Subscribe|Mag-subscribe|Manage Subscription|I-manage/i })).toBeVisible();
+    await expect(page.getByRole("button", { name: "FIL" }).first()).toBeVisible();
+    await expect(page.getByRole("heading", { name: /Connect your Shopify store/i })).toBeVisible();
+    await page.getByRole("button", { name: "FIL" }).first().click();
+    await expect(page.getByRole("heading", { name: /Ikonekta ang iyong Shopify store/i })).toBeVisible();
   });
 
   test("embedded query string still renders the optimizer shell", async ({ page }) => {
