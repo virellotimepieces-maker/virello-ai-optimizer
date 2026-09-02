@@ -7,7 +7,7 @@ import {
   ProductAccessError,
   requirePaidProductAccess,
 } from "../app/api/_lib/product-access";
-import { normalizeShop } from "../app/api/_lib/shop-domain";
+import { isShopifyAdminAuthorizeUrl, normalizeShop } from "../app/api/_lib/shop-domain";
 import { saveShopifySession } from "../app/api/_lib/shopify-auth";
 import {
   setShopifyAdminFetchForTests,
@@ -68,11 +68,37 @@ describe("Phase 5 shop domains and OAuth", () => {
     expect(normalizeShop("example.com")).toBe("");
   });
 
+  it("rejects storefront OAuth URLs for unpublished shops like gfd1cp-1v", () => {
+    expect(
+      isShopifyAdminAuthorizeUrl(
+        "https://gfd1cp-1v.myshopify.com/admin/oauth/authorize?client_id=x"
+      )
+    ).toBe(false);
+    expect(isShopifyAdminAuthorizeUrl("https://gfd1cp-1v.myshopify.com/")).toBe(
+      false
+    );
+    expect(
+      isShopifyAdminAuthorizeUrl(
+        "https://admin.shopify.com/store/gfd1cp-1v/oauth/authorize?client_id=x&shop=gfd1cp-1v.myshopify.com"
+      )
+    ).toBe(true);
+    const built = buildShopifyAuthorizeUrl({
+      shop: "gfd1cp-1v.myshopify.com",
+      flow: "standalone",
+    });
+    const url = new URL(built.url);
+    expect(url.hostname).toBe("admin.shopify.com");
+    expect(url.pathname).toBe("/store/gfd1cp-1v/oauth/authorize");
+    expect(url.searchParams.get("shop")).toBe("gfd1cp-1v.myshopify.com");
+  });
+
   it("builds a standalone authorize URL with APP_URL callback and signed state", () => {
     const built = buildShopifyAuthorizeUrl({ shop: SHOP, flow: "standalone" });
     const url = new URL(built.url);
-    expect(url.origin).toBe(`https://${SHOP}`);
-    expect(url.pathname).toBe("/admin/oauth/authorize");
+    expect(url.origin).toBe("https://admin.shopify.com");
+    expect(url.pathname).toBe("/store/store-alpha/oauth/authorize");
+    expect(url.searchParams.get("shop")).toBe(SHOP);
+    expect(url.searchParams.get("client_id")).toBe("shopify-client-id");
     expect(url.searchParams.get("redirect_uri")).toBe(
       "https://app.virello.example/api/auth/shopify/callback"
     );
@@ -82,6 +108,7 @@ describe("Phase 5 shop domains and OAuth", () => {
     expect(shopifyCallbackUrl()).toBe(
       "https://app.virello.example/api/auth/shopify/callback"
     );
+    expect(isShopifyAdminAuthorizeUrl(built.url)).toBe(true);
   });
 
   it("rejects forged, expired, and cross-shop OAuth state", () => {
@@ -273,6 +300,8 @@ describe("Phase 5 import, save, and access", () => {
     expect(readFileSync("app/page.tsx", "utf8")).not.toMatch(/save-product/);
     expect(page).toMatch(/Accept:\s*"application\/json"/);
     expect(connect).toMatch(/Accept:\s*"application\/json"/);
+    expect(page).toMatch(/isShopifyAdminAuthorizeUrl/);
+    expect(connect).toMatch(/isShopifyAdminAuthorizeUrl/);
   });
 });
 
@@ -288,7 +317,7 @@ describe("Phase 5 OAuth start for development shops", () => {
     clearTestDatabase();
   });
 
-  it("returns a Shopify authorize URL for gfd1cp-1v.myshopify.com", async () => {
+  it("returns a Shopify Admin authorize URL for gfd1cp-1v.myshopify.com", async () => {
     const { GET } = await import("../app/api/auth/shopify/route");
     const request = new NextRequest(
       "https://app.virello.example/api/auth/shopify?shop=gfd1cp-1v.myshopify.com&flow=standalone",
@@ -299,10 +328,19 @@ describe("Phase 5 OAuth start for development shops", () => {
     const body = (await response.json()) as { success: boolean; shop?: string; url?: string };
     expect(body.success).toBe(true);
     expect(body.shop).toBe("gfd1cp-1v.myshopify.com");
-    expect(body.url).toContain("https://gfd1cp-1v.myshopify.com/admin/oauth/authorize");
-    expect(body.url).toContain(
-      "redirect_uri=https%3A%2F%2Fapp.virello.example%2Fapi%2Fauth%2Fshopify%2Fcallback"
+    const url = new URL(body.url || "");
+    expect(url.origin).toBe("https://admin.shopify.com");
+    expect(url.pathname).toBe("/store/gfd1cp-1v/oauth/authorize");
+    expect(url.searchParams.get("shop")).toBe("gfd1cp-1v.myshopify.com");
+    expect(url.searchParams.get("client_id")).toBe("shopify-client-id");
+    expect(url.searchParams.get("scope")).toContain("write_products");
+    expect(url.searchParams.get("state")).toBeTruthy();
+    expect(url.searchParams.get("redirect_uri")).toBe(
+      "https://app.virello.example/api/auth/shopify/callback"
     );
+    expect(isShopifyAdminAuthorizeUrl(body.url || "")).toBe(true);
+    expect(url.hostname.endsWith(".myshopify.com")).toBe(false);
+    expect(body.url).not.toContain("https://gfd1cp-1v.myshopify.com/");
   });
 
   it("accepts the shop handle without the myshopify suffix", async () => {
@@ -315,7 +353,9 @@ describe("Phase 5 OAuth start for development shops", () => {
     const body = (await response.json()) as { shop?: string; url?: string };
     expect(response.status).toBe(200);
     expect(body.shop).toBe("gfd1cp-1v.myshopify.com");
-    expect(body.url).toContain("gfd1cp-1v.myshopify.com");
+    expect(body.url).toContain("https://admin.shopify.com/store/gfd1cp-1v/oauth/authorize");
+    expect(body.url).toContain("shop=gfd1cp-1v.myshopify.com");
+    expect(isShopifyAdminAuthorizeUrl(body.url || "")).toBe(true);
   });
 
   it("returns a visible JSON error for an invalid shop", async () => {

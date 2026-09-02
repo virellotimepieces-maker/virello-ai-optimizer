@@ -135,6 +135,12 @@ describe("Phase 3 Shopify security module", () => {
       )
     ).toBe(true);
     expect(isAllowedRedirectUrl("https://evil.example/steal")).toBe(false);
+    expect(isAllowedRedirectUrl("https://gfd1cp-1v.myshopify.com/")).toBe(false);
+    expect(
+      isAllowedRedirectUrl(
+        "https://admin.shopify.com/store/gfd1cp-1v/oauth/authorize"
+      )
+    ).toBe(true);
   });
 
   it("rejects cross-origin POST mutations", () => {

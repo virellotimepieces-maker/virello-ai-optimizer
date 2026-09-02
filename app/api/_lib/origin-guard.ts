@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { getAppUrl, listAllowedAppOrigins } from "./app-url";
+import { isShopifyStorefrontHost } from "./shop-domain";
 
 export class OriginGuardError extends Error {
   status = 403;
@@ -59,11 +60,9 @@ export function isAllowedRedirectUrl(
   if (url.username || url.password) return false;
 
   if (url.hostname === "admin.shopify.com") return true;
-  if (
-    url.hostname.endsWith(".myshopify.com") &&
-    url.hostname !== ".myshopify.com"
-  ) {
-    return true;
+  if (isShopifyStorefrontHost(url.hostname)) {
+    // Admin paths only — never the public storefront password page.
+    return url.pathname === "/admin" || url.pathname.startsWith("/admin/");
   }
 
   return isAllowedAppOrigin(url.origin, fallbackOrigin);

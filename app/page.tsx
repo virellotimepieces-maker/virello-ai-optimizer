@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { shopifyFetch } from "./shopify-fetch";
 import { COPY } from "./i18n";
 import type { AppLocale } from "./api/_lib/locales";
-import { normalizeShop } from "./api/_lib/shop-domain";
+import { normalizeShop, isShopifyAdminAuthorizeUrl } from "./api/_lib/shop-domain";
 
 type Product = {
   id: string;
@@ -206,6 +206,10 @@ export default function Home() {
       const data = await response.json().catch(() => null);
       if (!response.ok || !data?.url) {
         showError("shopify", data?.error || copy.shopifyError);
+        return;
+      }
+      if (!isShopifyAdminAuthorizeUrl(data.url)) {
+        showError("shopify", data?.error || copy.invalidAuthorizeUrl);
         return;
       }
       window.location.assign(data.url);

@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { shopifyFetch } from "../shopify-fetch";
 import { COPY } from "../i18n";
 import type { AppLocale } from "../api/_lib/locales";
-import { normalizeShop } from "../api/_lib/shop-domain";
+import { normalizeShop, isShopifyAdminAuthorizeUrl } from "../api/_lib/shop-domain";
 
 type ConnectionStatus = {
   success?: boolean;
@@ -156,6 +156,11 @@ export default function ConnectPage() {
       const data = await response.json().catch(() => null);
       if (!response.ok || !data?.url) {
         setError(data?.error || copy.shopifyError);
+        setConnecting(false);
+        return;
+      }
+      if (!isShopifyAdminAuthorizeUrl(data.url)) {
+        setError(data?.error || copy.invalidAuthorizeUrl);
         setConnecting(false);
         return;
       }

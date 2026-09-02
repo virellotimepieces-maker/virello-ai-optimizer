@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAppUrl } from "../../_lib/app-url";
-import { normalizeShop } from "../../_lib/shop-domain";
+import { isShopifyAdminAuthorizeUrl, normalizeShop } from "../../_lib/shop-domain";
 import {
   buildShopifyAuthorizeUrl,
   shopifyAdminAppUrl,
@@ -99,6 +99,17 @@ export async function GET(request: NextRequest) {
       flow: "standalone",
       fallbackOrigin: getAppUrl(request.nextUrl.origin),
     });
+    if (!isShopifyAdminAuthorizeUrl(authorize.url)) {
+      return oauthStartResponse(
+        request,
+        {
+          success: false,
+          error:
+            "Shopify authorization must start on admin.shopify.com, not the storefront.",
+        },
+        500
+      );
+    }
     return oauthStartResponse(
       request,
       { success: true, url: authorize.url, shop },
