@@ -1,106 +1,62 @@
-# Virello AI Optimizer
+## Phase 8 release verification
 
-Gawing tama ang Shopify product listings mo.
+Automated suite, security scan, TypeScript, Playwright, and production build. A Vercel preview and live Stripe/Shopify checkout cannot be completed in this environment because the required credentials are not available here. Do not merge to `main` until the blocker list below is cleared.
 
-Subscription Shopify app: $29.99/month via Stripe, connect a store, import products, review AI title/description/SEO/tags/conversion copy, then save to Shopify. Works in **Shopify Admin (embedded)** and as a **standalone dashboard**.
+### Database migrations
 
-This is not a prompt clinic or Custom GPT rewriter.
-
-## Phase 6 (current)
-
-Server-side OpenAI optimizer (key never sent to the browser) writes title, description, SEO, tags, and conversion copy without inventing facts. Failed AI calls do not consume the 1000 monthly uses. The dashboard is FIL/EN for interface and product-output language separately, with Connect, Subscribe/Manage, Import, Optimize, Review, and Save states.
-
-## Phase 5
-
-Shopify OAuth works for **standalone** (authorization-code + signed state, HMAC, `APP_URL` callback) and **embedded** (Admin launch + App Bridge token exchange). Offline tokens stay encrypted in Neon. Import is paginated with 429/throttle retries. Save is a single implementation (`/api/shopify/products` POST, `/api/shopify/save-product` re-exports it) and requires `confirmed: true` after review. Import/AI/save require an active install, `read_products`/`write_products`, and an eligible Stripe subscription. Shop identity is not stored in `localStorage`.
-
-## Phase 4
-
-Stripe Price must be **exactly $29.99 USD / month**. Test and live Stripe credentials, Price IDs, webhook events, checkout sessions, customers, subscriptions, and Customer Portal objects must stay in the same mode. Billing (customers, subscriptions, invoices, payment status, period, cancellation, webhook event IDs) is stored in Neon. Product access requires **both** an active Shopify install and an eligible Stripe subscription (`active` or `trialing`, with no failed last invoice). Uninstall revokes access and sessions immediately but does **not** cancel Stripe.
-
-The UI Subscribe button becomes **Manage Subscription** from `canManage` (survives refresh via `virello_sid`). Customer Portal return URLs are always `APP_URL`. Legacy `virello_subscriber` / shop / token cookies are cleared and never written.
-
-Branch: `shopify-rebuild`. Do not merge to `main` and do not deploy until approved.
-
-## Run locally
-
-```bash
-npm install
-cp .env.example .env.local
-npm run dev
-```
-
-Fill `.env.local` with real values. Do not commit it. `APP_URL` should be the public https origin (used for Stripe return URLs, CSRF, and redirect allowlisting). `STRIPE_PRICE_ID` must be a $29.99/month USD Price in the same mode as `STRIPE_SECRET_KEY`.
-
-```bash
-npm test
-npm run security:check
-npx tsc --noEmit
-npm run build
-```
-
-## Database migrations
-
-SQL files live in `migrations/`, applied in filename order by `app/api/_lib/migrate.ts` on first database use.
+Applied automatically on first `DATABASE_URL` use via `app/api/_lib/migrate.ts`.
 
 | File | Purpose |
 | --- | --- |
 | `001_subscriber_usage.sql` | Monthly AI usage counters |
-| `002_shopify_accounts.sql` | Shopify sessions, Stripe shop subscriptions, Stripe webhook ids |
-| `003_phase2_schema.sql` | `shops`, `app_sessions`, `webhook_events`, FKs, indexes, revoke columns |
-| `003_phase2_schema.down.sql` | Phase 2 rollback only |
+| `002_shopify_accounts.sql` | Shopify sessions, shop subscriptions, Stripe webhook ids |
+| `003_phase2_schema.sql` | `shops`, `app_sessions`, `webhook_events`, FKs |
 | `004_phase3_sessions.sql` | Session cleanup indexes |
-| `004_phase3_sessions.down.sql` | Phase 3 index rollback |
-| `005_phase4_billing.sql` | `stripe_customers`, `stripe_invoices`, livemode, invoice/cancellation, event ordering |
-| `005_phase4_billing.down.sql` | Phase 4 rollback (does not delete `shop_subscriptions` billing rows) |
+| `005_phase4_billing.sql` | Stripe customers, invoices, livemode, event ordering |
 | `006_phase6_locales.sql` | Shop UI and product-output locales |
-| `006_phase6_locales.down.sql` | Phase 6 locale column rollback |
 
-### Rollback
+Rollback order (maintenance window, Neon PITR first): `006` → `005` → `004` → `003`. `005`/`003` down files do not delete `shop_subscriptions` billing rows.
 
-Phase 4 billing tables: `migrations/005_phase4_billing.down.sql`.  
-Phase 3 indexes: `migrations/004_phase3_sessions.down.sql`.  
-Phase 2 schema: `migrations/003_phase2_schema.down.sql` (does not delete pre-Phase-2 billing rows). Roll back 4 → 3 → 2.
+### Environment-variable names
 
-## Environment variable names
+Set in Vercel Production and Preview. Never commit values.
 
-Set these in `.env.local` and Vercel. Do not put values in git.
-
-- `APP_URL` (canonical public origin)
+- `APP_URL`
 - `DATABASE_URL`
 - `OPENAI_API_KEY`
 - `OPENAI_MODEL`
-- `STRIPE_SECRET_KEY` (`sk_test_` or `sk_live_`, never mixed)
-- `STRIPE_PRICE_ID` (must be $29.99 USD monthly in the same mode)
-- `STRIPE_WEBHOOK_SECRET` (`whsec_…` from the same mode)
+- `STRIPE_SECRET_KEY` (`sk_test_` on Preview, `sk_live_` only on Production)
+- `STRIPE_PRICE_ID` (same mode as the secret; must be $29.99 USD / month)
+- `STRIPE_WEBHOOK_SECRET` (same mode)
 - `SUBSCRIBER_COOKIE_SECRET`
-- `AI_SUBSCRIBER_USAGE_LIMIT` (paid allowance; default 1000)
+- `AI_SUBSCRIBER_USAGE_LIMIT` (default 1000)
 - `SHOPIFY_API_KEY` / `SHOPIFY_CLIENT_ID`
 - `SHOPIFY_API_SECRET` / `SHOPIFY_CLIENT_SECRET`
 - `SHOPIFY_API_SECRET_PREVIOUS`
 - `SHOPIFY_APP_HANDLE`
 - `SHOPIFY_TOKEN_ENCRYPTION_KEY`
 
-## Access matrix
+### Deployment steps
 
-| Stripe status | Product access (if Shopify is installed) | Manage Subscription |
-| --- | --- | --- |
-| `active` | Yes | Yes |
-| `trialing` | Yes | Yes |
-| `past_due` | No | Yes |
-| `unpaid` | No | Yes |
-| `incomplete` | No | Yes |
-| `paused` | No | Yes |
-| `canceled` / `incomplete_expired` | No | No (Subscribe) |
-| Uninstalled + Stripe still `active` | No | Yes |
-| Last invoice `failed` | No | Yes |
+1. Confirm `shopify-rebuild` is green locally: `npm test && npm run test:e2e && npm run security:check && npx tsc --noEmit && npm run build`
+2. Create a Vercel Preview from `shopify-rebuild` (not `main`).
+3. Point Stripe **test** webhook to `https://<preview>/api/stripe/webhook` for `checkout.session.completed`, `customer.subscription.*`, `invoice.paid`, `invoice.payment_failed`.
+4. Point Shopify development store webhooks to `https://<preview>/api/webhooks` and set the OAuth callback to `https://<preview>/api/auth/shopify/callback`.
+5. Walk the Preview: $29.99 checkout, webhook, Manage Subscription, Connect Shopify, import, AI optimize, review, save, FIL/EN, mobile and desktop.
+6. Only after that walkthrough, merge `shopify-rebuild` into `main` with a normal merge commit and promote the Production deployment.
 
-AI, product import, and save-to-Shopify all use this gate.
+### Monitoring
 
-## Customer flow
+- Vercel: function errors, 5xx rate, webhook 400s
+- Stripe: failed webhooks, `past_due` / `unpaid` subscriptions
+- Shopify: webhook HMAC failures, token exchange errors
+- Neon: migration errors, usage table growth
+- App logs: `STRIPE_WEBHOOK_PROCESS_ERROR`, `SHOPIFY_OAUTH_CALLBACK_REJECTED`, `AI_ANALYZE_ERROR`
 
-Subscribe → Manage Subscription after payment (survives refresh via `virello_sid`) → Connect Shopify (embedded Admin or standalone) → Import → Optimize → Review → Save to Shopify.
+### Rollback
 
-## Deploy
+1. In Vercel, Instant Rollback to the previous Production deployment.
+2. If schema must move back: restore Neon PITR to before the bad migration, or run the `.down.sql` files newest-first.
+3. Git rollback target after a merge is the `main` commit before the merge. Until merge, keep serving whatever is currently on `main` and leave `shopify-rebuild` as the working branch.
 
-Next.js on Vercel (`vercel.json` framework only; no `outputDirectory`). Do not deploy this branch until Phase 8 is approved. Stripe webhook path: `/api/stripe/webhook`. Shopify webhook path: `/api/webhooks`. Shopify OAuth callback: `/api/auth/shopify/callback`.
+Do not deploy this branch until Phase 8 preview acceptance is complete.
