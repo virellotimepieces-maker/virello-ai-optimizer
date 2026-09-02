@@ -187,7 +187,7 @@ describe("Phase 3 app sessions", () => {
     const session = await loadValidAppSession(sessionId, SHOP_A);
     expect(session?.shop).toBe(SHOP_A);
     const status = await storedSubscriberStatus(SHOP_A);
-    expect(status.active).toBe(true);
+    expect(status.canManage).toBe(true);
     expect(status.subscriptionId).toBe("sub_a");
   });
 

@@ -1,12 +1,24 @@
-import { createHmac, timingSafeEqual } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
-import { dbQuery } from "./database";
 import { getAppUrl } from "./app-url";
-import { shopFromSessionCookie } from "./app-session";
+import { shopFromSessionCookie, clearSessionCookie } from "./app-session";
 import { authenticateShopifyRequest, normalizeShop } from "./shopify-auth";
-import { revokeAppSessionsForShop, upsertShop } from "./shops";
+import { isShopifyInstallationActive } from "./shops";
 import { peekAiUsage, consumeAiUsage } from "./usage";
 import { getUsageLimit, type SubscriberUsage } from "./usage-limit";
+import {
+  isPaidSubscriptionStatus,
+  type StripeSubscriptionStatus,
+} from "./stripe-access";
+import { accessStateForShop, applySubscriptionEvent } from "./stripe-events";
+import {
+  billingForShop,
+  saveShopSubscription as persistShopSubscription,
+  shopForSubscriptionId,
+} from "./stripe-billing";
+import { assertConfiguredStripePrice } from "./stripe-price";
+import { assertLivemodeMatchesSecret, configuredStripeMode } from "./stripe-mode";
+import { requirePaidProductAccess } from "./product-access";
+import { decodeLegacySubscriberCookie } from "./legacy-subscriber-cookie";
 
 class ApiError extends Error {
   status: number;
@@ -20,29 +32,6 @@ class ApiError extends Error {
 
 export const SUBSCRIBER_COOKIE = "virello_sid";
 
-type StripeSubscriptionStatus =
-  | "active"
-  | "trialing"
-  | "past_due"
-  | "canceled"
-  | "unpaid"
-  | "incomplete"
-  | "incomplete_expired"
-  | "paused"
-  | string;
-
-type SubscriberPayload = {
-  v: 1;
-  subscriptionId: string;
-  customerId: string;
-  status: StripeSubscriptionStatus;
-  currentPeriodStart: number;
-  currentPeriodEnd: number;
-  usageCount: number;
-  usagePeriodStart: number;
-  refreshedAt: number;
-};
-
 type SubscriptionSnapshot = {
   subscriptionId: string;
   customerId: string;
@@ -54,16 +43,21 @@ type SubscriptionSnapshot = {
 export type CheckoutSubscription = {
   shop: string;
   subscription: SubscriptionSnapshot;
+  livemode: boolean;
 };
 
 export type { SubscriberUsage };
+export { isPaidSubscriptionStatus, getUsageLimit };
 
 export type ActiveSubscriberStatus = {
   active: boolean;
+  canManage: boolean;
+  shopInstalled: boolean;
   shop: string | null;
   customerId: string | null;
   subscriptionId: string | null;
   status: StripeSubscriptionStatus | null;
+  reason?: string;
 };
 
 function getStripeSecret(): string {
@@ -79,124 +73,6 @@ function getStripeSecret(): string {
   return secret;
 }
 
-function getCookieSecrets(): string[] {
-  const secrets = [
-    process.env.SUBSCRIBER_COOKIE_SECRET,
-    process.env.SHOPIFY_TOKEN_ENCRYPTION_KEY,
-  ]
-    .map((value) => value?.trim() || "")
-    .filter((value, index, values) =>
-      Boolean(value) && values.indexOf(value) === index
-    );
-
-  if (secrets.length === 0) {
-    throw new ApiError("Subscriber cookie signing key is not configured.", 500);
-  }
-
-  return secrets;
-}
-
-function getCookieSecret(): string {
-  return getCookieSecrets()[0];
-}
-
-function decodeConfiguredSubscriberPayload(value: string): SubscriberPayload | null {
-  for (const secret of getCookieSecrets()) {
-    const payload = decodeSubscriberPayload(value, secret);
-    if (payload) return payload;
-  }
-
-  return null;
-}
-
-export { getUsageLimit };
-
-function signPayload(
-  encodedPayload: string,
-  secret: string
-): string {
-  return createHmac("sha256", secret)
-    .update(encodedPayload)
-    .digest("base64url");
-}
-
-function encodeSubscriberPayload(
-  payload: SubscriberPayload,
-  secret: string
-): string {
-  const encodedPayload = Buffer.from(
-    JSON.stringify(payload)
-  ).toString("base64url");
-
-  const signature = signPayload(
-    encodedPayload,
-    secret
-  );
-
-  return `${encodedPayload}.${signature}`;
-}
-
-function decodeSubscriberPayload(
-  value: string,
-  secret: string
-): SubscriberPayload | null {
-  try {
-    const [encodedPayload, signature] =
-      value.split(".");
-
-    if (!encodedPayload || !signature) {
-      return null;
-    }
-
-    const expectedSignature = signPayload(
-      encodedPayload,
-      secret
-    );
-
-    const received = Buffer.from(
-      signature,
-      "base64url"
-    );
-
-    const expected = Buffer.from(
-      expectedSignature,
-      "base64url"
-    );
-
-    if (received.length !== expected.length) {
-      return null;
-    }
-
-    if (!timingSafeEqual(received, expected)) {
-      return null;
-    }
-
-    const payload = JSON.parse(
-      Buffer.from(
-        encodedPayload,
-        "base64url"
-      ).toString("utf8")
-    ) as SubscriberPayload;
-
-    if (
-      !payload ||
-      payload.v !== 1 ||
-      typeof payload.subscriptionId !== "string" ||
-      typeof payload.customerId !== "string" ||
-      typeof payload.currentPeriodStart !== "number" ||
-      typeof payload.currentPeriodEnd !== "number" ||
-      typeof payload.usageCount !== "number" ||
-      typeof payload.usagePeriodStart !== "number"
-    ) {
-      return null;
-    }
-
-    return payload;
-  } catch {
-    return null;
-  }
-}
-
 export async function stripeRequest<T>(
   path: string,
   options: {
@@ -205,6 +81,7 @@ export async function stripeRequest<T>(
   } = {}
 ): Promise<T> {
   const secretKey = getStripeSecret();
+  configuredStripeMode(secretKey);
 
   const headers: Record<string, string> = {
     Authorization: `Bearer ${secretKey}`,
@@ -246,6 +123,10 @@ export async function stripeRequest<T>(
         ? response.status
         : 502
     );
+  }
+
+  if (typeof data?.livemode === "boolean") {
+    assertLivemodeMatchesSecret(data.livemode, path);
   }
 
   return data as T;
@@ -310,20 +191,14 @@ function normalizeSubscription(
 
 export async function saveStripeSubscriptionPayload(
   shop: string,
-  payload: unknown
+  payload: unknown,
+  eventCreated = Math.floor(Date.now() / 1000)
 ): Promise<void> {
-  const next = normalizeSubscription(payload);
-  const previous = await subscriptionForShop(shop);
-  await saveShopSubscription(shop, next);
-  if (subscriptionPrivilegeChanged(previous, next)) {
-    await revokeAppSessionsForShop(shop);
-  }
-}
-
-export function isPaidSubscriptionStatus(
-  status: StripeSubscriptionStatus
-): boolean {
-  return status === "active" || status === "trialing";
+  await applySubscriptionEvent({
+    shop,
+    object: payload as Parameters<typeof applySubscriptionEvent>[0]["object"],
+    eventCreated,
+  });
 }
 
 export function subscriptionPrivilegeChanged(
@@ -335,36 +210,6 @@ export function subscriptionPrivilegeChanged(
     previous.subscriptionId !== next.subscriptionId ||
     previous.customerId !== next.customerId ||
     previous.status !== next.status
-  );
-}
-
-function ensureActiveStatus(
-  status: StripeSubscriptionStatus
-): void {
-  if (isPaidSubscriptionStatus(status)) {
-    return;
-  }
-
-  if (status === "past_due") {
-    throw new ApiError(
-      "Subscription payment is past due. Update billing to continue using AI optimization.",
-      402
-    );
-  }
-
-  if (
-    status === "canceled" ||
-    status === "unpaid"
-  ) {
-    throw new ApiError(
-      "An active subscription is required to use AI optimization.",
-      402
-    );
-  }
-
-  throw new ApiError(
-    `Subscription is not active (${status}).`,
-    402
   );
 }
 
@@ -397,6 +242,11 @@ export async function createStripeCheckoutSession(
       500
     );
   }
+
+  const price = await stripeRequest<Parameters<typeof assertConfiguredStripePrice>[0]>(
+    `prices/${encodeURIComponent(priceId)}`
+  );
+  assertConfiguredStripePrice(price);
 
   const body = new URLSearchParams();
 
@@ -459,12 +309,15 @@ export async function getCheckoutSubscription(
     await stripeRequest<any>(
       `checkout/sessions/${encodeURIComponent(
         sessionId
-      )}?expand[]=subscription`
+      )}?expand[]=subscription&expand[]=customer`
     );
 
-  const subscriptionRef =
-    checkoutSession?.subscription;
+  if (typeof checkoutSession?.livemode !== "boolean") {
+    throw new ApiError("Stripe checkout session did not include livemode.", 502);
+  }
+  assertLivemodeMatchesSecret(checkoutSession.livemode, "checkout session");
 
+  const subscriptionRef = checkoutSession?.subscription;
   const subscriptionId =
     typeof subscriptionRef === "string"
       ? subscriptionRef
@@ -480,11 +333,36 @@ export async function getCheckoutSubscription(
   }
 
   const subscription =
-    await stripeRequest<any>(
-      `subscriptions/${encodeURIComponent(
-        subscriptionId
-      )}`
-    );
+    typeof subscriptionRef === "object" && subscriptionRef?.id
+      ? subscriptionRef
+      : await stripeRequest<any>(
+          `subscriptions/${encodeURIComponent(subscriptionId)}`
+        );
+
+  if (typeof subscription?.livemode === "boolean") {
+    assertLivemodeMatchesSecret(subscription.livemode, "subscription");
+  }
+
+  const customerRef = checkoutSession?.customer ?? subscription?.customer;
+  const customerId =
+    typeof customerRef === "string"
+      ? customerRef
+      : typeof customerRef?.id === "string"
+        ? customerRef.id
+        : "";
+
+  if (!customerId) {
+    throw new ApiError("Stripe checkout session did not include a customer.", 400);
+  }
+
+  const customer =
+    typeof customerRef === "object" && customerRef?.id
+      ? customerRef
+      : await stripeRequest<any>(`customers/${encodeURIComponent(customerId)}`);
+
+  if (typeof customer?.livemode === "boolean") {
+    assertLivemodeMatchesSecret(customer.livemode, "customer");
+  }
 
   const shop = normalizeShop(
     checkoutSession?.client_reference_id ||
@@ -497,64 +375,40 @@ export async function getCheckoutSubscription(
     throw new ApiError("Stripe checkout is not linked to a Shopify store.", 400);
   }
 
-  return { shop, subscription: normalizeSubscription(subscription) };
+  return {
+    shop,
+    subscription: normalizeSubscription(subscription),
+    livemode: checkoutSession.livemode,
+  };
 }
 
 export async function saveShopSubscription(
   shop: string,
-  subscription: SubscriptionSnapshot
+  subscription: SubscriptionSnapshot,
+  eventCreated = Math.floor(Date.now() / 1000)
 ): Promise<void> {
-  const normalizedShop = await upsertShop(shop);
-  await dbQuery(
-    `INSERT INTO shop_subscriptions (
-       shop, stripe_customer_id, stripe_subscription_id, status,
-       current_period_start, current_period_end, updated_at
-     ) VALUES ($1, $2, $3, $4, $5, $6, NOW())
-     ON CONFLICT (shop) DO UPDATE SET
-       stripe_customer_id = EXCLUDED.stripe_customer_id,
-       stripe_subscription_id = EXCLUDED.stripe_subscription_id,
-       status = EXCLUDED.status,
-       current_period_start = EXCLUDED.current_period_start,
-       current_period_end = EXCLUDED.current_period_end,
-       updated_at = NOW()`,
-    [
-      normalizedShop,
-      subscription.customerId,
-      subscription.subscriptionId,
-      subscription.status,
-      subscription.currentPeriodStart,
-      subscription.currentPeriodEnd,
-    ]
-  );
+  await persistShopSubscription({
+    shop,
+    customerId: subscription.customerId,
+    subscriptionId: subscription.subscriptionId,
+    status: subscription.status,
+    currentPeriodStart: subscription.currentPeriodStart,
+    currentPeriodEnd: subscription.currentPeriodEnd,
+    eventCreated,
+  });
 }
 
 export async function subscriptionForShop(
   shop: string
 ): Promise<SubscriptionSnapshot | null> {
-  const normalizedShop = normalizeShop(shop);
-  if (!normalizedShop) return null;
-
-  const rows = await dbQuery<{
-    stripe_customer_id: string;
-    stripe_subscription_id: string;
-    status: string;
-    current_period_start: number | string;
-    current_period_end: number | string;
-  }>(
-    `SELECT stripe_customer_id, stripe_subscription_id, status,
-            current_period_start, current_period_end
-     FROM shop_subscriptions
-     WHERE shop = $1
-     LIMIT 1`,
-    [normalizedShop]
-  );
-  if (!rows.length) return null;
+  const billing = await billingForShop(shop);
+  if (!billing) return null;
   return {
-    customerId: String(rows[0].stripe_customer_id),
-    subscriptionId: String(rows[0].stripe_subscription_id),
-    status: String(rows[0].status),
-    currentPeriodStart: Number(rows[0].current_period_start),
-    currentPeriodEnd: Number(rows[0].current_period_end),
+    customerId: billing.customerId,
+    subscriptionId: billing.subscriptionId,
+    status: billing.status,
+    currentPeriodStart: billing.currentPeriodStart,
+    currentPeriodEnd: billing.currentPeriodEnd,
   };
 }
 
@@ -579,32 +433,12 @@ export async function authorizeSubscriberForAI(
   subscription: SubscriptionSnapshot;
   usage: SubscriberUsage;
 }> {
-  let shop = "";
-  try {
-    shop = (await authenticateShopifyRequest(request, false)).shop;
-  } catch {
-    shop = await getShopForSubscriberCookie(request);
-  }
-
-  if (!shop) {
-    throw new ApiError("A verified Shopify subscription is required.", 401);
-  }
-
-  const refreshedSubscription = await refreshShopSubscription(shop);
-
-  if (!refreshedSubscription) {
-    throw new ApiError(
-      "An active subscription is required to use AI optimization.",
-      402
-    );
-  }
-
-  ensureActiveStatus(refreshedSubscription.status);
+  const { shop, billing } = await requirePaidProductAccess(request);
 
   const usage = await peekAiUsage(
     shop,
-    refreshedSubscription.subscriptionId,
-    refreshedSubscription.currentPeriodStart
+    billing.subscriptionId,
+    billing.currentPeriodStart
   );
 
   if (usage.remaining <= 0) {
@@ -616,7 +450,13 @@ export async function authorizeSubscriberForAI(
 
   return {
     shop,
-    subscription: refreshedSubscription,
+    subscription: {
+      customerId: billing.customerId,
+      subscriptionId: billing.subscriptionId,
+      status: billing.status,
+      currentPeriodStart: billing.currentPeriodStart,
+      currentPeriodEnd: billing.currentPeriodEnd,
+    },
     usage,
   };
 }
@@ -645,92 +485,48 @@ export async function recordSuccessfulAiOptimization(
   }
 }
 
-export function clearSubscriberCookie(
-  response: NextResponse
-): void {
-  response.cookies.set(
-    "virello_sid",
-    "",
-    {
-      httpOnly: true,
-      secure: true,
-      sameSite: "none",
-      path: "/",
-      maxAge: 0,
-    }
-  );
-  response.cookies.set(
-    "virello_subscriber",
-    "",
-    {
-      httpOnly: true,
-      secure: true,
-      sameSite: "none",
-      path: "/",
-      maxAge: 0,
-    }
-  );
+export function clearSubscriberCookie(response: NextResponse): void {
+  clearSessionCookie(response);
 }
 
 export async function getShopForSubscriberCookie(
   request: NextRequest
 ): Promise<string> {
-  try {
-    const fromSession = await shopFromSessionCookie(request);
-    if (fromSession) return fromSession;
+  const fromSession = await shopFromSessionCookie(request);
+  if (fromSession) return fromSession;
 
-    const cookieValue =
-      request.cookies.get("virello_subscriber")?.value || "";
+  const legacy = decodeLegacySubscriberCookie(
+    request.cookies.get("virello_subscriber")?.value || ""
+  );
+  if (!legacy) return "";
 
-    if (!cookieValue) {
-      return "";
-    }
+  const shop = await shopForSubscriptionId(legacy.subscriptionId);
+  if (!shop) return "";
 
-    const payload = decodeConfiguredSubscriberPayload(cookieValue);
+  const billing = await billingForShop(shop);
+  if (!billing || billing.customerId !== legacy.customerId) return "";
+  return shop;
+}
 
-    if (!payload?.subscriptionId) {
-      return "";
-    }
-
-    const rows = await dbQuery<{ shop: string }>(
-      `SELECT shop
-       FROM shop_subscriptions
-       WHERE stripe_subscription_id = $1
-       LIMIT 1`,
-      [payload.subscriptionId]
-    );
-
-    return normalizeShop(String(rows[0]?.shop || ""));
-  } catch (error) {
-    console.error(
-      "SUBSCRIBER_SHOP_LOOKUP_ERROR:",
-      error
-    );
-    return "";
-  }
+async function statusForShop(shop: string): Promise<ActiveSubscriberStatus> {
+  const shopInstalled = await isShopifyInstallationActive(shop);
+  const { access, billing } = await accessStateForShop(shop, shopInstalled);
+  return {
+    active: access.productAccess,
+    canManage: access.canManage,
+    shopInstalled,
+    shop,
+    customerId: billing?.customerId ?? null,
+    subscriptionId: billing?.subscriptionId ?? null,
+    status: billing?.status ?? null,
+    reason: access.reason,
+  };
 }
 
 export async function storedSubscriberStatus(
   shop: string
 ): Promise<ActiveSubscriberStatus> {
-  const subscription = await subscriptionForShop(shop);
-  if (!subscription) {
-    return {
-      active: false,
-      shop,
-      customerId: null,
-      subscriptionId: null,
-      status: null,
-    };
-  }
-
-  return {
-    active: isPaidSubscriptionStatus(subscription.status),
-    shop,
-    customerId: subscription.customerId,
-    subscriptionId: subscription.subscriptionId,
-    status: subscription.status,
-  };
+  return statusForShop(shop);
 }
 
 export async function hasActiveSubscriber(
@@ -749,7 +545,6 @@ export async function getActiveSubscriberStatus(
 ): Promise<ActiveSubscriberStatus> {
   try {
     let shop = "";
-
     try {
       shop = (await authenticateShopifyRequest(request, false)).shop;
     } catch {
@@ -759,6 +554,8 @@ export async function getActiveSubscriberStatus(
     if (!shop) {
       return {
         active: false,
+        canManage: false,
+        shopInstalled: false,
         shop: null,
         customerId: null,
         subscriptionId: null,
@@ -767,28 +564,17 @@ export async function getActiveSubscriberStatus(
     }
 
     try {
-      const subscription = await refreshShopSubscription(shop);
-      if (!subscription) {
-        return storedSubscriberStatus(shop);
-      }
-      return {
-        active: isPaidSubscriptionStatus(subscription.status),
-        shop,
-        customerId: subscription.customerId,
-        subscriptionId: subscription.subscriptionId,
-        status: subscription.status,
-      };
+      await refreshShopSubscription(shop);
     } catch {
-      return storedSubscriberStatus(shop);
+      // Use stored billing when Stripe is unreachable.
     }
+    return statusForShop(shop);
   } catch (error) {
-    console.error(
-      "SUBSCRIBER_STATUS_ERROR:",
-      error
-    );
-
+    console.error("SUBSCRIBER_STATUS_ERROR:", error);
     return {
       active: false,
+      canManage: false,
+      shopInstalled: false,
       shop: null,
       customerId: null,
       subscriptionId: null,
@@ -796,3 +582,4 @@ export async function getActiveSubscriberStatus(
     };
   }
 }
+

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { authenticateShopifyRequest, ShopifyAuthError } from "../../_lib/shopify-auth";
+import { ProductAccessError, requirePaidProductAccess } from "../../_lib/product-access";
+import { ShopifyAuthError } from "../../_lib/shopify-auth";
 
 const SHOPIFY_API_VERSION = "2026-07";
 const SHOPIFY_MYSHOPIFY_SUFFIX = ".myshopify.com";
@@ -52,7 +53,7 @@ function errorResponse(message: string, status: number) {
 
 export async function GET(request: NextRequest) {
   try {
-    const { shop, accessToken } = await authenticateShopifyRequest(request);
+    const { shop, accessToken } = await requirePaidProductAccess(request);
 
     const query = `
       query GetProducts {
@@ -190,7 +191,10 @@ export async function GET(request: NextRequest) {
       }
     );
   } catch (error) {
-    const status = error instanceof ShopifyAuthError ? error.status : 500;
+    const status =
+      error instanceof ProductAccessError || error instanceof ShopifyAuthError
+        ? error.status
+        : 500;
     if (status >= 500) {
       console.error("SHOPIFY_PRODUCTS_GET_ERROR:", error);
     }

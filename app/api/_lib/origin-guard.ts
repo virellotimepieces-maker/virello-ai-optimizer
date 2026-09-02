@@ -74,6 +74,36 @@ export function isAllowedRedirectUrl(
   return isAllowedAppOrigin(url.origin, fallbackOrigin);
 }
 
+export function isValidPortalReturnUrl(
+  candidate: string,
+  fallbackOrigin = ""
+): boolean {
+  try {
+    const parsed = new URL(candidate);
+    const allowed = new URL(getAppUrl(fallbackOrigin));
+    return (
+      parsed.origin === allowed.origin &&
+      !parsed.username &&
+      !parsed.password &&
+      (parsed.protocol === "https:" || parsed.protocol === "http:")
+    );
+  } catch {
+    return false;
+  }
+}
+
+export function portalReturnUrl(fallbackOrigin = ""): string {
+  return getAppUrl(fallbackOrigin);
+}
+
+export function resolvedPortalReturnUrl(
+  requested: string | null | undefined,
+  fallbackOrigin = ""
+): string {
+  void requested;
+  return portalReturnUrl(fallbackOrigin);
+}
+
 export function assertSafeMutation(
   request: NextRequest,
   fallbackOrigin = request.nextUrl.origin

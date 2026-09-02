@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { OriginGuardError, assertSafeMutation } from "../../_lib/origin-guard";
-import { authenticateShopifyRequest } from "../../_lib/shopify-auth";
+import { ProductAccessError, requirePaidProductAccess } from "../../_lib/product-access";
 
 const SHOPIFY_API_VERSION = "2026-07";
 
@@ -22,7 +22,7 @@ function errorResponse(message: string, status: number) {
 export async function POST(request: NextRequest) {
   try {
     assertSafeMutation(request);
-    const { shop, accessToken } = await authenticateShopifyRequest(request);
+    const { shop, accessToken } = await requirePaidProductAccess(request);
 
     const body = await request.json();
 
@@ -187,6 +187,9 @@ export async function POST(request: NextRequest) {
     );
   } catch (error) {
     if (error instanceof OriginGuardError) {
+      return errorResponse(error.message, error.status);
+    }
+    if (error instanceof ProductAccessError) {
       return errorResponse(error.message, error.status);
     }
 

@@ -185,7 +185,7 @@ export default function Home() {
         const active =
           response.ok &&
           data?.success &&
-          data?.active === true;
+          (data?.canManage === true || data?.active === true);
 
         setSubscriberActive(active);
 

@@ -14,7 +14,23 @@ import { normalizeShop } from "./shop-domain";
 
 export const SESSION_COOKIE = "virello_sid";
 export const SESSION_TTL_SECONDS = 60 * 60 * 24 * 32;
-export const LEGACY_SUBSCRIBER_COOKIE = "virello_subscriber";
+export const LEGACY_COOKIES = [
+  "virello_subscriber",
+  "virello_shopify_shop",
+  "virello_shopify_access_token",
+] as const;
+
+export function clearLegacyCookies(response: NextResponse): void {
+  for (const name of LEGACY_COOKIES) {
+    response.cookies.set(name, "", {
+      httpOnly: true,
+      secure: true,
+      sameSite: "none",
+      path: "/",
+      maxAge: 0,
+    });
+  }
+}
 
 export type CookieMode = "embedded" | "standalone";
 
@@ -122,13 +138,7 @@ export function applySessionCookie(
     secure: isSecureAppUrl(request.nextUrl.origin) || process.env.NODE_ENV === "production",
   });
   response.cookies.set(SESSION_COOKIE, sessionId, options);
-  response.cookies.set(LEGACY_SUBSCRIBER_COOKIE, "", {
-    httpOnly: true,
-    secure: options.secure,
-    sameSite: "none",
-    path: "/",
-    maxAge: 0,
-  });
+  clearLegacyCookies(response);
 }
 
 export function clearSessionCookie(response: NextResponse): void {
@@ -139,13 +149,7 @@ export function clearSessionCookie(response: NextResponse): void {
     path: "/",
     maxAge: 0,
   });
-  response.cookies.set(LEGACY_SUBSCRIBER_COOKIE, "", {
-    httpOnly: true,
-    secure: true,
-    sameSite: "none",
-    path: "/",
-    maxAge: 0,
-  });
+  clearLegacyCookies(response);
 }
 
 export async function ensureAppSessionCookie(input: {

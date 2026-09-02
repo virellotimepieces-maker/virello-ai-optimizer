@@ -8,15 +8,24 @@ export async function claimWebhookEvent(input: {
   eventId: string;
   eventType?: string;
   shop?: string;
+  providerCreated?: number;
 }): Promise<WebhookClaim> {
   const shop = input.shop ? normalizeShop(input.shop) : "";
 
   const inserted = await dbQuery<{ event_id: string }>(
-    `INSERT INTO webhook_events (provider, event_id, event_type, shop, status)
-     VALUES ($1, $2, $3, $4, 'claimed')
+    `INSERT INTO webhook_events (
+       provider, event_id, event_type, shop, status, provider_created
+     )
+     VALUES ($1, $2, $3, $4, 'claimed', $5)
      ON CONFLICT (provider, event_id) DO NOTHING
      RETURNING event_id`,
-    [input.provider, input.eventId, input.eventType ?? null, shop || null]
+    [
+      input.provider,
+      input.eventId,
+      input.eventType ?? null,
+      shop || null,
+      input.providerCreated ?? null,
+    ]
   );
 
   if (inserted.length) {

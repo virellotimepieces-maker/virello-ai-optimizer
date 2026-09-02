@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { ensureAppSessionCookie } from "../../_lib/app-session";
+import {
+  clearLegacyCookies,
+  ensureAppSessionCookie,
+} from "../../_lib/app-session";
 import { getActiveSubscriberStatus } from "../../_lib/subscriber";
 
 export const runtime = "nodejs";
@@ -12,12 +15,16 @@ export async function GET(request: NextRequest) {
       {
         success: true,
         active: subscriber.active,
+        canManage: subscriber.canManage,
+        shopInstalled: subscriber.shopInstalled,
         customerId: subscriber.customerId,
         subscriptionId: subscriber.subscriptionId,
         status: subscriber.status,
       },
       { headers: { "Cache-Control": "no-store" } }
     );
+
+    clearLegacyCookies(response);
 
     if (subscriber.shop) {
       await ensureAppSessionCookie({
@@ -36,6 +43,8 @@ export async function GET(request: NextRequest) {
       {
         success: false,
         active: false,
+        canManage: false,
+        shopInstalled: false,
         customerId: null,
         subscriptionId: null,
         status: null,

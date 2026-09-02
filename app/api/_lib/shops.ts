@@ -11,26 +11,56 @@ export type AppSessionRecord = {
 
 export async function upsertShop(
   shop: string,
-  fields: { scopes?: string; name?: string } = {}
+  fields: { scopes?: string; name?: string; markInstalled?: boolean } = {}
 ): Promise<string> {
   const normalized = normalizeShop(shop);
   if (!normalized) {
     throw new Error("Invalid Shopify store.");
   }
 
-  await dbQuery(
-    `INSERT INTO shops (shop, name, scopes, installed_at, uninstalled_at, updated_at)
-     VALUES ($1, $2, $3, NOW(), NULL, NOW())
-     ON CONFLICT (shop) DO UPDATE SET
-       name = COALESCE(EXCLUDED.name, shops.name),
-       scopes = CASE WHEN EXCLUDED.scopes = '' THEN shops.scopes ELSE EXCLUDED.scopes END,
-       installed_at = COALESCE(shops.installed_at, NOW()),
-       uninstalled_at = NULL,
-       updated_at = NOW()`,
-    [normalized, fields.name ?? null, fields.scopes ?? ""]
-  );
+  const markInstalled = fields.markInstalled !== false;
+
+  if (markInstalled) {
+    await dbQuery(
+      `INSERT INTO shops (shop, name, scopes, installed_at, uninstalled_at, updated_at)
+       VALUES ($1, $2, $3, NOW(), NULL, NOW())
+       ON CONFLICT (shop) DO UPDATE SET
+         name = COALESCE(EXCLUDED.name, shops.name),
+         scopes = CASE WHEN EXCLUDED.scopes = '' THEN shops.scopes ELSE EXCLUDED.scopes END,
+         installed_at = COALESCE(shops.installed_at, NOW()),
+         uninstalled_at = NULL,
+         updated_at = NOW()`,
+      [normalized, fields.name ?? null, fields.scopes ?? ""]
+    );
+  } else {
+    await dbQuery(
+      `INSERT INTO shops (shop, name, scopes, updated_at)
+       VALUES ($1, $2, $3, NOW())
+       ON CONFLICT (shop) DO UPDATE SET
+         name = COALESCE(EXCLUDED.name, shops.name),
+         updated_at = NOW()`,
+      [normalized, fields.name ?? null, fields.scopes ?? ""]
+    );
+  }
 
   return normalized;
+}
+
+export async function isShopifyInstallationActive(shop: string): Promise<boolean> {
+  const normalized = normalizeShop(shop);
+  if (!normalized) return false;
+  const rows = await dbQuery<{ ok: number }>(
+    `SELECT 1 AS ok
+     FROM shops
+     JOIN shopify_sessions ON shopify_sessions.shop = shops.shop
+     WHERE shops.shop = $1
+       AND shops.uninstalled_at IS NULL
+       AND shopify_sessions.revoked_at IS NULL
+       AND shopify_sessions.encrypted_access_token <> ''
+     LIMIT 1`,
+    [normalized]
+  );
+  return rows.length > 0;
 }
 
 export async function revokeShopifyInstallation(shop: string): Promise<void> {
@@ -65,7 +95,7 @@ export async function createAppSession(input: {
   expiresAt: Date;
   userAgentHash?: string | null;
 }): Promise<void> {
-  const shop = await upsertShop(input.shop);
+  const shop = await upsertShop(input.shop, { markInstalled: false });
   await dbQuery(
     `INSERT INTO app_sessions (
        id, shop, stripe_customer_id, expires_at, user_agent_hash, created_at, updated_at

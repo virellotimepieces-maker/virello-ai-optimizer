@@ -6,13 +6,13 @@ import {
   readSessionId,
 } from "../../_lib/app-session";
 import { OriginGuardError, assertSafeMutation } from "../../_lib/origin-guard";
+import { applySubscriptionEvent } from "../../_lib/stripe-events";
 import { authenticateShopifyRequest } from "../../_lib/shopify-auth";
 import { revokeAppSessionsForShop } from "../../_lib/shops";
 import {
   clearSubscriberCookie,
   createStripeCheckoutSession,
   getCheckoutSubscription,
-  saveShopSubscription,
 } from "../../_lib/subscriber";
 
 export const runtime = "nodejs";
@@ -75,7 +75,19 @@ export async function GET(request: NextRequest) {
 
   try {
     const checkout = await getCheckoutSubscription(sessionId);
-    await saveShopSubscription(checkout.shop, checkout.subscription);
+    await applySubscriptionEvent({
+      shop: checkout.shop,
+      object: {
+        id: checkout.subscription.subscriptionId,
+        customer: checkout.subscription.customerId,
+        status: checkout.subscription.status,
+        current_period_start: checkout.subscription.currentPeriodStart,
+        current_period_end: checkout.subscription.currentPeriodEnd,
+        livemode: checkout.livemode,
+      },
+      eventCreated: Math.floor(Date.now() / 1000),
+      livemode: checkout.livemode,
+    });
     await revokeAppSessionsForShop(checkout.shop);
 
     const appSessionId = await issueAppSession({

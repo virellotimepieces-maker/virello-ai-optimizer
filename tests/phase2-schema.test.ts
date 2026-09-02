@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { dbQuery, neonSql } from "../app/api/_lib/database";
 import {
   rollbackPhase2,
+  rollbackPhase4,
   splitSqlStatements,
 } from "../app/api/_lib/migrate";
 import { saveShopifySession } from "../app/api/_lib/shopify-auth";
@@ -73,6 +74,8 @@ describe("Phase 2 database behavior", () => {
         "stripe_webhook_events",
         "webhook_events",
         "app_sessions",
+        "stripe_customers",
+        "stripe_invoices",
       ])
     );
 
@@ -84,6 +87,7 @@ describe("Phase 2 database behavior", () => {
       "002_shopify_accounts",
       "003_phase2_schema",
       "004_phase3_sessions",
+      "005_phase4_billing",
     ]);
   });
 
@@ -98,6 +102,7 @@ describe("Phase 2 database behavior", () => {
     });
 
     const { exec } = neonSql();
+    await rollbackPhase4(exec);
     await rollbackPhase2(exec);
 
     const names = await tableNames();

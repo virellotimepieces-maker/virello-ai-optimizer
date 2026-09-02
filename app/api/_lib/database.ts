@@ -81,3 +81,20 @@ export async function dbQuery<T extends Record<string, unknown>>(
   const { query } = neonSql();
   return query(text, params) as Promise<T[]>;
 }
+
+export async function withDbTransaction<T>(fn: () => Promise<T>): Promise<T> {
+  await ensureDatabaseSchema();
+  if (!testAdapter) {
+    return fn();
+  }
+
+  await testAdapter.exec("BEGIN");
+  try {
+    const result = await fn();
+    await testAdapter.exec("COMMIT");
+    return result;
+  } catch (error) {
+    await testAdapter.exec("ROLLBACK");
+    throw error;
+  }
+}

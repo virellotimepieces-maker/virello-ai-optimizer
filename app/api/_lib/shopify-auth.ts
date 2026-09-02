@@ -3,11 +3,7 @@ import { shopFromSessionCookie } from "./app-session";
 import { dbQuery } from "./database";
 import { normalizeShop } from "./shop-domain";
 import { revokeShopifyInstallation, upsertShop } from "./shops";
-import {
-  decryptShopifyToken,
-  encryptShopifyToken,
-  SHOPIFY_TOKEN_COOKIE,
-} from "./shopify-session";
+import { decryptShopifyToken, encryptShopifyToken } from "./shopify-session";
 import {
   getShopifyIdToken,
   ShopifySecurityError,
@@ -163,25 +159,12 @@ export async function authenticateShopifyRequest(
     }
   }
 
-  const shop = normalizeShop(request.cookies.get("virello_shopify_shop")?.value || "");
-  const accessToken = decryptShopifyToken(
-    request.cookies.get(SHOPIFY_TOKEN_COOKIE)?.value || ""
+  throw asAuthError(
+    idTokenError ||
+      new ShopifyAuthError(
+        "Shopify connection is missing. Please open Virello from Shopify Admin."
+      )
   );
-  if (!shop || (requireAccessToken && !accessToken)) {
-    throw asAuthError(
-      idTokenError ||
-        new ShopifyAuthError(
-          "Shopify connection is missing. Please open Virello from Shopify Admin."
-        )
-    );
-  }
-
-  if (requireAccessToken) {
-    const persisted = await storedAccessToken(shop).catch(() => "");
-    if (!persisted) await saveShopifySession(shop, accessToken);
-  }
-
-  return { shop, accessToken, userId: "" };
 }
 
 export async function deleteShopifyData(shop: string): Promise<void> {

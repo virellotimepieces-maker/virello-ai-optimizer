@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { authenticateShopifyRequest } from "../../_lib/shopify-auth";
 import { OriginGuardError, assertSafeMutation } from "../../_lib/origin-guard";
+import { ProductAccessError, requirePaidProductAccess } from "../../_lib/product-access";
 
 const SHOPIFY_API_VERSION = "2026-07";
 
@@ -48,22 +48,7 @@ export async function POST(
 ) {
   try {
     assertSafeMutation(request);
-    /*
-     * STANDALONE VIRELLO AUTH
-     *
-     * The Shopify OAuth callback stores:
-     *
-     * virello_shopify_access_token
-     * virello_shopify_shop
-     *
-     * We use those cookies here.
-     *
-     * We DO NOT use a Shopify embedded
-     * session token and we DO NOT perform
-     * token exchange here.
-     */
-
-    const { shop, accessToken } = await authenticateShopifyRequest(request);
+    const { shop, accessToken } = await requirePaidProductAccess(request);
 
     /*
      * Read request body.
@@ -487,6 +472,9 @@ export async function POST(
     );
   } catch (error) {
     if (error instanceof OriginGuardError) {
+      return jsonError(error.message, error.status);
+    }
+    if (error instanceof ProductAccessError) {
       return jsonError(error.message, error.status);
     }
 

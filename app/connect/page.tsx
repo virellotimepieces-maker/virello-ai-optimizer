@@ -55,7 +55,7 @@ export default function ConnectPage() {
       setSubscriberActive(
         response.ok &&
         data?.success &&
-        data?.active === true
+        (data?.canManage === true || data?.active === true)
       );
     } catch {
       setSubscriberActive(false);
