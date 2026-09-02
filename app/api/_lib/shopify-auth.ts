@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { shopFromSessionCookie } from "./app-session";
 import { dbQuery } from "./database";
 import { normalizeShop } from "./shop-domain";
-import { revokeShopifyInstallation, upsertShop } from "./shops";
+import { revokeShopifyInstallation, upsertShop, isShopifyInstallationActive } from "./shops";
 import { decryptShopifyToken, encryptShopifyToken } from "./shopify-session";
 import {
   getShopifyIdToken,
@@ -168,6 +168,14 @@ export async function authenticateShopifyRequest(
       ? await storedAccessToken(sessionShop)
       : "";
     if (!requireAccessToken || accessToken) {
+      if (
+        requireAccessToken &&
+        !(await isShopifyInstallationActive(sessionShop))
+      ) {
+        throw new ShopifyAuthError(
+          "Shopify connection is missing. Please open Virello from Shopify Admin."
+        );
+      }
       return { shop: sessionShop, accessToken, userId: "" };
     }
   }

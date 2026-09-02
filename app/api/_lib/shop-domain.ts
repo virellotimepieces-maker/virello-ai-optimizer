@@ -62,3 +62,19 @@ export function isShopifyAdminAuthorizeUrl(value: string): boolean {
     return false;
   }
 }
+
+export type StoreBindingKind = "connected" | "pending" | "none";
+
+export function resolveStoreBindingDisplay(input: {
+  shopInstalled?: boolean;
+  shop?: string | null;
+  pendingShop?: string | null;
+}): { domain: string; kind: StoreBindingKind } {
+  const installed = Boolean(input.shopInstalled);
+  const connected = installed ? normalizeShop(input.shop || "") : "";
+  if (connected) return { domain: connected, kind: "connected" };
+  const pending =
+    normalizeShop(input.pendingShop || "") || normalizeShop(input.shop || "");
+  if (pending) return { domain: pending, kind: "pending" };
+  return { domain: "", kind: "none" };
+}

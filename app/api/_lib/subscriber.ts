@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAppUrl } from "./app-url";
 import { shopFromSessionCookie, clearSessionCookie } from "./app-session";
 import { authenticateShopifyRequest, normalizeShop } from "./shopify-auth";
+import { getSessionBinding } from "./shop-binding";
 import { isShopifyInstallationActive } from "./shops";
 import { peekAiUsage, consumeAiUsage } from "./usage";
 import { getUsageLimit, type SubscriberUsage } from "./usage-limit";
@@ -56,6 +57,8 @@ export type ActiveSubscriberStatus = {
   canManage: boolean;
   shopInstalled: boolean;
   shop: string | null;
+  pendingShop: string | null;
+  canReplaceShop: boolean;
   customerId: string | null;
   subscriptionId: string | null;
   status: StripeSubscriptionStatus | null;
@@ -517,6 +520,8 @@ async function statusForShop(shop: string): Promise<ActiveSubscriberStatus> {
     canManage: access.canManage,
     shopInstalled,
     shop,
+    pendingShop: null,
+    canReplaceShop: !shopInstalled,
     customerId: billing?.customerId ?? null,
     subscriptionId: billing?.subscriptionId ?? null,
     status: billing?.status ?? null,
@@ -545,23 +550,32 @@ export async function hasActiveSubscriber(
 export async function getActiveSubscriberStatus(
   request: NextRequest
 ): Promise<ActiveSubscriberStatus> {
+  const empty: ActiveSubscriberStatus = {
+    active: false,
+    canManage: false,
+    shopInstalled: false,
+    shop: null,
+    pendingShop: null,
+    canReplaceShop: true,
+    customerId: null,
+    subscriptionId: null,
+    status: null,
+  };
+
   try {
+    const binding = await getSessionBinding(request);
     let shop = "";
     try {
       shop = (await authenticateShopifyRequest(request, false)).shop;
     } catch {
-      shop = await getShopForSubscriberCookie(request);
+      shop = binding?.sessionShop || (await getShopForSubscriberCookie(request));
     }
 
     if (!shop) {
       return {
-        active: false,
-        canManage: false,
-        shopInstalled: false,
-        shop: null,
-        customerId: null,
-        subscriptionId: null,
-        status: null,
+        ...empty,
+        pendingShop: binding?.pendingShop ?? null,
+        canReplaceShop: binding?.canReplaceShop ?? true,
       };
     }
 
@@ -570,18 +584,15 @@ export async function getActiveSubscriberStatus(
     } catch {
       // Use stored billing when Stripe is unreachable.
     }
-    return statusForShop(shop);
+    const status = await statusForShop(shop);
+    return {
+      ...status,
+      pendingShop: binding?.pendingShop ?? null,
+      canReplaceShop: binding?.canReplaceShop ?? !status.shopInstalled,
+    };
   } catch (error) {
     console.error("SUBSCRIBER_STATUS_ERROR:", error);
-    return {
-      active: false,
-      canManage: false,
-      shopInstalled: false,
-      shop: null,
-      customerId: null,
-      subscriptionId: null,
-      status: null,
-    };
+    return empty;
   }
 }
 

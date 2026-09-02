@@ -63,7 +63,10 @@ export async function isShopifyInstallationActive(shop: string): Promise<boolean
   return rows.length > 0;
 }
 
-export async function revokeShopifyInstallation(shop: string): Promise<void> {
+export async function revokeShopifyInstallation(
+  shop: string,
+  options: { revokeAppSessions?: boolean; exceptSessionId?: string } = {}
+): Promise<void> {
   const normalized = normalizeShop(shop);
   if (!normalized) return;
 
@@ -84,6 +87,11 @@ export async function revokeShopifyInstallation(shop: string): Promise<void> {
      WHERE shop = $1`,
     [normalized]
   );
+
+  if (options.revokeAppSessions === false) {
+    await revokeAppSessionsForShop(normalized, options.exceptSessionId);
+    return;
+  }
 
   await revokeAppSessionsForShop(normalized);
 }
@@ -155,7 +163,10 @@ export async function revokeAppSession(id: string): Promise<void> {
   );
 }
 
-export async function revokeAppSessionsForShop(shop: string): Promise<void> {
+export async function revokeAppSessionsForShop(
+  shop: string,
+  exceptSessionId?: string
+): Promise<void> {
   const normalized = normalizeShop(shop);
   if (!normalized) return;
   await dbQuery(
@@ -163,8 +174,9 @@ export async function revokeAppSessionsForShop(shop: string): Promise<void> {
      SET revoked_at = NOW(),
          updated_at = NOW()
      WHERE shop = $1
-       AND revoked_at IS NULL`,
-    [normalized]
+       AND revoked_at IS NULL
+       AND ($2::text IS NULL OR id <> $2)`,
+    [normalized, exceptSessionId || null]
   );
 }
 

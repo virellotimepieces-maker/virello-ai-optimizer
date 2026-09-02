@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { shopifyFetch } from "../shopify-fetch";
 import { COPY } from "../i18n";
 import type { AppLocale } from "../api/_lib/locales";
-import { normalizeShop, isShopifyAdminAuthorizeUrl } from "../api/_lib/shop-domain";
+import { normalizeShop, isShopifyAdminAuthorizeUrl, resolveStoreBindingDisplay } from "../api/_lib/shop-domain";
 
 type ConnectionStatus = {
   success?: boolean;
@@ -20,7 +20,11 @@ export default function ConnectPage() {
   const copy = useMemo(() => COPY[ui], [ui]);
   const [loading, setLoading] = useState(true);
   const [connecting, setConnecting] = useState(false);
+  const [changingStore, setChangingStore] = useState(false);
   const [subscriberActive, setSubscriberActive] = useState(false);
+  const [shopInstalled, setShopInstalled] = useState(false);
+  const [pendingShop, setPendingShop] = useState("");
+  const [billingShop, setBillingShop] = useState("");
   const [billingLoading, setBillingLoading] = useState(false);
   const [shop, setShop] = useState("");
   const [status, setStatus] = useState<ConnectionStatus | null>(null);
@@ -56,6 +60,20 @@ export default function ConnectPage() {
         setSubscriberActive(
           Boolean(billing?.success && (billing?.canManage === true || billing?.active === true))
         );
+        const installed = Boolean(billing?.shopInstalled);
+        const nextBillingShop = typeof billing?.shop === "string" ? billing.shop : "";
+        const nextPending = typeof billing?.pendingShop === "string" ? billing.pendingShop : "";
+        setShopInstalled(installed);
+        setBillingShop(nextBillingShop);
+        setPendingShop(nextPending);
+        if (!shopFromUrl) {
+          const display = resolveStoreBindingDisplay({
+            shopInstalled: installed,
+            shop: nextBillingShop,
+            pendingShop: nextPending,
+          });
+          if (display.domain) setShop(display.domain);
+        }
       } catch {
         setSubscriberActive(false);
       }
@@ -145,6 +163,10 @@ export default function ConnectPage() {
       setError(copy.invalidShop);
       return;
     }
+    if (shopInstalled && billingShop && cleanedShop !== billingShop) {
+      setError(copy.alreadyLinkedInstalled);
+      return;
+    }
     setShop(cleanedShop);
     setConnecting(true);
     setError("");
@@ -171,6 +193,32 @@ export default function ConnectPage() {
     }
   }
 
+  async function changeStore() {
+    if (changingStore) return;
+    if (shopInstalled && !window.confirm(copy.changeStoreConfirm)) return;
+    setChangingStore(true);
+    setError("");
+    try {
+      const response = await shopifyFetch("/api/shopify/disconnect", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ confirm: true }),
+      });
+      const data = await response.json().catch(() => null);
+      if (!response.ok || !data?.success) {
+        setError(data?.error || copy.shopifyError);
+        return;
+      }
+      setShopInstalled(false);
+      setPendingShop("");
+      setStatus({ connected: false, platform: "shopify" });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : copy.shopifyError);
+    } finally {
+      setChangingStore(false);
+    }
+  }
+
   function continueToVirello() {
     const target = new URL("/", window.location.origin);
     if (shop) target.searchParams.set("shop", cleanShopDomain(shop));
@@ -178,6 +226,14 @@ export default function ConnectPage() {
   }
 
   const connected = status?.connected === true;
+  const storeBinding = resolveStoreBindingDisplay({
+    shopInstalled: connected || shopInstalled,
+    shop: status?.shop || billingShop,
+    pendingShop,
+  });
+  const showChangeStore = Boolean(
+    subscriberActive || billingShop || pendingShop || shopInstalled || connected
+  );
 
   return (
     <main className="app-shell">
@@ -244,6 +300,17 @@ export default function ConnectPage() {
             <button type="button" className="subscribe-button" onClick={continueToVirello}>
               {copy.continueToVirello}
             </button>
+            {showChangeStore && (
+              <button
+                type="button"
+                className="secondary-button"
+                data-testid="change-store"
+                onClick={changeStore}
+                disabled={changingStore}
+              >
+                {changingStore ? copy.opening : copy.changeStore}
+              </button>
+            )}
           </article>
           <article className="content-card">
             <div className="eyebrow">{copy.whatsNext}</div>
@@ -276,6 +343,13 @@ export default function ConnectPage() {
           <article className="content-card">
             <h2>{copy.connectHeadline}</h2>
             <p>{copy.connectSubhead}</p>
+            <p data-testid="store-binding-status">
+              {storeBinding.kind === "connected"
+                ? `${copy.connected}: ${storeBinding.domain}`
+                : storeBinding.kind === "pending"
+                  ? `${copy.pendingStore}: ${storeBinding.domain}. ${copy.notConnected}`
+                  : copy.notConnected}
+            </p>
             <label htmlFor="shop" className="input-label">
               {copy.shopDomainLabel}
             </label>
@@ -301,10 +375,21 @@ export default function ConnectPage() {
               type="button"
               className="subscribe-button"
               onClick={connectShopify}
-              disabled={connecting}
+              disabled={connecting || changingStore}
             >
               {connecting ? copy.connecting : copy.connectShopify}
             </button>
+            {showChangeStore && (
+              <button
+                type="button"
+                className="secondary-button"
+                data-testid="change-store"
+                onClick={changeStore}
+                disabled={changingStore || connecting}
+              >
+                {changingStore ? copy.opening : copy.changeStore}
+              </button>
+            )}
           </article>
         </section>
       )}

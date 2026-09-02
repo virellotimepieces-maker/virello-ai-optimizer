@@ -91,6 +91,7 @@ describe("Phase 2 database behavior", () => {
       "005_phase4_billing",
       "006_phase6_locales",
       "007_rate_limits",
+      "008_shop_binding",
     ]);
   });
 

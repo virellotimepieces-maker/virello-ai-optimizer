@@ -14,7 +14,7 @@ This is not a prompt clinic or Custom GPT rewriter.
 
 **Phase 7.** Tenant isolation, HMAC/state/webhook checks, encrypted tokens, session rotation, rate limits, GID validation, security headers, and Playwright desktop/mobile coverage. `npm audit` high+ is gated in `npm run security:check`.
 
-**Phase 8.** Automated suite, TypeScript, security scan, Playwright, and production build must pass locally. A Vercel Preview plus live Stripe/Shopify walkthrough must pass before merging to `main`. Until those credentials exist, **do not merge and do not deploy**.
+**Phase 9.** Shop binding is not permanent until Shopify OAuth completes (HMAC, signed state, code exchange, encrypted token, and installation row). Abandoned or failed OAuth leaves an expiring `pending_shop` that can be replaced. Change Store disconnects a completed install, keeps Stripe billing, and starts a fresh OAuth. Cross-tenant product access stays denied.
 
 ## Run locally
 
@@ -51,10 +51,12 @@ SQL files live in `migrations/`, applied in filename order by `app/api/_lib/migr
 | `004_phase3_sessions.down.sql` | Phase 3 index rollback |
 | `005_phase4_billing.sql` | `stripe_customers`, `stripe_invoices`, livemode, invoice/cancellation, event ordering |
 | `005_phase4_billing.down.sql` | Phase 4 rollback (does not delete `shop_subscriptions` billing rows) |
-| `007_rate_limits.sql` | Tenant-isolated serverless rate-limit buckets |
+    | `007_rate_limits.sql` | Tenant-isolated serverless rate-limit buckets |
 | `007_rate_limits.down.sql` | Phase 8 rate-limit rollback |
+| `008_shop_binding.sql` | Expiring `pending_shop` on `app_sessions`; recover uninstalled session shops so OAuth can be retried or replaced |
+| `008_shop_binding.down.sql` | Phase 9 pending-shop rollback (does not delete Stripe billing rows) |
 
-Rollback order in a maintenance window (Neon PITR first): `007` → `006` → `005` → `004` → `003`. Down files for `005`/`003` do not delete `shop_subscriptions` billing rows.
+Rollback order in a maintenance window (Neon PITR first): `008` → `007` → `006` → `005` → `004` → `003`. Down files for `005`/`003` do not delete `shop_subscriptions` billing rows.
 
 ## Environment-variable names
 

@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { shopifyFetch } from "./shopify-fetch";
 import { COPY } from "./i18n";
 import type { AppLocale } from "./api/_lib/locales";
-import { normalizeShop, isShopifyAdminAuthorizeUrl } from "./api/_lib/shop-domain";
+import { normalizeShop, isShopifyAdminAuthorizeUrl, resolveStoreBindingDisplay } from "./api/_lib/shop-domain";
 
 type Product = {
   id: string;
@@ -50,6 +50,8 @@ export default function Home() {
   const [canManage, setCanManage] = useState(false);
   const [productAccess, setProductAccess] = useState(false);
   const [shopInstalled, setShopInstalled] = useState(false);
+  const [pendingShop, setPendingShop] = useState("");
+  const [canReplaceShop, setCanReplaceShop] = useState(true);
   const [shop, setShop] = useState("");
   const [usage, setUsage] = useState<{ used: number; limit: number; remaining: number } | null>(null);
   const [checking, setChecking] = useState(true);
@@ -67,6 +69,7 @@ export default function Home() {
   const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [portalLoading, setPortalLoading] = useState(false);
   const [connecting, setConnecting] = useState(false);
+  const [changingStore, setChangingStore] = useState(false);
   const [importing, setImporting] = useState(false);
   const [optimizing, setOptimizing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -76,6 +79,12 @@ export default function Home() {
   const [message, setMessage] = useState("");
 
   const selected = products.find((product) => product.id === selectedId) || null;
+  const storeBinding = resolveStoreBindingDisplay({
+    shopInstalled,
+    shop,
+    pendingShop,
+  });
+  const showChangeStore = Boolean(canManage || shop || pendingShop || shopInstalled);
 
   function showError(kind: typeof errorKind, text: string) {
     setErrorKind(kind);
@@ -126,8 +135,18 @@ export default function Home() {
         setCanManage(Boolean(status?.canManage));
         setProductAccess(Boolean(status?.active));
         setShopInstalled(Boolean(status?.shopInstalled));
+        setPendingShop(typeof status?.pendingShop === "string" ? status.pendingShop : "");
+        setCanReplaceShop(status?.canReplaceShop !== false);
         setShop(typeof status?.shop === "string" ? status.shop : "");
         setUsage(status?.usage ?? null);
+        if (!shopFromUrl) {
+          const display = resolveStoreBindingDisplay({
+            shopInstalled: Boolean(status?.shopInstalled),
+            shop: typeof status?.shop === "string" ? status.shop : "",
+            pendingShop: typeof status?.pendingShop === "string" ? status.pendingShop : "",
+          });
+          if (display.domain) setShopInput(display.domain);
+        }
         if (typeof status?.appUrl === "string" && status.appUrl && window.location.origin !== status.appUrl) {
           setCanonicalUrl(status.appUrl);
         }
@@ -195,6 +214,10 @@ export default function Home() {
       showError("shopify", copy.invalidShop);
       return;
     }
+    if (shopInstalled && shop && cleaned !== shop) {
+      showError("shopify", copy.alreadyLinkedInstalled);
+      return;
+    }
     setShopInput(cleaned);
     setConnecting(true);
     setError("");
@@ -217,6 +240,34 @@ export default function Home() {
       showError("shopify", err instanceof Error ? err.message : copy.shopifyError);
     } finally {
       setConnecting(false);
+    }
+  }
+
+  async function changeStore() {
+    if (changingStore) return;
+    if (shopInstalled && !window.confirm(copy.changeStoreConfirm)) return;
+    setChangingStore(true);
+    setError("");
+    try {
+      const response = await shopifyFetch("/api/shopify/disconnect", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ confirm: true }),
+      });
+      const data = await response.json().catch(() => null);
+      if (!response.ok || !data?.success) {
+        showError("shopify", data?.error || copy.shopifyError);
+        return;
+      }
+      setShopInstalled(false);
+      setPendingShop("");
+      setCanReplaceShop(true);
+      setProductAccess(false);
+      setMessage(copy.disconnectSuccess);
+    } catch (err) {
+      showError("shopify", err instanceof Error ? err.message : copy.shopifyError);
+    } finally {
+      setChangingStore(false);
     }
   }
 
@@ -410,16 +461,33 @@ export default function Home() {
         <div className="workspace-grid dashboard-grid">
           <article className="content-card">
             <h2>{copy.connectShopify}</h2>
-            <p>{shopInstalled && shop ? `${copy.connected}: ${shop}` : copy.notConnected}</p>
+            <p data-testid="store-binding-status">
+              {storeBinding.kind === "connected"
+                ? `${copy.connected}: ${storeBinding.domain}`
+                : storeBinding.kind === "pending"
+                  ? `${copy.pendingStore}: ${storeBinding.domain}. ${copy.notConnected}`
+                  : copy.notConnected}
+            </p>
             <input
               className="shop-input"
               value={shopInput}
               onChange={(event) => setShopInput(event.target.value)}
               placeholder={copy.shopPlaceholder}
             />
-            <button type="button" className="subscribe-button" onClick={connectShopify} disabled={connecting}>
+            <button type="button" className="subscribe-button" onClick={connectShopify} disabled={connecting || changingStore}>
               {connecting ? copy.connecting : shopInstalled ? copy.reconnect : copy.connectShopify}
             </button>
+            {showChangeStore && (
+              <button
+                type="button"
+                className="secondary-button"
+                data-testid="change-store"
+                onClick={changeStore}
+                disabled={changingStore || connecting}
+              >
+                {changingStore ? copy.opening : copy.changeStore}
+              </button>
+            )}
           </article>
 
           <article className="content-card">

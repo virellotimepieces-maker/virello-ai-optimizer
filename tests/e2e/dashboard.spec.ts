@@ -6,6 +6,9 @@ test.describe("Virello dashboard", () => {
     await expect(page.getByRole("button", { name: /Subscribe|Mag-subscribe|Checking/i })).toBeVisible();
     await expect(page.getByRole("button", { name: "FIL" }).first()).toBeVisible();
     await expect(page.getByRole("button", { name: /Connect Shopify|Ikonekta/i })).toBeVisible();
+    await expect(page.getByTestId("store-binding-status")).toContainText(
+      /Not connected yet|Hindi pa nakakonekta/
+    );
     await expect(page.locator("body")).not.toContainText(/content clinic|Framer|prompt clinic/i);
     await page.getByRole("button", { name: "FIL" }).first().click();
     await expect(page.getByRole("heading", { name: /I-optimize ang Shopify/i })).toBeVisible();

@@ -68,7 +68,12 @@ export type CopyKey =
   | "notConnected"
   | "checkoutNeedShop"
   | "wrongHost"
-  | "invalidAuthorizeUrl";
+  | "invalidAuthorizeUrl"
+  | "changeStore"
+  | "changeStoreConfirm"
+  | "pendingStore"
+  | "disconnectSuccess"
+  | "alreadyLinkedInstalled";
 
 export const COPY: Record<AppLocale, Record<CopyKey, string>> = {
   en: {
@@ -144,6 +149,14 @@ export const COPY: Record<AppLocale, Record<CopyKey, string>> = {
     wrongHost: "Open Virello on the canonical app URL:",
     invalidAuthorizeUrl:
       "Shopify authorization must open {shop}.myshopify.com/admin/oauth/authorize, not the public storefront. Try Connect Shopify again.",
+    changeStore: "Change Store",
+    changeStoreConfirm:
+      "Disconnect the installed Shopify store? Stripe billing is kept. You will need to authorize the new store.",
+    pendingStore: "Pending store",
+    disconnectSuccess:
+      "Shopify store disconnected. Connect a new .myshopify.com domain. Your Stripe subscription stays on this session.",
+    alreadyLinkedInstalled:
+      "This Virello session is already linked to a connected Shopify store. Use Change Store to disconnect it first.",
   },
   fil: {
     brandSmall: "VIRELLO AI",
@@ -218,6 +231,14 @@ export const COPY: Record<AppLocale, Record<CopyKey, string>> = {
     wrongHost: "Buksan ang Virello sa tamang app URL:",
     invalidAuthorizeUrl:
       "Dapat sa {shop}.myshopify.com/admin/oauth/authorize magbukas, hindi sa public storefront. Subukan ulit ang Connect Shopify.",
+    changeStore: "Palitan ang store",
+    changeStoreConfirm:
+      "I-disconnect ang naka-install na Shopify store? Mananatili ang Stripe billing. Kailangan i-authorize ulit ang bagong store.",
+    pendingStore: "Pending store",
+    disconnectSuccess:
+      "Na-disconnect ang Shopify store. Ikonekta ang bagong .myshopify.com domain. Mananatili ang Stripe subscription sa session na ito.",
+    alreadyLinkedInstalled:
+      "Naka-link na ang Virello session na ito sa ibang naka-connect na Shopify store. Gamitin muna ang Palitan ang store.",
   },
 };
 

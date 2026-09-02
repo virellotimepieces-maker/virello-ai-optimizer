@@ -5,7 +5,7 @@ import {
   shopifyAdminAppUrl,
 } from "../../_lib/shopify-oauth";
 import { getShopifyClientId } from "../../_lib/shopify-config";
-import { shopFromSessionCookie } from "../../_lib/app-session";
+import { getSessionBinding, setPendingShop } from "../../_lib/shop-binding";
 import { assertRateLimit, RateLimitError, tenantRateKey } from "../../_lib/rate-limit";
 
 function wantsJson(request: NextRequest): boolean {
@@ -35,18 +35,22 @@ function oauthStartResponse(
 export async function GET(request: NextRequest) {
   try {
     const shop = normalizeShop(request.nextUrl.searchParams.get("shop") || "");
-    const sessionShop = await shopFromSessionCookie(request);
-    if (sessionShop && shop && sessionShop !== shop) {
+    const binding = await getSessionBinding(request);
+    if (binding?.installedShop && shop && binding.installedShop !== shop) {
       return oauthStartResponse(
         request,
         {
           success: false,
-          error: "This Virello session is already linked to a different Shopify store.",
+          error:
+            "This Virello session is already linked to a different Shopify store. Use Change Store to disconnect it first.",
         },
         403
       );
     }
-    await assertRateLimit(tenantRateKey(request, "oauth", shop || sessionShop), 30);
+    await assertRateLimit(
+      tenantRateKey(request, "oauth", shop || binding?.sessionShop),
+      30
+    );
     if (!shop) {
       return oauthStartResponse(
         request,
@@ -110,6 +114,9 @@ export async function GET(request: NextRequest) {
         },
         500
       );
+    }
+    if (binding?.sessionId) {
+      await setPendingShop(binding.sessionId, shop);
     }
     return oauthStartResponse(
       request,

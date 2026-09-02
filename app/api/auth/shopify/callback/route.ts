@@ -4,9 +4,13 @@ import {
   applySessionCookie,
   issueAppSession,
   readSessionId,
-  shopFromSessionCookie,
 } from "../../../_lib/app-session";
+import {
+  getSessionBinding,
+  rehomeUninstalledBilling,
+} from "../../../_lib/shop-binding";
 import { saveShopifySession } from "../../../_lib/shopify-auth";
+import { billingForShop } from "../../../_lib/stripe-billing";
 import {
   getShopifyClientId,
   getShopifyClientSecrets,
@@ -18,7 +22,6 @@ import {
 } from "../../../_lib/shopify-security";
 import { shopifyAdminAppUrl, shopifyCallbackUrl } from "../../../_lib/shopify-oauth";
 import { hasRequiredShopifyScopes } from "../../../_lib/shopify-scopes";
-import { revokeAppSessionsForShop } from "../../../_lib/shops";
 
 function redirectError(origin: string, message: string) {
   console.error("SHOPIFY_OAUTH_CALLBACK_REJECTED", { message });
@@ -64,6 +67,14 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    const binding = await getSessionBinding(request);
+    if (binding?.installedShop && binding.installedShop !== shop) {
+      return redirectError(
+        returnOrigin,
+        "This Virello session is already linked to a different Shopify store. Use Change Store to disconnect it first."
+      );
+    }
+
     const tokenResponse = await fetch(`https://${shop}/admin/oauth/access_token`, {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -96,18 +107,15 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const sessionShop = await shopFromSessionCookie(request);
-    if (sessionShop && sessionShop !== shop) {
-      return redirectError(
-        returnOrigin,
-        "This Virello session is already linked to a different Shopify store."
-      );
+    if (binding?.sessionShop && binding.sessionShop !== shop && !binding.installedShop) {
+      await rehomeUninstalledBilling(binding.sessionShop, shop);
     }
 
     await saveShopifySession(shop, data.access_token, data.scope || "");
-    await revokeAppSessionsForShop(shop);
+    const billing = await billingForShop(shop);
     const sessionId = await issueAppSession({
       shop,
+      stripeCustomerId: billing?.customerId || binding?.stripeCustomerId || null,
       previousSessionId: readSessionId(request),
       revokeShopSessions: true,
     });
