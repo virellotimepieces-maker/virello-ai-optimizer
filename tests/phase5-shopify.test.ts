@@ -485,7 +485,7 @@ describe("Phase 5 OAuth callback errors", () => {
         /signature(\+|%20)is(\+|%20)invalid|does(\+|%20)not(\+|%20)match(\+|%20)this(\+|%20)Shopify(\+|%20)app/i
       );
       expect(location).toMatch(/oauth_diag=/);
-      expect(location).toMatch(/inmsg=/);
+      expect(location).toMatch(/inmsg=|inmsg%3D/);
       expect(location).toMatch(/token=client|token%3Dclient/);
     } finally {
       globalThis.fetch = originalFetch;
