@@ -1,6 +1,14 @@
 import { dbQuery } from "./database";
 import { normalizeShop } from "./shop-domain";
 
+export type AppSessionRecord = {
+  id: string;
+  shop: string;
+  stripe_customer_id: string | null;
+  expires_at: string;
+  revoked_at: string | null;
+};
+
 export async function upsertShop(
   shop: string,
   fields: { scopes?: string; name?: string } = {}
@@ -47,14 +55,7 @@ export async function revokeShopifyInstallation(shop: string): Promise<void> {
     [normalized]
   );
 
-  await dbQuery(
-    `UPDATE app_sessions
-     SET revoked_at = NOW(),
-         updated_at = NOW()
-     WHERE shop = $1
-       AND revoked_at IS NULL`,
-    [normalized]
-  );
+  await revokeAppSessionsForShop(normalized);
 }
 
 export async function createAppSession(input: {
@@ -79,8 +80,21 @@ export async function createAppSession(input: {
   );
 }
 
-export async function getActiveAppSession(id: string, shop: string) {
-  const normalized = normalizeShop(shop);
+export async function getAppSessionById(
+  id: string
+): Promise<AppSessionRecord | null> {
+  if (!id) return null;
+  const rows = await dbQuery<AppSessionRecord>(
+    `SELECT id, shop, stripe_customer_id, expires_at, revoked_at
+     FROM app_sessions
+     WHERE id = $1
+     LIMIT 1`,
+    [id]
+  );
+  return rows[0] ?? null;
+}
+
+export async function getActiveAppSession(id: string, shop?: string) {
   const rows = await dbQuery<{
     id: string;
     shop: string;
@@ -90,11 +104,49 @@ export async function getActiveAppSession(id: string, shop: string) {
     `SELECT id, shop, stripe_customer_id, expires_at
      FROM app_sessions
      WHERE id = $1
-       AND shop = $2
        AND revoked_at IS NULL
        AND expires_at > NOW()
+       AND ($2::text IS NULL OR shop = $2)
      LIMIT 1`,
-    [id, normalized]
+    [id, shop ? normalizeShop(shop) || null : null]
   );
   return rows[0] ?? null;
+}
+
+export async function revokeAppSession(id: string): Promise<void> {
+  if (!id) return;
+  await dbQuery(
+    `UPDATE app_sessions
+     SET revoked_at = NOW(),
+         updated_at = NOW()
+     WHERE id = $1
+       AND revoked_at IS NULL`,
+    [id]
+  );
+}
+
+export async function revokeAppSessionsForShop(shop: string): Promise<void> {
+  const normalized = normalizeShop(shop);
+  if (!normalized) return;
+  await dbQuery(
+    `UPDATE app_sessions
+     SET revoked_at = NOW(),
+         updated_at = NOW()
+     WHERE shop = $1
+       AND revoked_at IS NULL`,
+    [normalized]
+  );
+}
+
+export async function cleanupAppSessions(): Promise<number> {
+  const rows = await dbQuery<{ id: string }>(
+    `DELETE FROM app_sessions
+     WHERE expires_at < NOW()
+        OR (
+          revoked_at IS NOT NULL
+          AND revoked_at < NOW() - INTERVAL '7 days'
+        )
+     RETURNING id`
+  );
+  return rows.length;
 }

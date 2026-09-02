@@ -1,20 +1,25 @@
-import { createHmac, timingSafeEqual } from "crypto";
 import { NextRequest } from "next/server";
+import { shopFromSessionCookie } from "./app-session";
 import { dbQuery } from "./database";
-import {
-  getShopifyClientId,
-  getShopifyClientSecret,
-  getShopifyClientSecrets,
-} from "./shopify-config";
+import { normalizeShop } from "./shop-domain";
+import { revokeShopifyInstallation, upsertShop } from "./shops";
 import {
   decryptShopifyToken,
   encryptShopifyToken,
   SHOPIFY_TOKEN_COOKIE,
 } from "./shopify-session";
-import { normalizeShop } from "./shop-domain";
-import { revokeShopifyInstallation, upsertShop } from "./shops";
+import {
+  getShopifyIdToken,
+  ShopifySecurityError,
+  verifyShopifySessionToken,
+} from "./shopify-security";
+import {
+  getShopifyClientId,
+  getShopifyClientSecret,
+} from "./shopify-config";
 
 export { normalizeShop } from "./shop-domain";
+export { getShopifyIdToken, verifyShopifySessionToken } from "./shopify-security";
 
 export class ShopifyAuthError extends Error {
   constructor(message: string, public status = 401) {
@@ -23,80 +28,18 @@ export class ShopifyAuthError extends Error {
   }
 }
 
-function decodeJson(value: string): Record<string, unknown> | null {
-  try {
-    return JSON.parse(Buffer.from(value, "base64url").toString("utf8"));
-  } catch {
-    return null;
+function asAuthError(error: unknown): ShopifyAuthError {
+  if (error instanceof ShopifyAuthError) return error;
+  if (error instanceof ShopifySecurityError) {
+    return new ShopifyAuthError(error.message, error.status);
   }
-}
-
-export function getShopifyIdToken(request: NextRequest): string {
-  return (
-    request.headers.get("authorization")?.replace(/^Bearer\s+/i, "").trim() ||
-    request.headers.get("x-shopify-session-token")?.trim() ||
-    ""
+  return new ShopifyAuthError(
+    error instanceof Error ? error.message : "Shopify authorization failed."
   );
 }
 
-type VerifiedShopifyIdentity = {
-  shop: string;
-  userId: string;
-  credentialSecret: string;
-};
-
-function verifyShopifyIdTokenCredential(token: string): VerifiedShopifyIdentity {
-  const apiKey = getShopifyClientId();
-  const apiSecrets = getShopifyClientSecrets();
-  if (!apiKey || apiSecrets.length === 0) {
-    throw new ShopifyAuthError("Shopify credentials are not configured.", 500);
-  }
-
-  const parts = token.split(".");
-  if (parts.length !== 3 || parts.some((part) => !part)) {
-    throw new ShopifyAuthError("A valid Shopify session is required.");
-  }
-
-  const header = decodeJson(parts[0]);
-  const payload = decodeJson(parts[1]);
-  if (!header || !payload || header.alg !== "HS256") {
-    throw new ShopifyAuthError("Invalid Shopify session token.");
-  }
-
-  const received = Buffer.from(parts[2], "base64url");
-  const credentialSecret = apiSecrets.find((secret) => {
-    const expected = createHmac("sha256", secret)
-      .update(`${parts[0]}.${parts[1]}`)
-      .digest();
-    return received.length === expected.length && timingSafeEqual(received, expected);
-  });
-  if (!credentialSecret) {
-    throw new ShopifyAuthError("Invalid Shopify session signature.");
-  }
-
-  const now = Math.floor(Date.now() / 1000);
-  if (
-    payload.aud !== apiKey ||
-    typeof payload.exp !== "number" ||
-    payload.exp <= now ||
-    (typeof payload.nbf === "number" && payload.nbf > now + 60) ||
-    typeof payload.dest !== "string"
-  ) {
-    throw new ShopifyAuthError("Shopify session is expired or invalid.");
-  }
-
-  const shop = normalizeShop(payload.dest);
-  if (!shop) throw new ShopifyAuthError("Shopify session has an invalid store.");
-
-  return {
-    shop,
-    userId: typeof payload.sub === "string" ? payload.sub : "",
-    credentialSecret,
-  };
-}
-
 export function verifyShopifyIdToken(token: string): { shop: string; userId: string } {
-  const { shop, userId } = verifyShopifyIdTokenCredential(token);
+  const { shop, userId } = verifyShopifySessionToken(token);
   return { shop, userId };
 }
 
@@ -191,7 +134,7 @@ export async function authenticateShopifyRequest(
 
   if (idToken) {
     try {
-      const identity = verifyShopifyIdTokenCredential(idToken);
+      const identity = verifyShopifySessionToken(idToken);
       if (!requireAccessToken) return { ...identity, accessToken: "" };
 
       const saved = await storedAccessToken(identity.shop);
@@ -206,23 +149,31 @@ export async function authenticateShopifyRequest(
           ),
       };
     } catch (error) {
-      // An older Shopify app configuration can send an ID token signed for a
-      // different app secret. Preserve secure standalone OAuth compatibility:
-      // use the encrypted, server-issued connection cookies when available.
       idTokenError = error;
     }
   }
 
-  // Compatibility for merchants using Virello outside the embedded admin.
+  const sessionShop = await shopFromSessionCookie(request);
+  if (sessionShop) {
+    const accessToken = requireAccessToken
+      ? await storedAccessToken(sessionShop)
+      : "";
+    if (!requireAccessToken || accessToken) {
+      return { shop: sessionShop, accessToken, userId: "" };
+    }
+  }
+
   const shop = normalizeShop(request.cookies.get("virello_shopify_shop")?.value || "");
   const accessToken = decryptShopifyToken(
     request.cookies.get(SHOPIFY_TOKEN_COOKIE)?.value || ""
   );
   if (!shop || (requireAccessToken && !accessToken)) {
-    if (idTokenError instanceof Error) {
-      throw idTokenError;
-    }
-    throw new ShopifyAuthError("Shopify connection is missing. Please open Virello from Shopify Admin.");
+    throw asAuthError(
+      idTokenError ||
+        new ShopifyAuthError(
+          "Shopify connection is missing. Please open Virello from Shopify Admin."
+        )
+    );
   }
 
   if (requireAccessToken) {

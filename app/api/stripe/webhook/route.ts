@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { ensureDatabaseSchema } from "../../_lib/database";
 import { normalizeShop } from "../../_lib/shopify-auth";
+import { revokeAppSessionsForShop } from "../../_lib/shops";
 import { verifyStripeSignature } from "../../_lib/stripe-signature";
 import {
   getCheckoutSubscription,
@@ -99,6 +100,7 @@ export async function POST(request: Request) {
         }
         const checkout = await getCheckoutSubscription(object.id);
         await saveShopSubscription(checkout.shop, checkout.subscription);
+        await revokeAppSessionsForShop(checkout.shop);
         break;
 
       case "customer.subscription.created":

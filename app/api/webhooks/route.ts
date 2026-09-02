@@ -1,9 +1,8 @@
-import { createHash } from "node:crypto";
-import crypto from "crypto";
 import { NextResponse } from "next/server";
+import { createHash } from "node:crypto";
 import { ensureDatabaseSchema } from "../_lib/database";
 import { deleteShopifyData } from "../_lib/shopify-auth";
-import { getShopifyClientSecret } from "../_lib/shopify-config";
+import { verifyShopifyWebhookHmac } from "../_lib/shopify-security";
 import {
   claimWebhookEvent,
   markWebhookEvent,
@@ -11,30 +10,6 @@ import {
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-function verifyShopifyHmac(
-  body: string,
-  hmacHeader: string | null
-): boolean {
-  const secret = getShopifyClientSecret();
-
-  if (!secret || !hmacHeader) {
-    return false;
-  }
-
-  const calculatedHmac = crypto
-    .createHmac("sha256", secret)
-    .update(body, "utf8")
-    .digest();
-
-  const receivedHmac = Buffer.from(hmacHeader, "base64");
-
-  if (receivedHmac.length !== calculatedHmac.length) {
-    return false;
-  }
-
-  return crypto.timingSafeEqual(receivedHmac, calculatedHmac);
-}
 
 function shopifyEventId(
   request: Request,
@@ -54,7 +29,7 @@ export async function POST(request: Request) {
     const body = await request.text();
     const hmacHeader = request.headers.get("x-shopify-hmac-sha256");
 
-    if (!verifyShopifyHmac(body, hmacHeader)) {
+    if (!verifyShopifyWebhookHmac(body, hmacHeader)) {
       console.error("Shopify webhook HMAC verification failed");
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }

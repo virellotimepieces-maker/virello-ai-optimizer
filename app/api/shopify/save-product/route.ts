@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authenticateShopifyRequest } from "../../_lib/shopify-auth";
+import { OriginGuardError, assertSafeMutation } from "../../_lib/origin-guard";
 
 const SHOPIFY_API_VERSION = "2026-07";
 
@@ -46,6 +47,7 @@ export async function POST(
   request: NextRequest
 ) {
   try {
+    assertSafeMutation(request);
     /*
      * STANDALONE VIRELLO AUTH
      *
@@ -484,6 +486,10 @@ export async function POST(
       }
     );
   } catch (error) {
+    if (error instanceof OriginGuardError) {
+      return jsonError(error.message, error.status);
+    }
+
     console.error(
       "SHOPIFY_SAVE_PRODUCT_ERROR:",
       error

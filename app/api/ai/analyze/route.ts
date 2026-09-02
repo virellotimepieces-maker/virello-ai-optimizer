@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   authorizeSubscriberForAI,
   recordSuccessfulAiOptimization,
-  setSubscriberCookie,
 } from "../../_lib/subscriber";
+import { OriginGuardError, assertSafeMutation } from "../../_lib/origin-guard";
 
 export const runtime = "nodejs";
 
@@ -484,6 +484,8 @@ export async function POST(
   request: NextRequest
 ) {
   try {
+    assertSafeMutation(request);
+
     const apiKey =
       process.env.OPENAI_API_KEY;
 
@@ -1369,7 +1371,6 @@ Return the complete structured optimization.
      * ============================================================
      *
      * Consume one monthly AI unit only after a usable result.
-     * Refresh the signed subscriber cookie with the new usage.
      */
 
     const recorded = await recordSuccessfulAiOptimization(
@@ -1377,31 +1378,20 @@ Return the complete structured optimization.
       subscriberAuthorization.subscription
     );
 
-    const response =
-      NextResponse.json(
-        {
-          success: true,
-          audience,
-          result,
-          usage:
-            recorded.usage,
+    return NextResponse.json(
+      {
+        success: true,
+        audience,
+        result,
+        usage: recorded.usage,
+      },
+      {
+        status: 200,
+        headers: {
+          "Cache-Control": "no-store, no-cache, must-revalidate",
         },
-        {
-          status: 200,
-
-          headers: {
-            "Cache-Control":
-              "no-store, no-cache, must-revalidate",
-          },
-        }
-      );
-
-    setSubscriberCookie(
-      response,
-      recorded.cookieValue
+      }
     );
-
-    return response;
   } catch (error) {
     console.error(
       "Virello AI analysis error:",
@@ -1415,10 +1405,11 @@ Return the complete structured optimization.
       };
 
     const status =
-      typeof possibleError.status ===
-      "number"
-        ? possibleError.status
-        : 500;
+      error instanceof OriginGuardError
+        ? error.status
+        : typeof possibleError.status === "number"
+          ? possibleError.status
+          : 500;
 
     const message =
       typeof possibleError.message ===

@@ -6,9 +6,9 @@ Subscription Shopify app: $29.99/month via Stripe, connect a store, import produ
 
 This is not a prompt clinic or Custom GPT rewriter.
 
-## Phase 2 (current)
+## Phase 3 (current)
 
-Versioned Neon migrations, tenant-isolated shops / sessions / subscriptions / usage, uninstall that **revokes** the Shopify installation without deleting billing history, webhook idempotency, and atomic monthly AI quota of **1000** successful optimizations. Failed AI requests do not consume quota.
+Opaque `app_sessions` cookies (`virello_sid` only), server-side session validation, rotation after Shopify connect / Stripe checkout / privilege changes, uninstall that revokes sessions without deleting billing, consolidated Shopify HMAC/JWT, `APP_URL` as the canonical origin, and leftover Pages-router files removed.
 
 Branch: `shopify-rebuild`. Do not merge to `main` and do not deploy until approved.
 
@@ -20,7 +20,7 @@ cp .env.example .env.local
 npm run dev
 ```
 
-Fill `.env.local` with real values. Do not commit it.
+Fill `.env.local` with real values. Do not commit it. `APP_URL` should be the public https origin (used for Stripe return URLs, CSRF, and redirect allowlisting).
 
 ```bash
 npm test
@@ -39,22 +39,19 @@ SQL files live in `migrations/`, applied in filename order by `app/api/_lib/migr
 | `002_shopify_accounts.sql` | Shopify sessions, Stripe shop subscriptions, Stripe webhook ids |
 | `003_phase2_schema.sql` | `shops`, `app_sessions`, `webhook_events`, FKs, indexes, revoke columns |
 | `003_phase2_schema.down.sql` | Phase 2 rollback only |
+| `004_phase3_sessions.sql` | Session cleanup indexes |
+| `004_phase3_sessions.down.sql` | Phase 3 index rollback |
 
-### Rollback Phase 2
+### Rollback
 
-1. Stop writes (pause the app or put Neon in a maintenance window).
-2. Take a Neon point-in-time or logical backup.
-3. Run `migrations/003_phase2_schema.down.sql` against the database.
-4. Confirm `shop_subscriptions` and `subscriber_usage` still hold billing rows.
-5. Ship the previous application revision.
-
-The down file drops `shops`, `app_sessions`, and `webhook_events`. It does **not** delete Stripe customer or subscription records created before Phase 2.
+Phase 3 indexes: `migrations/004_phase3_sessions.down.sql`.  
+Phase 2 schema: `migrations/003_phase2_schema.down.sql` (does not delete pre-Phase-2 billing rows).
 
 ## Environment variable names
 
 Set these in `.env.local` and Vercel. Do not put values in git.
 
-- `APP_URL`
+- `APP_URL` (canonical public origin)
 - `DATABASE_URL`
 - `OPENAI_API_KEY`
 - `OPENAI_MODEL`
@@ -71,8 +68,8 @@ Set these in `.env.local` and Vercel. Do not put values in git.
 
 ## Customer flow
 
-Subscribe → Manage Subscription after payment → Connect Shopify (embedded Admin or standalone) → Import → Optimize → Review → Save to Shopify.
+Subscribe → Manage Subscription after payment (survives refresh via `virello_sid`) → Connect Shopify (embedded Admin or standalone) → Import → Optimize → Review → Save to Shopify.
 
 ## Deploy
 
-Next.js on Vercel. Do not deploy this branch until Phase 2 is approved. Stripe webhook path: `/api/stripe/webhook`. Shopify webhook path: `/api/webhooks`. Shopify OAuth callback: `/api/auth/shopify/callback`.
+Next.js on Vercel (`vercel.json` framework only; no `outputDirectory`). Do not deploy this branch until Phase 3 is approved. Stripe webhook path: `/api/stripe/webhook`. Shopify webhook path: `/api/webhooks`. Shopify OAuth callback: `/api/auth/shopify/callback`.

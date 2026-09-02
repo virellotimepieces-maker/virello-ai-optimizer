@@ -1,9 +1,11 @@
 import { createHmac, timingSafeEqual } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { dbQuery } from "./database";
+import { getAppUrl } from "./app-url";
+import { shopFromSessionCookie } from "./app-session";
 import { authenticateShopifyRequest, normalizeShop } from "./shopify-auth";
-import { upsertShop } from "./shops";
-import { consumeAiUsage, peekAiUsage } from "./usage";
+import { revokeAppSessionsForShop, upsertShop } from "./shops";
+import { peekAiUsage, consumeAiUsage } from "./usage";
 import { getUsageLimit, type SubscriberUsage } from "./usage-limit";
 
 class ApiError extends Error {
@@ -16,7 +18,7 @@ class ApiError extends Error {
   }
 }
 
-export const SUBSCRIBER_COOKIE = "virello_subscriber";
+export const SUBSCRIBER_COOKIE = "virello_sid";
 
 type StripeSubscriptionStatus =
   | "active"
@@ -58,6 +60,7 @@ export type { SubscriberUsage };
 
 export type ActiveSubscriberStatus = {
   active: boolean;
+  shop: string | null;
   customerId: string | null;
   subscriptionId: string | null;
   status: StripeSubscriptionStatus | null;
@@ -309,16 +312,36 @@ export async function saveStripeSubscriptionPayload(
   shop: string,
   payload: unknown
 ): Promise<void> {
-  await saveShopSubscription(shop, normalizeSubscription(payload));
+  const next = normalizeSubscription(payload);
+  const previous = await subscriptionForShop(shop);
+  await saveShopSubscription(shop, next);
+  if (subscriptionPrivilegeChanged(previous, next)) {
+    await revokeAppSessionsForShop(shop);
+  }
+}
+
+export function isPaidSubscriptionStatus(
+  status: StripeSubscriptionStatus
+): boolean {
+  return status === "active" || status === "trialing";
+}
+
+export function subscriptionPrivilegeChanged(
+  previous: SubscriptionSnapshot | null,
+  next: SubscriptionSnapshot
+): boolean {
+  if (!previous) return true;
+  return (
+    previous.subscriptionId !== next.subscriptionId ||
+    previous.customerId !== next.customerId ||
+    previous.status !== next.status
+  );
 }
 
 function ensureActiveStatus(
   status: StripeSubscriptionStatus
 ): void {
-  if (
-    status === "active" ||
-    status === "trialing"
-  ) {
+  if (isPaidSubscriptionStatus(status)) {
     return;
   }
 
@@ -389,9 +412,11 @@ export async function createStripeCheckoutSession(
     "1"
   );
 
+  const appUrl = getAppUrl(origin);
+
   body.set(
     "success_url",
-    `${origin}/api/stripe/checkout?session_id={CHECKOUT_SESSION_ID}`
+    `${appUrl}/api/stripe/checkout?session_id={CHECKOUT_SESSION_ID}`
   );
 
   body.set(
@@ -475,25 +500,6 @@ export async function getCheckoutSubscription(
   return { shop, subscription: normalizeSubscription(subscription) };
 }
 
-function subscriberCookieFromUsage(
-  subscription: SubscriptionSnapshot,
-  usage: SubscriberUsage
-): string {
-  const payload: SubscriberPayload = {
-    v: 1,
-    subscriptionId: subscription.subscriptionId,
-    customerId: subscription.customerId,
-    status: subscription.status,
-    currentPeriodStart: subscription.currentPeriodStart,
-    currentPeriodEnd: subscription.currentPeriodEnd,
-    usageCount: usage.used,
-    usagePeriodStart: subscription.currentPeriodStart,
-    refreshedAt: Date.now(),
-  };
-
-  return encodeSubscriberPayload(payload, getCookieSecret());
-}
-
 export async function saveShopSubscription(
   shop: string,
   subscription: SubscriptionSnapshot
@@ -571,7 +577,6 @@ export async function authorizeSubscriberForAI(
 ): Promise<{
   shop: string;
   subscription: SubscriptionSnapshot;
-  cookieValue: string;
   usage: SubscriberUsage;
 }> {
   let shop = "";
@@ -612,7 +617,6 @@ export async function authorizeSubscriberForAI(
   return {
     shop,
     subscription: refreshedSubscription,
-    cookieValue: subscriberCookieFromUsage(refreshedSubscription, usage),
     usage,
   };
 }
@@ -621,7 +625,6 @@ export async function recordSuccessfulAiOptimization(
   shop: string,
   subscription: SubscriptionSnapshot
 ): Promise<{
-  cookieValue: string;
   usage: SubscriberUsage;
 }> {
   try {
@@ -630,10 +633,7 @@ export async function recordSuccessfulAiOptimization(
       subscription.subscriptionId,
       subscription.currentPeriodStart
     );
-    return {
-      usage,
-      cookieValue: subscriberCookieFromUsage(subscription, usage),
-    };
+    return { usage };
   } catch (error) {
     const status = (error as { status?: number }).status;
     throw new ApiError(
@@ -645,36 +645,26 @@ export async function recordSuccessfulAiOptimization(
   }
 }
 
-export function setSubscriberCookie(
-  response: NextResponse,
-  cookieValue: string
-): void {
-  response.cookies.set(
-    SUBSCRIBER_COOKIE,
-    cookieValue,
-    {
-      httpOnly: true,
-      secure:
-        process.env.NODE_ENV ===
-        "production",
-      sameSite: "none",
-      path: "/",
-      maxAge: 60 * 60 * 24 * 32,
-    }
-  );
-}
-
 export function clearSubscriberCookie(
   response: NextResponse
 ): void {
   response.cookies.set(
-    SUBSCRIBER_COOKIE,
+    "virello_sid",
     "",
     {
       httpOnly: true,
-      secure:
-        process.env.NODE_ENV ===
-        "production",
+      secure: true,
+      sameSite: "none",
+      path: "/",
+      maxAge: 0,
+    }
+  );
+  response.cookies.set(
+    "virello_subscriber",
+    "",
+    {
+      httpOnly: true,
+      secure: true,
       sameSite: "none",
       path: "/",
       maxAge: 0,
@@ -682,44 +672,15 @@ export function clearSubscriberCookie(
   );
 }
 
-export function buildSubscriberCookieValue(
-  subscription: SubscriptionSnapshot
-): string {
-  const secret = getCookieSecret();
-
-  ensureActiveStatus(
-    subscription.status
-  );
-
-  const payload: SubscriberPayload = {
-    v: 1,
-    subscriptionId:
-      subscription.subscriptionId,
-    customerId:
-      subscription.customerId,
-    status: subscription.status,
-    currentPeriodStart:
-      subscription.currentPeriodStart,
-    currentPeriodEnd:
-      subscription.currentPeriodEnd,
-    usageCount: 0,
-    usagePeriodStart:
-      subscription.currentPeriodStart,
-    refreshedAt: Date.now(),
-  };
-
-  return encodeSubscriberPayload(
-    payload,
-    secret
-  );
-}
-
 export async function getShopForSubscriberCookie(
   request: NextRequest
 ): Promise<string> {
   try {
+    const fromSession = await shopFromSessionCookie(request);
+    if (fromSession) return fromSession;
+
     const cookieValue =
-      request.cookies.get(SUBSCRIBER_COOKIE)?.value || "";
+      request.cookies.get("virello_subscriber")?.value || "";
 
     if (!cookieValue) {
       return "";
@@ -749,35 +710,40 @@ export async function getShopForSubscriberCookie(
   }
 }
 
+export async function storedSubscriberStatus(
+  shop: string
+): Promise<ActiveSubscriberStatus> {
+  const subscription = await subscriptionForShop(shop);
+  if (!subscription) {
+    return {
+      active: false,
+      shop,
+      customerId: null,
+      subscriptionId: null,
+      status: null,
+    };
+  }
+
+  return {
+    active: isPaidSubscriptionStatus(subscription.status),
+    shop,
+    customerId: subscription.customerId,
+    subscriptionId: subscription.subscriptionId,
+    status: subscription.status,
+  };
+}
+
 export async function hasActiveSubscriber(
   request: NextRequest
 ): Promise<boolean> {
   try {
-    let shop = "";
-    try {
-      shop = (await authenticateShopifyRequest(request, false)).shop;
-    } catch {
-      shop = await getShopForSubscriberCookie(request);
-    }
-    if (!shop) return false;
-    const subscription = await refreshShopSubscription(shop);
-    if (!subscription) return false;
-
-    ensureActiveStatus(
-      subscription.status
-    );
-
-    return true;
+    const status = await getActiveSubscriberStatus(request);
+    return status.active;
   } catch {
     return false;
   }
 }
 
-/*
- * Returns the verified Stripe subscriber information.
- * This is used by /api/subscriber/status and the
- * Stripe Billing Portal flow.
- */
 export async function getActiveSubscriberStatus(
   request: NextRequest
 ): Promise<ActiveSubscriberStatus> {
@@ -787,34 +753,34 @@ export async function getActiveSubscriberStatus(
     try {
       shop = (await authenticateShopifyRequest(request, false)).shop;
     } catch {
-      // Stripe checkout returns through the top-level browser. On mobile,
-      // Shopify and the top-level Vercel page can use partitioned cookie jars,
-      // so recover the shop from the separately signed subscriber cookie.
       shop = await getShopForSubscriberCookie(request);
     }
 
     if (!shop) {
-      return { active: false, customerId: null, subscriptionId: null, status: null };
+      return {
+        active: false,
+        shop: null,
+        customerId: null,
+        subscriptionId: null,
+        status: null,
+      };
     }
 
-    const subscription = await refreshShopSubscription(shop);
-    if (!subscription) {
-      return { active: false, customerId: null, subscriptionId: null, status: null };
+    try {
+      const subscription = await refreshShopSubscription(shop);
+      if (!subscription) {
+        return storedSubscriberStatus(shop);
+      }
+      return {
+        active: isPaidSubscriptionStatus(subscription.status),
+        shop,
+        customerId: subscription.customerId,
+        subscriptionId: subscription.subscriptionId,
+        status: subscription.status,
+      };
+    } catch {
+      return storedSubscriberStatus(shop);
     }
-
-    const active =
-      subscription.status === "active" ||
-      subscription.status === "trialing";
-
-    return {
-      active,
-      customerId:
-        subscription.customerId,
-      subscriptionId:
-        subscription.subscriptionId,
-      status:
-        subscription.status,
-    };
   } catch (error) {
     console.error(
       "SUBSCRIBER_STATUS_ERROR:",
@@ -823,6 +789,7 @@ export async function getActiveSubscriberStatus(
 
     return {
       active: false,
+      shop: null,
       customerId: null,
       subscriptionId: null,
       status: null,

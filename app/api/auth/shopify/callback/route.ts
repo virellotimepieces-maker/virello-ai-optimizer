@@ -2,137 +2,40 @@ import {
   NextRequest,
   NextResponse,
 } from "next/server";
-import { createHmac, timingSafeEqual } from "crypto";
+import { getAppUrl } from "../../../_lib/app-url";
 import {
-  encryptShopifyToken,
-  SHOPIFY_TOKEN_COOKIE,
-} from "../../../_lib/shopify-session";
+  applySessionCookie,
+  issueAppSession,
+  readSessionId,
+} from "../../../_lib/app-session";
+import { isAllowedRedirectUrl } from "../../../_lib/origin-guard";
 import { saveShopifySession } from "../../../_lib/shopify-auth";
 import {
   getShopifyClientId,
   getShopifyClientSecret,
   getShopifyClientSecrets,
 } from "../../../_lib/shopify-config";
-
-function hasValidShopifyHmac(request: NextRequest, secret: string): boolean {
-  const supplied = (request.nextUrl.searchParams.get("hmac") || "").toLowerCase();
-  if (!/^[a-f0-9]{64}$/i.test(supplied)) return false;
-
-  const suppliedBuffer = Buffer.from(supplied);
-
-  const matches = (message: string) => {
-    const expected = createHmac("sha256", secret).update(message).digest("hex");
-    const expectedBuffer = Buffer.from(expected);
-    return suppliedBuffer.length === expectedBuffer.length &&
-      timingSafeEqual(suppliedBuffer, expectedBuffer);
-  };
-
-  const allDecodedEntries = [...request.nextUrl.searchParams.entries()]
-    .filter(([key]) => key !== "hmac")
-    .sort(([leftKey, leftValue], [rightKey, rightValue]) =>
-      leftKey.localeCompare(rightKey) || leftValue.localeCompare(rightValue)
-    );
-
-  // Shopify's documented algorithm uses decoded, sorted key/value pairs.
-  const decodedMessage = allDecodedEntries
-    .map(([key, value]) => `${key}=${value}`)
-    .join("&");
-  if (matches(decodedMessage)) return true;
-
-  // Legacy Shopify authorization responses can include a separate
-  // `signature` field. It is not part of the HMAC payload.
-  const legacyDecodedMessage = allDecodedEntries
-    .filter(([key]) => key !== "signature")
-    .map(([key, value]) => `${key}=${value}`)
-    .join("&");
-  if (legacyDecodedMessage !== decodedMessage && matches(legacyDecodedMessage)) {
-    return true;
-  }
-
-  // Some embedded/mobile browser hops preserve the percent-encoded callback
-  // query. Verify that canonical representation as a compatibility fallback.
-  // This is not a bypass: the supplied HMAC must still match the app secret.
-  const rawMessage = request.nextUrl.search
-    .replace(/^\?/, "")
-    .split("&")
-    .filter(Boolean)
-    .filter((part) => {
-      const rawKey = part.split("=", 1)[0];
-      try {
-        return decodeURIComponent(rawKey) !== "hmac";
-      } catch {
-        return rawKey !== "hmac";
-      }
-    })
-    .sort()
-    .join("&");
-
-  if (rawMessage !== decodedMessage && matches(rawMessage)) return true;
-
-  const legacyRawMessage = rawMessage
-    .split("&")
-    .filter((part) => {
-      const rawKey = part.split("=", 1)[0];
-      try {
-        return decodeURIComponent(rawKey) !== "signature";
-      } catch {
-        return rawKey !== "signature";
-      }
-    })
-    .join("&");
-
-  return legacyRawMessage !== rawMessage && matches(legacyRawMessage);
-}
-
-function getShopFromSignedState(state: string, secret: string): string {
-  try {
-    const [payload, suppliedSignature, extra] = state.split(".");
-    if (!payload || !suppliedSignature || extra) return "";
-    const expectedSignature = createHmac("sha256", secret).update(payload).digest("base64url");
-    const supplied = Buffer.from(suppliedSignature);
-    const expected = Buffer.from(expectedSignature);
-    if (supplied.length !== expected.length || !timingSafeEqual(supplied, expected)) return "";
-    const parsed = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as { shop?: string; timestamp?: number };
-    if (!parsed.shop || !parsed.timestamp || Date.now() - parsed.timestamp > 10 * 60 * 1000) return "";
-    return cleanShopDomain(parsed.shop);
-  } catch {
-    return "";
-  }
-}
-
-function cleanShopDomain(value: string) {
-  return value
-    .trim()
-    .toLowerCase()
-    .replace(/^https?:\/\//, "")
-    .replace(/^www\./, "")
-    .replace(/\/+$/, "")
-    .replace(
-      /(\.myshopify\.com){2,}$/,
-      ".myshopify.com"
-    );
-}
+import { normalizeShop } from "../../../_lib/shop-domain";
+import {
+  verifyShopifyCallbackHmac,
+  verifySignedOAuthState,
+} from "../../../_lib/shopify-security";
+import { revokeAppSessionsForShop } from "../../../_lib/shops";
 
 function isValidShopDomain(shop: string) {
-  return /^([a-z0-9][a-z0-9-]*[a-z0-9]|[a-z0-9])\.myshopify\.com$/i.test(
-    shop
-  );
+  return Boolean(normalizeShop(shop));
 }
 
 function getReturnOrigin(request: NextRequest) {
+  const fallback = getAppUrl(request.nextUrl.origin);
   const savedOrigin =
-    request.cookies.get(
-      "virello_return_origin"
-    )?.value || "";
+    request.cookies.get("virello_return_origin")?.value || "";
 
-  if (
-    savedOrigin &&
-    /^https?:\/\//i.test(savedOrigin)
-  ) {
-    return savedOrigin.replace(/\/+$/, "");
+  if (savedOrigin && isAllowedRedirectUrl(savedOrigin, fallback)) {
+    return new URL(savedOrigin).origin;
   }
 
-  return request.nextUrl.origin;
+  return fallback;
 }
 
 function redirectError(
@@ -172,10 +75,7 @@ export async function GET(
     const code =
       params.get("code") || "";
 
-    const shop =
-      cleanShopDomain(
-        params.get("shop") || ""
-      );
+    const shop = normalizeShop(params.get("shop") || "");
 
     const state =
       params.get("state") || "";
@@ -215,10 +115,10 @@ export async function GET(
     }
 
     const cookieStateIsValid = Boolean(
-      savedState && savedState === state && savedShop === shop
+      savedState && savedState === state && normalizeShop(savedShop) === shop
     );
-    const signedStateIsValid = getShopifyClientSecrets().some(
-      (secret) => getShopFromSignedState(state, secret) === shop
+    const signedStateIsValid = getShopifyClientSecrets().some((secret) =>
+      verifySignedOAuthState(state, shop, secret)
     );
 
     if (!cookieStateIsValid && !signedStateIsValid) {
@@ -231,7 +131,7 @@ export async function GET(
 
     const hmacSecrets = getShopifyClientSecrets();
     const verifiedSecret = hmacSecrets.find((secret) =>
-      hasValidShopifyHmac(request, secret)
+      verifyShopifyCallbackHmac(request, secret)
     );
     if (!verifiedSecret) {
       return redirectError(returnOrigin, "Shopify authorization signature is invalid.");
@@ -303,12 +203,14 @@ export async function GET(
       );
     }
 
-    // The database is the durable source of truth. Cookies are kept only
-    // as a standalone-browser compatibility path.
     await saveShopifySession(shop, data.access_token, data.scope || "");
+    await revokeAppSessionsForShop(shop);
+    const sessionId = await issueAppSession({
+      shop,
+      previousSessionId: readSessionId(request),
+      revokeShopSessions: true,
+    });
 
-    // Return to the embedded Shopify Admin app after OAuth. Returning to
-    // the standalone Vercel page loses Shopify's App Bridge session on mobile.
     const storeHandle = shop.replace(/\.myshopify\.com$/i, "");
     const appHandle =
       process.env.SHOPIFY_APP_HANDLE?.trim() || "virello-ai-optimizer";
@@ -319,48 +221,15 @@ export async function GET(
     redirectUrl.searchParams.set("shop", shop);
     redirectUrl.searchParams.set("connected", "1");
 
-    const response =
-      NextResponse.redirect(
-        redirectUrl
-      );
+    const response = NextResponse.redirect(redirectUrl);
+    applySessionCookie(response, sessionId, request);
 
-    response.cookies.set(
-      SHOPIFY_TOKEN_COOKIE,
-      encryptShopifyToken(data.access_token),
-      {
-        httpOnly: true,
-        secure: true,
-        sameSite: "none",
-        path: "/",
-        maxAge:
-          60 * 60 * 24 * 30,
-      }
-    );
-
-    response.cookies.set(
-      "virello_shopify_shop",
-      shop,
-      {
-        httpOnly: true,
-        secure: true,
-        sameSite: "none",
-        path: "/",
-        maxAge:
-          60 * 60 * 24 * 30,
-      }
-    );
-
-    response.cookies.delete(
-      "virello_shopify_oauth_state"
-    );
-
-    response.cookies.delete(
-      "virello_shopify_oauth_shop"
-    );
-
-    response.cookies.delete(
-      "virello_return_origin"
-    );
+    response.cookies.delete("virello_shopify_oauth_state");
+    response.cookies.delete("virello_shopify_oauth_shop");
+    response.cookies.delete("virello_return_origin");
+    response.cookies.delete("virello_shopify_access_token");
+    response.cookies.delete("virello_shopify_shop");
+    response.cookies.delete("virello_subscriber");
 
     response.headers.set(
       "Cache-Control",

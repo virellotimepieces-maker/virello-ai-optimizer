@@ -101,15 +101,21 @@ export async function applyMigrations(
   return ran;
 }
 
-export async function rollbackPhase2(
-  exec: SqlExec
+export async function rollbackSqlFile(
+  exec: SqlExec,
+  fileName: string
 ): Promise<void> {
-  const downPath = path.join(
-    migrationsDirectory(),
-    "003_phase2_schema.down.sql"
-  );
+  const downPath = path.join(migrationsDirectory(), fileName);
   const sql = readFileSync(downPath, "utf8");
   for (const statement of splitSqlStatements(sql)) {
     await exec(statement);
   }
+}
+
+export async function rollbackPhase2(exec: SqlExec): Promise<void> {
+  await rollbackSqlFile(exec, "003_phase2_schema.down.sql");
+}
+
+export async function rollbackPhase3(exec: SqlExec): Promise<void> {
+  await rollbackSqlFile(exec, "004_phase3_sessions.down.sql");
 }

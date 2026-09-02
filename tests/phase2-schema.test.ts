@@ -83,6 +83,7 @@ describe("Phase 2 database behavior", () => {
       "001_subscriber_usage",
       "002_shopify_accounts",
       "003_phase2_schema",
+      "004_phase3_sessions",
     ]);
   });
 
