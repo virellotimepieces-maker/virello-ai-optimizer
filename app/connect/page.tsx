@@ -197,24 +197,9 @@ export default function ConnectPage() {
         cleanedShop
       )}`;
 
-    /*
-     * Shopify login refuses to render inside the Admin iframe/mobile webview.
-     * Open it from this user gesture in a separate browser context.
-     */
-    const authorizationWindow = window.open(
-      authorizationUrl,
-      "_blank",
-      "noopener,noreferrer"
-    );
-
-    if (authorizationWindow) {
-      setConnecting(false);
-      return;
-    }
-
-    window.location.assign(
-      authorizationUrl
-    );
+    // Managed embedded apps must launch in Shopify Admin so App Bridge can
+    // provide the signed session token used for token exchange.
+    window.open(authorizationUrl, "_top");
   }
 
   function continueToVirello() {
@@ -304,7 +289,7 @@ export default function ConnectPage() {
           <section className="connected-hero">
             <div className="connected-inner">
               <div className="connected-check">
-                ✓
+                â
               </div>
 
               <div>
@@ -340,7 +325,7 @@ export default function ConnectPage() {
                   </strong>
 
                   <div className="connected-tag">
-                    <span>●</span>
+                    <span>â</span>
                     Connected
                   </div>
                 </div>
@@ -351,7 +336,7 @@ export default function ConnectPage() {
           <section className="confirmation-section">
             <div className="confirmation-card">
               <div className="check-circle">
-                ✓
+                â
               </div>
 
               <div className="confirmation-label">
@@ -384,7 +369,7 @@ export default function ConnectPage() {
                 </div>
 
                 <div className="row-connected">
-                  ✓ Connected
+                  â Connected
                 </div>
               </div>
 
@@ -417,7 +402,7 @@ export default function ConnectPage() {
               <div className="steps">
                 <div className="step">
                   <div className="step-icon">
-                    ↓
+                    â
                   </div>
 
                   <strong>
@@ -431,7 +416,7 @@ export default function ConnectPage() {
 
                 <div className="step">
                   <div className="step-icon">
-                    ✦
+                    â¦
                   </div>
 
                   <strong>
@@ -446,7 +431,7 @@ export default function ConnectPage() {
 
                 <div className="step">
                   <div className="step-icon">
-                    ✎
+                    â
                   </div>
 
                   <strong>
@@ -460,7 +445,7 @@ export default function ConnectPage() {
 
                 <div className="step">
                   <div className="step-icon">
-                    ↑
+                    â
                   </div>
 
                   <strong>
