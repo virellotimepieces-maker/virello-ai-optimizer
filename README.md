@@ -53,6 +53,8 @@ SQL files live in `migrations/`, applied in filename order by `app/api/_lib/migr
 | `004_phase3_sessions.down.sql` | Phase 3 index rollback |
 | `005_phase4_billing.sql` | `stripe_customers`, `stripe_invoices`, livemode, invoice/cancellation, event ordering |
 | `005_phase4_billing.down.sql` | Phase 4 rollback (does not delete `shop_subscriptions` billing rows) |
+| `006_phase6_locales.sql` | Shop UI and product-output locales |
+| `006_phase6_locales.down.sql` | Phase 6 locale column rollback |
 
 ### Rollback
 

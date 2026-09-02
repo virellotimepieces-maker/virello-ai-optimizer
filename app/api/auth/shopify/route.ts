@@ -6,10 +6,12 @@ import {
   shopifyAdminAppUrl,
 } from "../../_lib/shopify-oauth";
 import { getShopifyClientId } from "../../_lib/shopify-config";
+import { assertRateLimit, clientKey, RateLimitError } from "../../_lib/rate-limit";
 
 export async function GET(request: NextRequest) {
   try {
     const shop = normalizeShop(request.nextUrl.searchParams.get("shop") || "");
+    assertRateLimit(clientKey(request, "oauth"), 30);
     if (!shop) {
       return NextResponse.json(
         {
@@ -58,6 +60,7 @@ export async function GET(request: NextRequest) {
     return response;
   } catch (error) {
     console.error("SHOPIFY_OAUTH_START_ERROR:", error);
+    const status = error instanceof RateLimitError ? error.status : 500;
     return NextResponse.json(
       {
         success: false,
@@ -66,7 +69,7 @@ export async function GET(request: NextRequest) {
             ? error.message
             : "Unable to start Shopify authorization.",
       },
-      { status: 500 }
+      { status }
     );
   }
 }

@@ -12,6 +12,7 @@ import {
   type OptimizerProduct,
 } from "../../_lib/optimizer";
 import { parseAppLocale } from "../../_lib/locales";
+import { assertRateLimit, clientKey, RateLimitError } from "../../_lib/rate-limit";
 
 export const runtime = "nodejs";
 
@@ -25,6 +26,7 @@ function errorResponse(message: string, status: number) {
 export async function POST(request: NextRequest) {
   try {
     assertSafeMutation(request);
+    assertRateLimit(clientKey(request, "ai"), 20);
     const body = await request.json().catch(() => ({}));
     const source = body?.product && typeof body.product === "object" ? body.product : body;
     const product: OptimizerProduct = {
@@ -58,6 +60,9 @@ export async function POST(request: NextRequest) {
       return errorResponse(error.message, error.status);
     }
     if (error instanceof OptimizerError) {
+      return errorResponse(error.message, error.status);
+    }
+    if (error instanceof RateLimitError) {
       return errorResponse(error.message, error.status);
     }
     const status = (error as { status?: number }).status;

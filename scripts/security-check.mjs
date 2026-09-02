@@ -48,6 +48,15 @@ if (hits.length) {
   process.exit(1);
 }
 
+try {
+  execSync("npm audit --audit-level=high --omit=dev", {
+    stdio: "inherit",
+  });
+} catch {
+  console.error("npm audit found high or critical issues.");
+  process.exit(1);
+}
+
 console.log(
-  "security:check passed (no credential-like values in tracked files)"
+  "security:check passed (no credential-like values in tracked files; npm audit high+ clean)"
 );

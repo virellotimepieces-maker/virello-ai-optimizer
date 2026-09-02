@@ -6,6 +6,7 @@ import {
   readSessionId,
 } from "../../_lib/app-session";
 import { OriginGuardError, assertSafeMutation } from "../../_lib/origin-guard";
+import { assertRateLimit, clientKey } from "../../_lib/rate-limit";
 import { applySubscriptionEvent } from "../../_lib/stripe-events";
 import { authenticateShopifyRequest } from "../../_lib/shopify-auth";
 import { revokeAppSessionsForShop } from "../../_lib/shops";
@@ -46,6 +47,7 @@ function getErrorDetails(error: unknown): { message: string; status: number } {
 export async function POST(request: NextRequest) {
   try {
     assertSafeMutation(request);
+    assertRateLimit(clientKey(request, "checkout"), 15);
     const origin = getAppUrl(new URL(request.url).origin);
     const { shop } = await authenticateShopifyRequest(request, false);
     const checkoutUrl = await createStripeCheckoutSession(origin, shop);

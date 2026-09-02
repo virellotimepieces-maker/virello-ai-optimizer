@@ -12,6 +12,7 @@ import {
   saveReviewedProduct,
   ShopifyProductError,
 } from "../../_lib/shopify-products";
+import { assertRateLimit, clientKey, RateLimitError } from "../../_lib/rate-limit";
 
 function errorResponse(message: string, status: number) {
   return NextResponse.json(
@@ -27,7 +28,8 @@ function statusFor(error: unknown): number {
     error instanceof ShopifyAuthError ||
     error instanceof ShopifyProductError ||
     error instanceof ShopifyRateLimitError ||
-    error instanceof ShopifyTokenExpiredError
+    error instanceof ShopifyTokenExpiredError ||
+    error instanceof RateLimitError
   ) {
     return error.status;
   }
@@ -36,6 +38,7 @@ function statusFor(error: unknown): number {
 
 export async function GET(request: NextRequest) {
   try {
+    assertRateLimit(clientKey(request, "import"), 30);
     const { shop, accessToken } = await requirePaidProductAccess(request);
     const cursor = request.nextUrl.searchParams.get("cursor") || "";
     const page = await importProductPage(shop, accessToken, cursor);
@@ -64,6 +67,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     assertSafeMutation(request);
+    assertRateLimit(clientKey(request, "save"), 20);
     const { shop, accessToken } = await requirePaidProductAccess(request);
     const body = await request.json().catch(() => null);
     const input = parseSaveProductInput(body);

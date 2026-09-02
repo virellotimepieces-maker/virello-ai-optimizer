@@ -156,8 +156,11 @@ export type SaveProductInput = {
 
 export function parseSaveProductInput(body: unknown): SaveProductInput {
   const data = body && typeof body === "object" ? (body as Record<string, unknown>) : {};
-  const productId = typeof data.productId === "string" ? data.productId.trim() : "";
-  if (!productId) {
+  const rawId = typeof data.productId === "string" ? data.productId.trim() : "";
+  const productId = /^\d+$/.test(rawId)
+    ? `gid://shopify/Product/${rawId}`
+    : rawId;
+  if (!productId || !/^gid:\/\/shopify\/Product\/\d+$/i.test(productId)) {
     throw new ShopifyProductError("Product ID is required.");
   }
   return {
