@@ -6,7 +6,11 @@ Subscription Shopify app: $29.99/month via Stripe, connect a store, import produ
 
 This is not a prompt clinic or Custom GPT rewriter.
 
-## Phase 5 (current)
+## Phase 6 (current)
+
+Server-side OpenAI optimizer (key never sent to the browser) writes title, description, SEO, tags, and conversion copy without inventing facts. Failed AI calls do not consume the 1000 monthly uses. The dashboard is FIL/EN for interface and product-output language separately, with Connect, Subscribe/Manage, Import, Optimize, Review, and Save states.
+
+## Phase 5
 
 Shopify OAuth works for **standalone** (authorization-code + signed state, HMAC, `APP_URL` callback) and **embedded** (Admin launch + App Bridge token exchange). Offline tokens stay encrypted in Neon. Import is paginated with 429/throttle retries. Save is a single implementation (`/api/shopify/products` POST, `/api/shopify/save-product` re-exports it) and requires `confirmed: true` after review. Import/AI/save require an active install, `read_products`/`write_products`, and an eligible Stripe subscription. Shop identity is not stored in `localStorage`.
 

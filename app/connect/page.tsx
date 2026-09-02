@@ -223,6 +223,7 @@ export default function ConnectPage() {
         </div>
 
         <div className="topbar-actions">
+          <a className="lang-button" href="/">EN / FIL</a>
           <div className="shopify-pill">
             Shopify
           </div>

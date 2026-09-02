@@ -58,6 +58,7 @@ export type ActiveSubscriberStatus = {
   subscriptionId: string | null;
   status: StripeSubscriptionStatus | null;
   reason?: string;
+  usage?: { limit: number; used: number; remaining: number } | null;
 };
 
 function getStripeSecret(): string {
@@ -511,6 +512,10 @@ export async function getShopForSubscriberCookie(
 async function statusForShop(shop: string): Promise<ActiveSubscriberStatus> {
   const shopInstalled = await isShopifyInstallationActive(shop);
   const { access, billing } = await accessStateForShop(shop, shopInstalled);
+  let usage = null;
+  if (billing) {
+    usage = await peekAiUsage(shop, billing.subscriptionId, billing.currentPeriodStart);
+  }
   return {
     active: access.productAccess,
     canManage: access.canManage,
@@ -520,6 +525,7 @@ async function statusForShop(shop: string): Promise<ActiveSubscriberStatus> {
     subscriptionId: billing?.subscriptionId ?? null,
     status: billing?.status ?? null,
     reason: access.reason,
+    usage,
   };
 }
 

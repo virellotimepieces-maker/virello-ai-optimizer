@@ -88,6 +88,7 @@ describe("Phase 2 database behavior", () => {
       "003_phase2_schema",
       "004_phase3_sessions",
       "005_phase4_billing",
+      "006_phase6_locales",
     ]);
   });
 
@@ -282,11 +283,14 @@ describe("Phase 2 database behavior", () => {
     expect(peekedAgain.used).toBe(0);
 
     const analyze = readFileSync("app/api/ai/analyze/route.ts", "utf8");
+    const optimizer = readFileSync("app/api/_lib/optimizer.ts", "utf8");
     const authorizeAt = analyze.indexOf("authorizeSubscriberForAI");
-    const openaiAt = analyze.indexOf("https://api.openai.com/v1/responses");
+    const openaiAt = optimizer.indexOf("https://api.openai.com/v1/chat/completions");
     const consumeAt = analyze.lastIndexOf("recordSuccessfulAiOptimization");
     expect(authorizeAt).toBeGreaterThan(-1);
-    expect(openaiAt).toBeGreaterThan(authorizeAt);
-    expect(consumeAt).toBeGreaterThan(openaiAt);
+    expect(openaiAt).toBeGreaterThan(-1);
+    expect(consumeAt).toBeGreaterThan(authorizeAt);
+    expect(analyze.indexOf("optimizeProduct")).toBeGreaterThan(authorizeAt);
+    expect(analyze.lastIndexOf("optimizeProduct")).toBeLessThan(consumeAt);
   });
 });

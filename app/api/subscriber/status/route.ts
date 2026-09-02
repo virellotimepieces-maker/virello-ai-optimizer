@@ -20,6 +20,9 @@ export async function GET(request: NextRequest) {
         customerId: subscriber.customerId,
         subscriptionId: subscriber.subscriptionId,
         status: subscriber.status,
+        shop: subscriber.shop,
+        usage: subscriber.usage ?? null,
+        reason: subscriber.reason ?? null,
       },
       { headers: { "Cache-Control": "no-store" } }
     );

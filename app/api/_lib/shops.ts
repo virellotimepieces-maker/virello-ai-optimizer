@@ -180,3 +180,32 @@ export async function cleanupAppSessions(): Promise<number> {
   );
   return rows.length;
 }
+
+export async function saveShopLocales(
+  shop: string,
+  uiLocale: string,
+  outputLocale: string
+): Promise<void> {
+  const normalized = await upsertShop(shop, { markInstalled: false });
+  await dbQuery(
+    `UPDATE shops
+     SET ui_locale = $2,
+         output_locale = $3,
+         updated_at = NOW()
+     WHERE shop = $1`,
+    [normalized, uiLocale, outputLocale]
+  );
+}
+
+export async function getShopLocales(
+  shop: string
+): Promise<{ uiLocale: string | null; outputLocale: string | null } | null> {
+  const normalized = normalizeShop(shop);
+  if (!normalized) return null;
+  const rows = await dbQuery<{ ui_locale: string | null; output_locale: string | null }>(
+    `SELECT ui_locale, output_locale FROM shops WHERE shop = $1 LIMIT 1`,
+    [normalized]
+  );
+  if (!rows.length) return null;
+  return { uiLocale: rows[0].ui_locale, outputLocale: rows[0].output_locale };
+}
