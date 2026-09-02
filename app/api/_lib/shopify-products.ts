@@ -22,6 +22,9 @@ export type ImportedProduct = {
   tags: string[];
   seoTitle: string;
   seoDescription: string;
+  handle: string;
+  options: string[];
+  variants: string[];
 };
 
 export type ProductPage = {
@@ -49,9 +52,20 @@ const LIST_QUERY = `
           title
           description
         }
-        variants(first: 1) {
+        handle
+        options {
+          name
+          values
+        }
+        variants(first: 8) {
           nodes {
+            title
             price
+            sku
+            selectedOptions {
+              name
+              value
+            }
           }
         }
       }
@@ -109,7 +123,16 @@ export async function importProductPage(
         status?: string;
         tags?: string[];
         seo?: { title?: string | null; description?: string | null };
-        variants?: { nodes?: Array<{ price?: string }> };
+        handle?: string;
+        options?: Array<{ name?: string; values?: string[] }>;
+        variants?: {
+          nodes?: Array<{
+            title?: string;
+            price?: string;
+            sku?: string;
+            selectedOptions?: Array<{ name?: string; value?: string }>;
+          }>;
+        };
       }>;
     };
   }>(shop, accessToken, LIST_QUERY, {
@@ -131,6 +154,22 @@ export async function importProductPage(
       tags: Array.isArray(product.tags) ? product.tags : [],
       seoTitle: product.seo?.title || "",
       seoDescription: product.seo?.description || "",
+      handle: product.handle || "",
+      options: (product.options || [])
+        .map((option) => {
+          const values = Array.isArray(option.values) ? option.values.filter(Boolean).join(", ") : "";
+          return [option.name, values].filter(Boolean).join(": ");
+        })
+        .filter(Boolean),
+      variants: (product.variants?.nodes || [])
+        .map((variant) => {
+          const options = (variant.selectedOptions || [])
+            .map((option) => [option.name, option.value].filter(Boolean).join(" "))
+            .filter(Boolean)
+            .join(", ");
+          return [variant.title, options, variant.price, variant.sku].filter(Boolean).join(" · ");
+        })
+        .filter(Boolean),
     }));
 
   return {

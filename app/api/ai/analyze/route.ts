@@ -38,6 +38,13 @@ export async function POST(request: NextRequest) {
       vendor: typeof source.vendor === "string" ? source.vendor : "",
       tags: Array.isArray(source.tags) ? source.tags : [],
       price: typeof source.price === "string" ? source.price : "",
+      handle: typeof source.handle === "string" ? source.handle : "",
+      options: Array.isArray(source.options)
+        ? source.options.filter((item: unknown): item is string => typeof item === "string")
+        : [],
+      variants: Array.isArray(source.variants)
+        ? source.variants.filter((item: unknown): item is string => typeof item === "string")
+        : [],
     };
 
     const outputLocale = parseAppLocale(body.outputLocale || body.output);

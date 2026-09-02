@@ -73,7 +73,29 @@ export type CopyKey =
   | "changeStoreConfirm"
   | "pendingStore"
   | "disconnectSuccess"
-  | "alreadyLinkedInstalled";
+  | "alreadyLinkedInstalled"
+  | "benefitBullets"
+  | "targetCustomer"
+  | "purchaseMotivation"
+  | "strongestFeatures"
+  | "weaknesses"
+  | "missingInformation"
+  | "objections"
+  | "conversionOpportunities"
+  | "keywords"
+  | "callToAction"
+  | "warnings"
+  | "seoTitle"
+  | "seoDescription"
+  | "tagsLabel"
+  | "conversionCopy"
+  | "reviewHint"
+  | "oauthCancelled"
+  | "oauthUnauthorizedHelp"
+  | "fieldTitle"
+  | "fieldDescription"
+  | "onePerLine"
+  | "objectionResponse";
 
 export const COPY: Record<AppLocale, Record<CopyKey, string>> = {
   en: {
@@ -82,7 +104,7 @@ export const COPY: Record<AppLocale, Record<CopyKey, string>> = {
     eyebrow: "SHOPIFY PRODUCT OPTIMIZER",
     headline: "Optimize Shopify products with AI.",
     subhead:
-      "Subscribe, connect your store, import products, review AI title, description, SEO and tags, then save to Shopify.",
+      "Subscribe, connect your store, import products, review AI title, benefits, SEO and tags, then save to Shopify.",
     subscribe: "Subscribe",
     manage: "Manage Subscription",
     checking: "Checking...",
@@ -104,7 +126,7 @@ export const COPY: Record<AppLocale, Record<CopyKey, string>> = {
     uiLanguage: "Interface",
     outputLanguage: "Product copy",
     emptyProducts: "No products imported yet.",
-    emptyReview: "Optimize a product to review title, description, SEO, tags, and conversion copy.",
+    emptyReview: "Optimize a product to review title, description, benefits, SEO, tags, and conversion copy.",
     quotaError: "You have used all 1000 AI optimizations for this billing period.",
     paymentError: "An eligible $29.99/month subscription is required.",
     shopifyError: "Reconnect Shopify before importing, optimizing, or saving.",
@@ -157,6 +179,31 @@ export const COPY: Record<AppLocale, Record<CopyKey, string>> = {
       "Shopify store disconnected. Connect a new .myshopify.com domain. Your Stripe subscription stays on this session.",
     alreadyLinkedInstalled:
       "This Virello session is already linked to a connected Shopify store. Use Change Store to disconnect it first.",
+    benefitBullets: "Customer-benefit bullets",
+    targetCustomer: "Target customer",
+    purchaseMotivation: "Purchase motivation",
+    strongestFeatures: "Features as customer benefits",
+    weaknesses: "Weaknesses and gaps",
+    missingInformation: "Missing product information",
+    objections: "Customer objections",
+    conversionOpportunities: "Conversion opportunities",
+    keywords: "Keywords",
+    callToAction: "Call to action",
+    warnings: "Warnings",
+    seoTitle: "SEO title",
+    seoDescription: "SEO meta description",
+    tagsLabel: "Shopify tags",
+    conversionCopy: "Conversion summary",
+    reviewHint:
+      "Edit every field. Nothing is published until you approve and click Save to Shopify.",
+    oauthCancelled:
+      "Shopify authorization was cancelled or did not complete. The store is still disconnected.",
+    oauthUnauthorizedHelp:
+      "Shopify rejected the install (Unauthorized Access). In Shopify Dev Dashboard → Apps → this Virello app → Versions → Create a version, set Use legacy install flow to True. App URL: https://virello-ai-optimizer.vercel.app. Allowed redirection URL(s): https://virello-ai-optimizer.vercel.app/api/auth/shopify/callback. Then click Release. Install while logged into gfd1cp-1y.myshopify.com as staff who can install apps.",
+    fieldTitle: "Product title",
+    fieldDescription: "Product description",
+    onePerLine: "One item per line",
+    objectionResponse: "Honest response",
   },
   fil: {
     brandSmall: "VIRELLO AI",
@@ -164,7 +211,7 @@ export const COPY: Record<AppLocale, Record<CopyKey, string>> = {
     eyebrow: "SHOPIFY PRODUCT OPTIMIZER",
     headline: "I-optimize ang Shopify products gamit ang AI.",
     subhead:
-      "Mag-subscribe, ikonekta ang store, mag-import ng products, i-review ang AI title, description, SEO at tags, tapos i-save sa Shopify.",
+      "Mag-subscribe, ikonekta ang store, mag-import ng products, i-review ang AI title, benefits, SEO at tags, tapos i-save sa Shopify.",
     subscribe: "Mag-subscribe",
     manage: "I-manage ang Subscription",
     checking: "Tinitingnan...",
@@ -186,7 +233,7 @@ export const COPY: Record<AppLocale, Record<CopyKey, string>> = {
     uiLanguage: "Interface",
     outputLanguage: "Product copy",
     emptyProducts: "Wala pang na-import na products.",
-    emptyReview: "Mag-optimize muna ng product para ma-review ang title, description, SEO, tags, at conversion copy.",
+    emptyReview: "Mag-optimize muna ng product para ma-review ang title, description, benefits, SEO, tags, at conversion copy.",
     quotaError: "Naubos na ang 1000 AI optimizations para sa billing period na ito.",
     paymentError: "Kailangan ng $29.99/month na subscription.",
     shopifyError: "I-reconnect ang Shopify bago mag-import, mag-optimize, o mag-save.",
@@ -239,6 +286,31 @@ export const COPY: Record<AppLocale, Record<CopyKey, string>> = {
       "Na-disconnect ang Shopify store. Ikonekta ang bagong .myshopify.com domain. Mananatili ang Stripe subscription sa session na ito.",
     alreadyLinkedInstalled:
       "Naka-link na ang Virello session na ito sa ibang naka-connect na Shopify store. Gamitin muna ang Palitan ang store.",
+    benefitBullets: "Mga customer-benefit bullet",
+    targetCustomer: "Target customer",
+    purchaseMotivation: "Dahilan ng pagbili",
+    strongestFeatures: "Mga feature bilang customer benefit",
+    weaknesses: "Mga kahinaan at kulang",
+    missingInformation: "Kulang na product information",
+    objections: "Mga objection ng customer",
+    conversionOpportunities: "Mga conversion opportunity",
+    keywords: "Mga keyword",
+    callToAction: "Call to action",
+    warnings: "Mga babala",
+    seoTitle: "SEO title",
+    seoDescription: "SEO meta description",
+    tagsLabel: "Mga Shopify tag",
+    conversionCopy: "Conversion summary",
+    reviewHint:
+      "I-edit ang bawat field. Walang nase-save sa Shopify hangga't hindi ka nag-approve at nag-click ng Save to Shopify.",
+    oauthCancelled:
+      "Nakansela o hindi natapos ang Shopify authorization. Hindi pa nakakonekta ang store.",
+    oauthUnauthorizedHelp:
+      "Tinanggihan ng Shopify ang install (Unauthorized Access). Sa Shopify Dev Dashboard → Apps → Virello app → Versions → Create a version, i-set ang Use legacy install flow sa True. App URL: https://virello-ai-optimizer.vercel.app. Allowed redirection URL(s): https://virello-ai-optimizer.vercel.app/api/auth/shopify/callback. I-click ang Release. Mag-install habang naka-login sa gfd1cp-1y.myshopify.com bilang staff na pwedeng mag-install ng app.",
+    fieldTitle: "Product title",
+    fieldDescription: "Product description",
+    onePerLine: "Isang item bawat line",
+    objectionResponse: "Tapat na sagot",
   },
 };
 

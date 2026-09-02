@@ -97,6 +97,26 @@ AI, product import, and save-to-Shopify all use this gate.
 
 Subscribe → Manage Subscription after payment (survives refresh via `virello_sid`) → Connect Shopify (embedded Admin or standalone) → Import → Optimize → Review → Save to Shopify.
 
+## Shopify OAuth (production)
+
+Standalone Connect uses Shopify’s authorization-code grant:
+
+`https://{shop}.myshopify.com/admin/oauth/authorize`
+
+Vercel Production already has `SHOPIFY_API_KEY` matching Client ID `99a9fda60d48cb24828f243360fffc40`. A Vercel deploy does **not** update Shopify.
+
+If Shopify shows **Unauthorized Access**, enable legacy install on the live app version:
+
+1. Open [https://dev.shopify.com](https://dev.shopify.com) → **Apps** → the Virello app whose **Client ID** is `99a9fda60d48cb24828f243360fffc40`.
+2. **Versions** → **Create a version**.
+3. Set **Use legacy install flow** to **True**.
+4. **App URL:** `https://virello-ai-optimizer.vercel.app`
+5. **Allowed redirection URL(s):** `https://virello-ai-optimizer.vercel.app/api/auth/shopify/callback`
+6. Scopes: `read_products`, `write_products`.
+7. Click **Release**.
+8. Confirm **Settings → Client secret** is the secret stored as Vercel Production `SHOPIFY_API_SECRET` for that same Client ID (do not paste secrets into git or chat).
+9. **Distribution** / **Test on development store** must include `gfd1cp-1y.myshopify.com`. Install while logged into that store as staff who can install apps.
+
 ## Deploy
 
 Next.js on Vercel (`vercel.json` framework only; no `outputDirectory`).

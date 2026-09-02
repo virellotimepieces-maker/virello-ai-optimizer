@@ -220,6 +220,8 @@ describe("Phase 5 import, save, and access", () => {
     expect(page.products).toHaveLength(1);
     expect(page.pageInfo.endCursor).toBe("cursor-2");
     expect(page.products[0].title).toBe("Gold watch");
+    expect(page.products[0].handle).toBe("");
+    expect(page.products[0].variants[0]).toContain("29.99");
   });
 
   it("rejects unreviewed saves and requires confirmation", () => {
@@ -470,6 +472,19 @@ describe("Phase 5 OAuth callback errors", () => {
     );
     const location = response.headers.get("location") || "";
     expect(location).toMatch(/signature(\+|%20)is(\+|%20)invalid/i);
+  });
+
+  it("keeps the shop disconnected when Shopify sends no callback HMAC", async () => {
+    const { GET } = await import("../app/api/auth/shopify/callback/route");
+    const response = await GET(
+      new NextRequest(
+        "https://app.virello.example/api/auth/shopify/callback?shop=gfd1cp-1y.myshopify.com&error=access_denied"
+      )
+    );
+    const location = response.headers.get("location") || "";
+    expect(location).toContain("/connect");
+    expect(location).toMatch(/cancelled|did(\+|%20)not(\+|%20)complete/i);
+    expect(location).not.toMatch(/connected=1/);
   });
 
   it("forwards the legacy callback path with Shopify's raw query string", async () => {

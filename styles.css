@@ -1477,8 +1477,36 @@ textarea {
   color: #5b616b;
 }
 
-.review-card {
-  margin-top: 20px;
+.review-input {
+  width: 100%;
+  margin: 6px 0 12px;
+  padding: 10px 12px;
+  min-height: 44px;
+  border: 1px solid #d6d8de;
+  border-radius: 10px;
+  font-size: 16px;
+  resize: vertical;
+}
+
+.review-input.tall {
+  min-height: 96px;
+}
+
+.warning-list {
+  margin: 0 0 16px;
+  padding: 12px 14px;
+  border: 1px solid #f1d0a8;
+  border-radius: 10px;
+  background: #fff8ee;
+  color: #7a4b12;
+}
+
+.warning-list li + li {
+  margin-top: 6px;
+}
+
+.insight-block {
+  margin-bottom: 14px;
 }
 
 @media (max-width: 800px) {

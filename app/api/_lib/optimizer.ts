@@ -1,5 +1,7 @@
 import { parseAppLocale, type AppLocale } from "./locales";
 
+export { buildShopifyDescriptionHtml } from "./listing-html";
+
 export type OptimizerProduct = {
   id?: string;
   title: string;
@@ -8,6 +10,14 @@ export type OptimizerProduct = {
   vendor?: string;
   tags?: string[];
   price?: string;
+  handle?: string;
+  options?: string[];
+  variants?: string[];
+};
+
+export type ObjectionResponse = {
+  objection: string;
+  response: string;
 };
 
 export type OptimizationResult = {
@@ -15,15 +25,22 @@ export type OptimizationResult = {
     targetCustomer: string;
     purchaseMotivation: string;
     strongestFeatures: string[];
+    benefitBullets: string[];
+    weaknesses: string[];
     missingInformation: string[];
-    conversionCopy: string;
+    objections: ObjectionResponse[];
+    conversionOpportunities: string[];
+    warnings: string[];
   };
   optimization: {
     title: string;
     description: string;
+    benefitBullets: string[];
     seoTitle: string;
     metaDescription: string;
     tags: string[];
+    keywords: string[];
+    callToAction: string;
     conversionCopy: string;
   };
   reasoning: string;
@@ -54,8 +71,39 @@ function cleanText(value: unknown): string {
 }
 
 function cleanArray(value: unknown): string[] {
+  if (typeof value === "string") {
+    return value
+      .split(/\n|,/)
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
   if (!Array.isArray(value)) return [];
-  return value.filter((item): item is string => typeof item === "string").map((item) => item.trim()).filter(Boolean);
+  return value
+    .filter((item): item is string => typeof item === "string")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function cleanObjections(value: unknown): ObjectionResponse[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => {
+      if (typeof item === "string") {
+        const [objection, ...rest] = item.split(":");
+        return {
+          objection: cleanText(objection),
+          response: cleanText(rest.join(":")),
+        };
+      }
+      if (!item || typeof item !== "object") return { objection: "", response: "" };
+      const row = item as Record<string, unknown>;
+      return {
+        objection: cleanText(row.objection || row.concern),
+        response: cleanText(row.response || row.answer),
+      };
+    })
+    .filter((row) => row.objection && row.response)
+    .slice(0, 8);
 }
 
 export function sourceFactText(product: OptimizerProduct): string {
@@ -65,7 +113,10 @@ export function sourceFactText(product: OptimizerProduct): string {
     product.productType,
     product.vendor,
     product.price,
+    product.handle,
     ...(product.tags ?? []),
+    ...(product.options ?? []),
+    ...(product.variants ?? []),
   ]
     .filter(Boolean)
     .join(" \n ")
@@ -73,16 +124,20 @@ export function sourceFactText(product: OptimizerProduct): string {
 }
 
 const INVENTED_CLAIM =
-  /\b(certified|certification|warranty|guarantee|guaranteed|fda|iso\s*\d+|clinically|award[- ]winning|best[- ]seller|#1|star review|verified review)\b/i;
+  /\b(certified|certification|warranty|guarantee|guaranteed|fda|iso\s*\d+|clinically|award[- ]winning|best[- ]seller|#1|star review|verified review|doctor[- ]recommended|medical|clinically proven|money[- ]back|lifetime)\b/i;
+const URGENCY_CLAIM =
+  /\b(limited time|hurry|act now|while supplies last|only \d+ left|selling fast|in high demand|free shipping|ships today|arrives tomorrow|in stock|low stock|scarce|24[- ]hour)\b/i;
 const PRICE_CLAIM = /(?:php|usd|\$|€|₱)\s?\d[\d,]*(?:\.\d+)?/gi;
 
 export function inventedClaimsIn(source: string, generated: string): string[] {
   const issues: string[] = [];
   const sourceLower = source.toLowerCase();
   const generatedLower = generated.toLowerCase();
-  const claim = generatedLower.match(INVENTED_CLAIM);
-  if (claim && !sourceLower.includes(claim[0].toLowerCase())) {
-    issues.push(`Invented claim: ${claim[0]}`);
+  for (const pattern of [INVENTED_CLAIM, URGENCY_CLAIM]) {
+    const claim = generatedLower.match(pattern);
+    if (claim && !sourceLower.includes(claim[0].toLowerCase())) {
+      issues.push(`Invented claim: ${claim[0]}`);
+    }
   }
   const prices = generated.match(PRICE_CLAIM) || [];
   for (const price of prices) {
@@ -101,20 +156,42 @@ export function validateOptimizationResult(raw: unknown): OptimizationResult {
       ? (data.optimization as Record<string, unknown>)
       : {};
 
+  const missingInformation = cleanArray(analysis.missingInformation);
+  const benefitBullets = uniqueTexts([
+    ...cleanArray(optimization.benefitBullets),
+    ...cleanArray(analysis.benefitBullets),
+  ]).slice(0, 8);
+  const warnings = uniqueTexts([
+    ...cleanArray(analysis.warnings),
+    ...missingInformation.map(
+      (item) => `Missing product information: ${item}`
+    ),
+  ]).slice(0, 12);
+
+  const seoTitle = cleanText(optimization.seoTitle).slice(0, 70);
+  const metaDescription = cleanText(optimization.metaDescription).slice(0, 160);
+
   const result: OptimizationResult = {
     analysis: {
       targetCustomer: cleanText(analysis.targetCustomer),
       purchaseMotivation: cleanText(analysis.purchaseMotivation),
-      strongestFeatures: cleanArray(analysis.strongestFeatures),
-      missingInformation: cleanArray(analysis.missingInformation),
-      conversionCopy: cleanText(analysis.conversionCopy),
+      strongestFeatures: cleanArray(analysis.strongestFeatures).slice(0, 8),
+      benefitBullets,
+      weaknesses: cleanArray(analysis.weaknesses).slice(0, 8),
+      missingInformation,
+      objections: cleanObjections(analysis.objections),
+      conversionOpportunities: cleanArray(analysis.conversionOpportunities).slice(0, 8),
+      warnings,
     },
     optimization: {
       title: cleanText(optimization.title).slice(0, 120),
       description: cleanText(optimization.description),
-      seoTitle: cleanText(optimization.seoTitle).slice(0, 70),
-      metaDescription: cleanText(optimization.metaDescription).slice(0, 160),
-      tags: cleanArray(optimization.tags).slice(0, 20),
+      benefitBullets,
+      seoTitle,
+      metaDescription,
+      tags: uniqueTexts(cleanArray(optimization.tags)).slice(0, 20),
+      keywords: uniqueTexts(cleanArray(optimization.keywords)).slice(0, 20),
+      callToAction: cleanText(optimization.callToAction),
       conversionCopy: cleanText(optimization.conversionCopy),
     },
     reasoning: cleanText(data.reasoning),
@@ -124,6 +201,18 @@ export function validateOptimizationResult(raw: unknown): OptimizationResult {
     throw new OptimizerError("AI result is missing a product title or description.", 502);
   }
   return result;
+}
+
+function uniqueTexts(values: string[]): string[] {
+  const seen = new Set<string>();
+  const unique: string[] = [];
+  for (const value of values) {
+    const key = value.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push(value);
+  }
+  return unique;
 }
 
 export function assertGroundedResult(
@@ -137,8 +226,16 @@ export function assertGroundedResult(
     result.optimization.seoTitle,
     result.optimization.metaDescription,
     result.optimization.conversionCopy,
+    result.optimization.callToAction,
     result.optimization.tags.join(" "),
+    result.optimization.keywords.join(" "),
+    result.optimization.benefitBullets.join(" "),
     result.analysis.strongestFeatures.join(" "),
+    result.analysis.targetCustomer,
+    result.analysis.purchaseMotivation,
+    result.analysis.weaknesses.join(" "),
+    result.analysis.conversionOpportunities.join(" "),
+    result.analysis.objections.map((row) => `${row.objection} ${row.response}`).join(" "),
   ].join(" \n ");
   const issues = inventedClaimsIn(source, generated);
   if (issues.length) {
@@ -160,11 +257,36 @@ export function buildOptimizerMessages(
   outputLocale: AppLocale
 ): { system: string; user: string } {
   return {
-    system: `You are Virello AI Optimizer, a Shopify product listing optimizer.
-Optimize only the supplied product. Never invent features, claims, specifications, prices, reviews, certifications, warranties, or guarantees.
-If a fact is missing, list it under missingInformation instead of inventing it.
+    system: `You are Virello AI Optimizer, a conversion-focused Shopify listing strategist.
+Optimize only the supplied Shopify product. Use only facts present in the product title, description, type, vendor, tags, price, options, and variants.
+Never invent materials, specifications, discounts, prices, reviews, guarantees, shipping times, stock scarcity, certifications, medical claims, or fake urgency.
+If a shopper-facing claim is not in the source, omit it and list it under missingInformation and warnings.
+Translate stated features into customer benefits without adding new specs.
+Preserve vendor, brand names, and important variant facts.
+Avoid generic filler and repetition. Make copy specific to this product and the likely buyer.
+Write short mobile-friendly paragraphs and scannable benefit bullets.
+SEO title: aim 50-60 characters, never over 70. SEO meta description: aim 140-160 characters, never over 160.
 ${languageInstruction(outputLocale)}
-Return JSON only with keys analysis (targetCustomer, purchaseMotivation, strongestFeatures, missingInformation, conversionCopy), optimization (title, description, seoTitle, metaDescription, tags, conversionCopy), and reasoning.`,
+Return JSON only with:
+analysis.targetCustomer,
+analysis.purchaseMotivation,
+analysis.strongestFeatures (feature → customer benefit, only from stated facts),
+analysis.benefitBullets,
+analysis.weaknesses,
+analysis.missingInformation,
+analysis.objections (objects with objection and an honest response that does not invent facts),
+analysis.conversionOpportunities,
+analysis.warnings,
+optimization.title (benefit-driven, not keyword stuffing),
+optimization.description (persuasive, short paragraphs),
+optimization.benefitBullets,
+optimization.seoTitle,
+optimization.metaDescription,
+optimization.tags,
+optimization.keywords,
+optimization.callToAction (product-specific, no fake urgency),
+optimization.conversionCopy,
+reasoning.`,
     user: JSON.stringify(product),
   };
 }

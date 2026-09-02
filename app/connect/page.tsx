@@ -271,6 +271,9 @@ export default function ConnectPage() {
       </header>
 
       {error && <div className="error-bar">{error}</div>}
+      {error && /unauthorized access/i.test(error) && (
+        <div className="error-bar error-shopify">{copy.oauthUnauthorizedHelp}</div>
+      )}
 
       <section className="hero">
         <div className="hero-inner">

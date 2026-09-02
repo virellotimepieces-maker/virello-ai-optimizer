@@ -48,6 +48,22 @@ export async function GET(request: NextRequest) {
       return redirectError(returnOrigin, "Shopify credentials are not configured.");
     }
 
+    const suppliedHmac = params.get("hmac") || "";
+    if (!suppliedHmac) {
+      console.error("SHOPIFY_OAUTH_CALLBACK_REJECTED", {
+        message: "Shopify authorization was cancelled or did not complete.",
+        paramKeys: [...params.keys()].sort(),
+        hasCode: Boolean(code),
+        hasShop: Boolean(shop),
+        hasState: Boolean(state),
+        hasError: Boolean(oauthError),
+      });
+      return redirectError(
+        returnOrigin,
+        "Shopify authorization was cancelled or did not complete. The store is still disconnected."
+      );
+    }
+
     const verifiedSecret = secrets.find((secret) =>
       verifyShopifyCallbackHmac(request, secret)
     );

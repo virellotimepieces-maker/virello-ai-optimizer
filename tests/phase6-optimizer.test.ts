@@ -53,17 +53,20 @@ describe("Phase 6 language and copy", () => {
 });
 
 describe("Phase 6 optimizer grounding", () => {
-  it("rejects invented warranties, certifications, and prices", () => {
+  it("rejects invented warranties, certifications, prices, and fake urgency", () => {
     const source = "gold watch stainless steel";
     expect(inventedClaimsIn(source, "lifetime warranty included")).toHaveLength(1);
     expect(inventedClaimsIn(source, "FDA certified")).toHaveLength(1);
     expect(inventedClaimsIn(source, "Now only $199")).toHaveLength(1);
+    expect(inventedClaimsIn(source, "Hurry, limited time offer")).toHaveLength(1);
     expect(inventedClaimsIn("price 29.99 gold watch", "Gold watch for 29.99")).toHaveLength(0);
   });
 
   it("validates structured output", () => {
     const result = validateOptimizationResult(validJson);
     expect(result.optimization.seoTitle.length).toBeLessThanOrEqual(70);
+    expect(result.optimization.metaDescription.length).toBeLessThanOrEqual(160);
+    expect(result.analysis.warnings.some((warning) => /Water resistance/i.test(warning))).toBe(true);
     expect(() =>
       assertGroundedResult(product, {
         ...result,

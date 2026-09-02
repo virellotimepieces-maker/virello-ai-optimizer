@@ -5,6 +5,7 @@ import { shopifyFetch } from "./shopify-fetch";
 import { COPY } from "./i18n";
 import type { AppLocale } from "./api/_lib/locales";
 import { normalizeShop, isShopifyAdminAuthorizeUrl, resolveStoreBindingDisplay } from "./api/_lib/shop-domain";
+import { buildShopifyDescriptionHtml } from "./api/_lib/listing-html";
 
 type Product = {
   id: string;
@@ -17,26 +18,54 @@ type Product = {
   tags?: string[];
   seoTitle?: string;
   seoDescription?: string;
+  handle?: string;
+  options?: string[];
+  variants?: string[];
 };
 
 type Optimization = {
   title: string;
   description: string;
+  benefitBullets: string[];
   seoTitle: string;
   metaDescription: string;
   tags: string[];
+  keywords: string[];
+  callToAction: string;
   conversionCopy: string;
+};
+
+type Analysis = {
+  targetCustomer: string;
+  purchaseMotivation: string;
+  strongestFeatures: string[];
+  weaknesses: string[];
+  missingInformation: string[];
+  objections: { objection: string; response: string }[];
+  conversionOpportunities: string[];
+  warnings: string[];
 };
 
 type AnalyzePayload = {
   success?: boolean;
   error?: string;
   result?: {
-    analysis?: { conversionCopy?: string; missingInformation?: string[] };
+    analysis?: Analysis;
     optimization?: Optimization;
   };
   usage?: { used: number; limit: number; remaining: number };
 };
+
+function linesOf(values: string[]): string {
+  return values.join("\n");
+}
+
+function fromLines(value: string): string[] {
+  return value
+    .split("\n")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
 
 function normalizeShopInput(value: string) {
   return normalizeShop(value);
@@ -63,6 +92,7 @@ export default function Home() {
   const [hasNextPage, setHasNextPage] = useState(false);
   const [selectedId, setSelectedId] = useState("");
   const [optimization, setOptimization] = useState<Optimization | null>(null);
+  const [analysis, setAnalysis] = useState<Analysis | null>(null);
   const [missing, setMissing] = useState<string[]>([]);
   const [approved, setApproved] = useState(false);
 
@@ -330,6 +360,9 @@ export default function Home() {
             vendor: selected.vendor,
             tags: selected.tags,
             price: selected.price,
+            handle: selected.handle,
+            options: selected.options,
+            variants: selected.variants,
           },
         }),
       });
@@ -350,8 +383,28 @@ export default function Home() {
         showError("ai", data?.error || copy.aiError);
         return;
       }
-      setOptimization(data.result.optimization);
-      setMissing(data.result.analysis?.missingInformation || []);
+      setOptimization({
+        title: data.result.optimization.title || "",
+        description: data.result.optimization.description || "",
+        benefitBullets: data.result.optimization.benefitBullets || [],
+        seoTitle: data.result.optimization.seoTitle || "",
+        metaDescription: data.result.optimization.metaDescription || "",
+        tags: data.result.optimization.tags || [],
+        keywords: data.result.optimization.keywords || [],
+        callToAction: data.result.optimization.callToAction || "",
+        conversionCopy: data.result.optimization.conversionCopy || "",
+      });
+      setAnalysis({
+        targetCustomer: data.result.analysis?.targetCustomer || "",
+        purchaseMotivation: data.result.analysis?.purchaseMotivation || "",
+        strongestFeatures: data.result.analysis?.strongestFeatures || [],
+        weaknesses: data.result.analysis?.weaknesses || [],
+        missingInformation: data.result.analysis?.missingInformation || [],
+        objections: data.result.analysis?.objections || [],
+        conversionOpportunities: data.result.analysis?.conversionOpportunities || [],
+        warnings: data.result.analysis?.warnings || [],
+      });
+      setMissing(data.result.analysis?.missingInformation || data.result.analysis?.warnings || []);
       if (data.usage) setUsage(data.usage);
       setMessage(copy.reviewChanges);
     } catch {
@@ -379,8 +432,12 @@ export default function Home() {
         body: JSON.stringify({
           productId: selected.id,
           title: optimization.title,
-          description: optimization.description,
-          tags: optimization.tags,
+          description: buildShopifyDescriptionHtml({
+            description: optimization.description,
+            benefitBullets: optimization.benefitBullets,
+            callToAction: optimization.callToAction,
+          }),
+          tags: [...optimization.tags, ...optimization.keywords.filter((keyword) => !optimization.tags.includes(keyword))],
           seoTitle: optimization.seoTitle,
           seoDescription: optimization.metaDescription,
           confirmed: true,
@@ -440,6 +497,9 @@ export default function Home() {
         <div className={`error-bar error-${errorKind || "generic"}`}>
           {errorKind === "quota" ? copy.quotaError : error}
         </div>
+      )}
+      {error && /unauthorized access/i.test(error) && (
+        <div className="error-bar error-shopify">{copy.oauthUnauthorizedHelp}</div>
       )}
       {canonicalUrl && (
         <div className="error-bar">
@@ -522,6 +582,7 @@ export default function Home() {
                 onChange={(event) => {
                   setSelectedId(event.target.value);
                   setOptimization(null);
+                  setAnalysis(null);
                   setApproved(false);
                 }}
               >
@@ -541,29 +602,183 @@ export default function Home() {
 
         <article className="content-card review-card">
           <h2>{copy.reviewChanges}</h2>
-          {!selected || !optimization ? (
+          {!selected || !optimization || !analysis ? (
             <p className="empty-copy">{copy.emptyReview}</p>
           ) : (
             <>
+              <p className="empty-copy">{copy.reviewHint}</p>
+              {(analysis.warnings.length > 0 || missing.length > 0) && (
+                <ul className="warning-list">
+                  {(analysis.warnings.length ? analysis.warnings : missing).map((warning) => (
+                    <li key={warning}>{warning}</li>
+                  ))}
+                </ul>
+              )}
               <div className="review-grid">
                 <section>
                   <h3>{copy.original}</h3>
                   <p><strong>{selected.title}</strong></p>
                   <p>{selected.description || "—"}</p>
+                  {selected.vendor ? <p>{selected.vendor}</p> : null}
+                  {selected.variants?.length ? <p>{selected.variants.join(" · ")}</p> : null}
                 </section>
                 <section>
                   <h3>{copy.proposed}</h3>
-                  <p><strong>{optimization.title}</strong></p>
-                  <p>{optimization.description}</p>
-                  <p>{optimization.seoTitle}</p>
-                  <p>{optimization.metaDescription}</p>
-                  <p>{optimization.tags.join(", ")}</p>
-                  <p>{optimization.conversionCopy}</p>
+                  <label className="input-label" htmlFor="opt-title">{copy.fieldTitle}</label>
+                  <input
+                    id="opt-title"
+                    className="review-input"
+                    value={optimization.title}
+                    onChange={(event) => setOptimization({ ...optimization, title: event.target.value })}
+                  />
+                  <label className="input-label" htmlFor="opt-description">{copy.fieldDescription}</label>
+                  <textarea
+                    id="opt-description"
+                    className="review-input tall"
+                    value={optimization.description}
+                    onChange={(event) => setOptimization({ ...optimization, description: event.target.value })}
+                  />
+                  <label className="input-label" htmlFor="opt-bullets">{copy.benefitBullets}</label>
+                  <textarea
+                    id="opt-bullets"
+                    className="review-input tall"
+                    value={linesOf(optimization.benefitBullets)}
+                    placeholder={copy.onePerLine}
+                    onChange={(event) =>
+                      setOptimization({ ...optimization, benefitBullets: fromLines(event.target.value) })
+                    }
+                  />
+                  <label className="input-label" htmlFor="opt-cta">{copy.callToAction}</label>
+                  <input
+                    id="opt-cta"
+                    className="review-input"
+                    value={optimization.callToAction}
+                    onChange={(event) => setOptimization({ ...optimization, callToAction: event.target.value })}
+                  />
+                  <label className="input-label" htmlFor="opt-seo-title">
+                    {copy.seoTitle} ({optimization.seoTitle.length}/70)
+                  </label>
+                  <input
+                    id="opt-seo-title"
+                    className="review-input"
+                    maxLength={70}
+                    value={optimization.seoTitle}
+                    onChange={(event) => setOptimization({ ...optimization, seoTitle: event.target.value })}
+                  />
+                  <label className="input-label" htmlFor="opt-seo-description">
+                    {copy.seoDescription} ({optimization.metaDescription.length}/160)
+                  </label>
+                  <textarea
+                    id="opt-seo-description"
+                    className="review-input"
+                    maxLength={160}
+                    value={optimization.metaDescription}
+                    onChange={(event) => setOptimization({ ...optimization, metaDescription: event.target.value })}
+                  />
+                  <label className="input-label" htmlFor="opt-tags">{copy.tagsLabel}</label>
+                  <textarea
+                    id="opt-tags"
+                    className="review-input"
+                    value={linesOf(optimization.tags)}
+                    placeholder={copy.onePerLine}
+                    onChange={(event) => setOptimization({ ...optimization, tags: fromLines(event.target.value) })}
+                  />
+                  <label className="input-label" htmlFor="opt-keywords">{copy.keywords}</label>
+                  <textarea
+                    id="opt-keywords"
+                    className="review-input"
+                    value={linesOf(optimization.keywords)}
+                    placeholder={copy.onePerLine}
+                    onChange={(event) => setOptimization({ ...optimization, keywords: fromLines(event.target.value) })}
+                  />
+                  <label className="input-label" htmlFor="opt-conversion">{copy.conversionCopy}</label>
+                  <textarea
+                    id="opt-conversion"
+                    className="review-input"
+                    value={optimization.conversionCopy}
+                    onChange={(event) => setOptimization({ ...optimization, conversionCopy: event.target.value })}
+                  />
                 </section>
               </div>
-              {missing.length > 0 && (
-                <p className="empty-copy">{missing.join(" · ")}</p>
-              )}
+              <div className="review-grid">
+                <section className="insight-block">
+                  <label className="input-label" htmlFor="an-customer">{copy.targetCustomer}</label>
+                  <textarea
+                    id="an-customer"
+                    className="review-input"
+                    value={analysis.targetCustomer}
+                    onChange={(event) => setAnalysis({ ...analysis, targetCustomer: event.target.value })}
+                  />
+                  <label className="input-label" htmlFor="an-motivation">{copy.purchaseMotivation}</label>
+                  <textarea
+                    id="an-motivation"
+                    className="review-input"
+                    value={analysis.purchaseMotivation}
+                    onChange={(event) => setAnalysis({ ...analysis, purchaseMotivation: event.target.value })}
+                  />
+                  <label className="input-label" htmlFor="an-features">{copy.strongestFeatures}</label>
+                  <textarea
+                    id="an-features"
+                    className="review-input tall"
+                    value={linesOf(analysis.strongestFeatures)}
+                    placeholder={copy.onePerLine}
+                    onChange={(event) => setAnalysis({ ...analysis, strongestFeatures: fromLines(event.target.value) })}
+                  />
+                  <label className="input-label" htmlFor="an-weak">{copy.weaknesses}</label>
+                  <textarea
+                    id="an-weak"
+                    className="review-input"
+                    value={linesOf(analysis.weaknesses)}
+                    placeholder={copy.onePerLine}
+                    onChange={(event) => setAnalysis({ ...analysis, weaknesses: fromLines(event.target.value) })}
+                  />
+                </section>
+                <section className="insight-block">
+                  <label className="input-label" htmlFor="an-missing">{copy.missingInformation}</label>
+                  <textarea
+                    id="an-missing"
+                    className="review-input"
+                    value={linesOf(analysis.missingInformation)}
+                    placeholder={copy.onePerLine}
+                    onChange={(event) => setAnalysis({ ...analysis, missingInformation: fromLines(event.target.value) })}
+                  />
+                  <label className="input-label" htmlFor="an-opps">{copy.conversionOpportunities}</label>
+                  <textarea
+                    id="an-opps"
+                    className="review-input"
+                    value={linesOf(analysis.conversionOpportunities)}
+                    placeholder={copy.onePerLine}
+                    onChange={(event) =>
+                      setAnalysis({ ...analysis, conversionOpportunities: fromLines(event.target.value) })
+                    }
+                  />
+                  <label className="input-label">{copy.objections}</label>
+                  {analysis.objections.map((row, index) => (
+                    <div key={`${row.objection}-${index}`}>
+                      <input
+                        className="review-input"
+                        value={row.objection}
+                        aria-label={copy.objections}
+                        onChange={(event) => {
+                          const objections = analysis.objections.slice();
+                          objections[index] = { ...row, objection: event.target.value };
+                          setAnalysis({ ...analysis, objections });
+                        }}
+                      />
+                      <textarea
+                        className="review-input"
+                        value={row.response}
+                        aria-label={copy.objectionResponse}
+                        onChange={(event) => {
+                          const objections = analysis.objections.slice();
+                          objections[index] = { ...row, response: event.target.value };
+                          setAnalysis({ ...analysis, objections });
+                        }}
+                      />
+                    </div>
+                  ))}
+                </section>
+              </div>
               <label className="approve-box">
                 <input
                   type="checkbox"
