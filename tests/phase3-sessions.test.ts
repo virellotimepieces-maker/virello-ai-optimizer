@@ -149,6 +149,36 @@ describe("Phase 3 Shopify security module", () => {
     expect(verifyShopifyCallbackHmac(request, "other-secret-value-xxxx")).toBe(false);
   });
 
+  it("verifies HMAC from Vercel JSON x-invoke-query used by Next.js", () => {
+    const secret = "test-shopify-oauth-secret";
+    const host = Buffer.from("gfd1cp-1y.myshopify.com/admin").toString("base64");
+    const query = {
+      code: "0907a61c0c8d55e99db179b68161bc00",
+      host,
+      shop: "gfd1cp-1y.myshopify.com",
+      state: "0.6784241404160823",
+      timestamp: "1337178173",
+    };
+    const processed = new URLSearchParams();
+    Object.keys(query)
+      .sort((left, right) => left.localeCompare(right))
+      .forEach((key) => processed.append(key, query[key as keyof typeof query]));
+    const message = processed.toString().replace(/\+/g, "%20");
+    const hmac = createHmac("sha256", secret).update(message).digest("hex");
+    const request = new NextRequest(
+      "https://virello-ai-optimizer.vercel.app/api/auth/shopify/callback",
+      {
+        headers: {
+          "x-invoke-query": encodeURIComponent(
+            JSON.stringify({ ...query, hmac })
+          ),
+        },
+      }
+    );
+    expect(host).toMatch(/=/);
+    expect(verifyShopifyCallbackHmac(request, secret)).toBe(true);
+  });
+
   it("verifies HMAC from Vercel x-invoke-query and host base64 padding", () => {
     const secret = "test-shopify-oauth-secret";
     const host = Buffer.from("admin.shopify.com/store/x").toString("base64");

@@ -193,6 +193,25 @@ function sortedOAuthMessage(
     .join("&");
 }
 
+function shopifyApiJsAdminMessage(pairs: Array<[string, string]>): string {
+  const grouped = new Map<string, string[]>();
+  for (const [rawKey, rawValue] of pairs) {
+    if (isHmacOrSignature(rawKey)) continue;
+    const key = decodeQueryKeepPlus(rawKey);
+    const values = grouped.get(key) || [];
+    values.push(decodeQueryKeepPlus(rawValue));
+    grouped.set(key, values);
+  }
+  const processed = new URLSearchParams();
+  [...grouped.keys()]
+    .sort((left, right) => left.localeCompare(right))
+    .forEach((key) => {
+      const values = grouped.get(key) || [];
+      processed.append(key, values.length > 1 ? values.join(",") : values[0] || "");
+    });
+  return processed.toString().replace(/\+/g, "%20");
+}
+
 function addPairSetMessages(
   messages: Set<string>,
   pairs: Array<[string, string]>
@@ -208,6 +227,8 @@ function addPairSetMessages(
     messages.add(sortedOAuthMessage(decoded, "none"));
     messages.add(sortedOAuthMessage(decoded, "values-and-keys"));
     messages.add(sortedOAuthMessage(decoded, "keys-eq-only"));
+    const apiJs = shopifyApiJsAdminMessage(decoded);
+    if (apiJs) messages.add(apiJs);
   }
   const raw = pairs
     .filter(([key]) => !isHmacOrSignature(key))
@@ -215,6 +236,34 @@ function addPairSetMessages(
     .sort()
     .join("&");
   if (raw) messages.add(raw);
+}
+
+function pairsFromInvokeQuery(header: string | null): Array<[string, string]> {
+  if (!header) return [];
+  const candidates = [header.trim()];
+  try {
+    candidates.push(decodeURIComponent(header).trim());
+  } catch {
+    /* keep the raw header */
+  }
+  for (const candidate of candidates) {
+    if (!candidate.startsWith("{")) continue;
+    try {
+      const parsed = JSON.parse(candidate) as Record<string, unknown>;
+      const pairs: Array<[string, string]> = [];
+      for (const [key, value] of Object.entries(parsed)) {
+        if (Array.isArray(value)) {
+          for (const item of value) pairs.push([key, String(item)]);
+        } else if (value != null) {
+          pairs.push([key, String(value)]);
+        }
+      }
+      if (pairs.length) return pairs;
+    } catch {
+      /* not JSON */
+    }
+  }
+  return [];
 }
 
 function callbackQueryStrings(request: NextRequest): string[] {
@@ -257,6 +306,7 @@ function callbackQueryStrings(request: NextRequest): string[] {
 export function shopifyCallbackHmacMessages(request: NextRequest): string[] {
   const messages = new Set<string>();
   addPairSetMessages(messages, [...request.nextUrl.searchParams.entries()]);
+  addPairSetMessages(messages, pairsFromInvokeQuery(request.headers.get("x-invoke-query")));
   for (const search of callbackQueryStrings(request)) {
     addPairSetMessages(messages, splitRawQuery(search));
   }
@@ -268,7 +318,16 @@ export function verifyShopifyCallbackHmac(
   secret: string
 ): boolean {
   if (!secret) return false;
-  let hmac = (request.nextUrl.searchParams.get("hmac") || "").toLowerCase();
+  let hmac = (request.nextUrl.searchParams.get("hmac") || "").trim().toLowerCase();
+  if (!/^[a-f0-9]{64}$/.test(hmac)) {
+    const invokeHmac = pairsFromInvokeQuery(request.headers.get("x-invoke-query")).find(
+      ([key]) => decodeQueryKeepPlus(key) === "hmac"
+    )?.[1];
+    const decodedInvoke = decodeQueryKeepPlus(invokeHmac || "").trim().toLowerCase();
+    if (/^[a-f0-9]{64}$/.test(decodedInvoke)) {
+      hmac = decodedInvoke;
+    }
+  }
   if (!/^[a-f0-9]{64}$/.test(hmac)) {
     for (const search of callbackQueryStrings(request)) {
       const found = splitRawQuery(search).find(
