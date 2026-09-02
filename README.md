@@ -1,16 +1,32 @@
 # Virello AI Optimizer
 
-Gawing tama ang laman ng AI mo.
+Gawing tama ang Shopify product listings mo.
 
-Virello is a content clinic for system prompts, knowledge files, FAQs, chatbot scripts, and Cursor rules. Paste what the AI uses today. Get a diagnosis and a rewritten spec it can actually follow.
+Virello is a subscription Shopify app. Merchants subscribe, connect a store, import products, and use AI to improve title, description, SEO, tags, and conversion copy. Changes are reviewed, then saved back to Shopify.
+
+This is not a prompt clinic, Custom GPT rewriter, or social-media dashboard.
 
 ## What it does
 
-1. **Diagnose** — names placeholders, mixed identity, unanswered FAQs, fake metrics, missing language policy, and missing refusal rules.
-2. **Discard** — removes unsourced numbers and features that are not this product.
-3. **Rewrite** — emits four paste-ready files: `SYSTEM_PROMPT.md`, `KNOWLEDGE.md`, `GUARDRAILS.md`, `FAQ.md`.
+1. Subscribe for **$29.99/month** through Stripe. After payment the app shows **Manage Subscription**, not Subscribe.
+2. Connect a Shopify store with OAuth and an encrypted offline access token.
+3. Import products from that store.
+4. Select a product and generate AI title, description, SEO, tags, and conversion copy.
+5. Review the result, then save approved fields back to Shopify.
+6. Enforce monthly AI usage in Neon PostgreSQL. Filipino and English UI stay available.
 
-The clinic runs in the browser. No API key. Nothing you paste is stored on a server.
+## Customer flow
+
+| Step | What happens |
+| --- | --- |
+| `/` | Dashboard: subscribe or manage billing, then connect Shopify |
+| Connect | Shopify OAuth (managed install / App Bridge) |
+| Import | Load products from the connected shop |
+| Optimize | AI draft for the selected product |
+| Review | Merchant edits or discards before anything is written |
+| Save | Approved fields update Shopify |
+
+There is no `/studio` and no prompt-rewrite sample. Do not paste Virello output into Custom GPT, chatbot, or Cursor rules — the product writes to Shopify after review.
 
 ## Run locally
 
@@ -19,36 +35,8 @@ npm install
 npm run dev
 ```
 
-Open [http://127.0.0.1:43217](http://127.0.0.1:43217).
-
-```bash
-npm run build
-npm start
-npm test
-```
-
-## Studio
-
-| Route | What it is |
-| --- | --- |
-| `/` | Home — what Virello is and how to fix AI contents |
-| `/studio` | Paste the current prompt or knowledge, flag what is going wrong, then diagnose and rewrite |
-| `/studio?sample=virello` | Loads a demo paste so you can see the clinic work |
-
-How to use `/studio`:
-
-1. Name the AI and state its real job.
-2. Paste the current prompt or knowledge.
-3. Check the problems you already see (wrong answers, empty FAQ, mixed identity).
-4. Run **Diagnose at i-rewrite**.
-5. Copy `SYSTEM_PROMPT.md` into the assistant. Put `KNOWLEDGE.md` in the knowledge file. Keep `GUARDRAILS.md` beside the prompt.
-
-Toggle **FIL / EN** in the header. The optimizer can reply in Filipino, English, or match the user.
+Required environment variables (set in `.env.local` / Vercel; do not commit secrets): Shopify API key and secret, Stripe secret key, price ID, webhook secret, Neon `DATABASE_URL`, AI API key, token encryption key, session secret, and `APP_URL`.
 
 ## Deploy on Vercel
 
-This is a standard Next.js app. Vercel detects the framework from `vercel.json`.
-
-1. Import the repo at [vercel.com/new](https://vercel.com/new), or use **Publish** in Cursor after Vercel is connected.
-2. Framework: Next.js. Build command: `npm run build`. No extra output directory.
-3. No environment variables are required. Later pushes to `main` update the same project.
+Standard Next.js. Configure production env vars before accepting subscribers. Stripe webhook URL: `https://<APP_URL>/api/stripe/webhook`. Shopify `application_url` and OAuth redirect must match `APP_URL`.
