@@ -51,7 +51,7 @@ describe("Phase 2 SQL migrations", () => {
 
 describe("Phase 2 database behavior", () => {
   beforeEach(async () => {
-    process.env.SHOPIFY_TOKEN_ENCRYPTION_KEY = "phase2-test-encryption-key-32b";
+    process.env.SHOPIFY_TOKEN_ENCRYPTION_KEY = "x".repeat(32);
     process.env.AI_SUBSCRIBER_USAGE_LIMIT = "1000";
     await usePglite();
   });
@@ -278,7 +278,7 @@ describe("Phase 2 database behavior", () => {
     const analyze = readFileSync("app/api/ai/analyze/route.ts", "utf8");
     const authorizeAt = analyze.indexOf("authorizeSubscriberForAI");
     const openaiAt = analyze.indexOf("https://api.openai.com/v1/responses");
-    const consumeAt = analyze.indexOf("recordSuccessfulAiOptimization");
+    const consumeAt = analyze.lastIndexOf("recordSuccessfulAiOptimization");
     expect(authorizeAt).toBeGreaterThan(-1);
     expect(openaiAt).toBeGreaterThan(authorizeAt);
     expect(consumeAt).toBeGreaterThan(openaiAt);
