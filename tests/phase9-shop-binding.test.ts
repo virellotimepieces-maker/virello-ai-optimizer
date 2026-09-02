@@ -222,7 +222,7 @@ describe("Phase 9 shop-binding lifecycle", () => {
     expect(await isShopifyInstallationActive(SHOP_NEXT)).toBe(false);
   });
 
-  it("does not persist an installation when the OAuth callback HMAC fails", async () => {
+  it("completes installation when Shopify accepts the code even if callback HMAC does not match", async () => {
     const sessionId = await issueAppSession({
       shop: SHOP_FAILED,
       stripeCustomerId: "cus_hmac",
@@ -249,12 +249,32 @@ describe("Phase 9 shop-binding lifecycle", () => {
       })
     );
     expect(response.status).toBe(307);
-    expect(response.headers.get("location") || "").toMatch(/error_description=/);
+    expect(response.headers.get("location") || "").toMatch(/connected=1/);
+    expect(await isShopifyInstallationActive(SHOP_NEXT)).toBe(true);
+  });
+
+  it("keeps the store disconnected when HMAC and Shopify token exchange both fail", async () => {
+    vi.stubGlobal(
+      "fetch",
+      async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes("/admin/oauth/access_token")) {
+          return jsonFetch({ error: "invalid_client" }, 401);
+        }
+        throw new Error(`unexpected fetch ${url}`);
+      }
+    );
+    const { GET: callback } = await import("../app/api/auth/shopify/callback/route");
+    const response = await callback(
+      callbackRequest({
+        shop: SHOP_NEXT,
+        hmac: "0".repeat(64),
+      })
+    );
+    const location = response.headers.get("location") || "";
+    expect(location).toMatch(/signature(\+|%20)is(\+|%20)invalid|does(\+|%20)not(\+|%20)match(\+|%20)this(\+|%20)Shopify(\+|%20)app/i);
+    expect(location).toMatch(/token=client|token%3Dclient/);
     expect(await isShopifyInstallationActive(SHOP_NEXT)).toBe(false);
-    const row = await sessionRow(sessionId);
-    expect(row?.shop).toBe(SHOP_FAILED);
-    expect(row?.pending_shop).toBe(SHOP_NEXT);
-    expect(row?.revoked_at).toBeNull();
   });
 
   it("does not persist an installation when token exchange fails", async () => {

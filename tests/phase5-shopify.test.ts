@@ -7,7 +7,7 @@ import {
   ProductAccessError,
   requirePaidProductAccess,
 } from "../app/api/_lib/product-access";
-import { isShopifyAdminAuthorizeUrl, normalizeShop } from "../app/api/_lib/shop-domain";
+import { isShopifyAdminAuthorizeUrl, normalizeShop, shopifyAdminAppHref } from "../app/api/_lib/shop-domain";
 import { saveShopifySession } from "../app/api/_lib/shopify-auth";
 import {
   setShopifyAdminFetchForTests,
@@ -41,6 +41,9 @@ function jsonResponse(body: unknown, status = 200, headers: Record<string, strin
     ok: status >= 200 && status < 300,
     status,
     headers: { get(name: string) { return headers[name.toLowerCase()] ?? headers[name] ?? null; } },
+    async json() {
+      return body;
+    },
     async text() {
       return JSON.stringify(body);
     },
@@ -66,6 +69,9 @@ describe("Phase 5 shop domains and OAuth", () => {
     expect(normalizeShop("-bad.myshopify.com")).toBe("");
     expect(normalizeShop("bad-.myshopify.com")).toBe("");
     expect(normalizeShop("example.com")).toBe("");
+    expect(shopifyAdminAppHref("gfd1cp-1y.myshopify.com")).toBe(
+      "https://admin.shopify.com/store/gfd1cp-1y/apps/virello-ai-optimizer?shop=gfd1cp-1y.myshopify.com"
+    );
   });
 
   it("rejects storefront roots and admin.shopify.com rewrites for gfd1cp-1v", () => {
@@ -459,20 +465,31 @@ describe("Phase 5 OAuth callback errors", () => {
     expect(location).toMatch(/Unauthorized(\+|%20)Access/);
   });
 
-  it("rejects a callback with a forged HMAC", async () => {
-    const params = new URLSearchParams({
-      code: "auth-code",
-      shop: "gfd1cp-1y.myshopify.com",
-      state: createSignedOAuthState("gfd1cp-1y.myshopify.com", SECRET, "standalone"),
-      hmac: "0".repeat(64),
-    });
-    const { GET } = await import("../app/api/auth/shopify/callback/route");
-    const response = await GET(
-      new NextRequest(`https://app.virello.example/api/auth/shopify/callback?${params}`)
-    );
-    const location = response.headers.get("location") || "";
-    expect(location).toMatch(/signature(\+|%20)is(\+|%20)invalid/i);
-    expect(location).toMatch(/oauth_diag=/);
+  it("rejects a callback with a forged HMAC when Shopify also rejects the code", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async () =>
+      jsonResponse({ error: "invalid_client" }, 401)) as unknown as typeof fetch;
+    try {
+      const params = new URLSearchParams({
+        code: "auth-code",
+        shop: "gfd1cp-1y.myshopify.com",
+        state: createSignedOAuthState("gfd1cp-1y.myshopify.com", SECRET, "standalone"),
+        hmac: "0".repeat(64),
+      });
+      const { GET } = await import("../app/api/auth/shopify/callback/route");
+      const response = await GET(
+        new NextRequest(`https://app.virello.example/api/auth/shopify/callback?${params}`)
+      );
+      const location = response.headers.get("location") || "";
+      expect(location).toMatch(
+        /signature(\+|%20)is(\+|%20)invalid|does(\+|%20)not(\+|%20)match(\+|%20)this(\+|%20)Shopify(\+|%20)app/i
+      );
+      expect(location).toMatch(/oauth_diag=/);
+      expect(location).toMatch(/inmsg=/);
+      expect(location).toMatch(/token=client|token%3Dclient/);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 
   it("tells the merchant when SHOPIFY_API_SECRET is the Client ID", async () => {

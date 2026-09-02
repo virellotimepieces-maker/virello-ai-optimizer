@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { shopifyFetch } from "../shopify-fetch";
 import { COPY } from "../i18n";
 import type { AppLocale } from "../api/_lib/locales";
-import { normalizeShop, isShopifyAdminAuthorizeUrl, resolveStoreBindingDisplay } from "../api/_lib/shop-domain";
+import { normalizeShop, isShopifyAdminAuthorizeUrl, resolveStoreBindingDisplay, shopifyAdminAppHref } from "../api/_lib/shop-domain";
 
 type ConnectionStatus = {
   success?: boolean;
@@ -222,6 +222,20 @@ export default function ConnectPage() {
     }
   }
 
+  function openInShopifyAdmin() {
+    const cleaned = cleanShopDomain(shop);
+    if (!cleaned) {
+      setError(copy.invalidShop);
+      return;
+    }
+    const href = shopifyAdminAppHref(cleaned);
+    if (!href) {
+      setError(copy.invalidShop);
+      return;
+    }
+    window.location.assign(href);
+  }
+
   function continueToVirello() {
     const target = new URL("/", window.location.origin);
     if (shop) target.searchParams.set("shop", cleanShopDomain(shop));
@@ -287,9 +301,10 @@ export default function ConnectPage() {
       {error && /unauthorized access/i.test(error) && (
         <div className="error-bar error-shopify">{copy.oauthUnauthorizedHelp}</div>
       )}
-      {error && /signature is invalid|Client ID, not the Client secret/i.test(error) && (
-        <div className="error-bar error-shopify">{copy.oauthHmacHelp}</div>
-      )}
+      {error &&
+        /signature is invalid|Client ID, not the Client secret|does not match this Shopify app/i.test(
+          error
+        ) && <div className="error-bar error-shopify">{copy.oauthHmacHelp}</div>}
 
       <section className="hero">
         <div className="hero-inner">
@@ -398,6 +413,20 @@ export default function ConnectPage() {
             >
               {connecting ? copy.connecting : copy.connectShopify}
             </button>
+            {Boolean(cleanShopDomain(shop)) && (
+              <>
+                <button
+                  type="button"
+                  className="secondary-button"
+                  data-testid="open-shopify-admin"
+                  onClick={openInShopifyAdmin}
+                  disabled={connecting || changingStore}
+                >
+                  {copy.openInShopifyAdmin}
+                </button>
+                <p className="oauth-admin-help">{copy.openInShopifyAdminHelp}</p>
+              </>
+            )}
             {showChangeStore && (
               <button
                 type="button"

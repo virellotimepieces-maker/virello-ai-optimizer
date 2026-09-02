@@ -399,8 +399,15 @@ export function shopifyCallbackHmacMessages(request: NextRequest): string[] {
   return [...messages].filter(Boolean);
 }
 
+export function shopifyOfficialHmacMessageKeys(params: URLSearchParams): string[] {
+  return [...new Set([...params.keys()])]
+    .filter((key) => key !== "hmac" && key !== "signature" && !isFrameworkQueryKey(key))
+    .sort();
+}
+
 export function shopifyCallbackHmacDiagnostics(request: NextRequest): {
   paramKeys: string[];
+  officialKeys: string[];
   hmacLength: number;
   hmacHex: boolean;
   messageCount: number;
@@ -416,6 +423,7 @@ export function shopifyCallbackHmacDiagnostics(request: NextRequest): {
   const host = params.get("host") || "";
   return {
     paramKeys: [...params.keys()].sort(),
+    officialKeys: shopifyOfficialHmacMessageKeys(params),
     hmacLength: suppliedHmac.length,
     hmacHex: /^[a-f0-9]{64}$/i.test(suppliedHmac),
     messageCount: shopifyCallbackHmacMessages(request).length,

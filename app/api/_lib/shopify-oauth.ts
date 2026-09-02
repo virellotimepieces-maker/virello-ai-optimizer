@@ -1,5 +1,9 @@
 import { getAppUrl } from "./app-url";
-import { isShopifyAdminAuthorizeUrl, normalizeShop } from "./shop-domain";
+import {
+  isShopifyAdminAuthorizeUrl,
+  normalizeShop,
+  shopifyAdminAppHref,
+} from "./shop-domain";
 import { getShopifyClientId, getShopifyClientSecret } from "./shopify-config";
 import {
   createSignedOAuthState,
@@ -13,22 +17,13 @@ export function shopifyCallbackUrl(_fallbackOrigin = ""): string {
 }
 
 export function shopifyAdminAppUrl(shop: string, extra: Record<string, string> = {}): URL {
-  const normalized = normalizeShop(shop);
-  if (!normalized) {
-    throw new Error("Invalid Shopify store.");
-  }
-  const storeHandle = normalized.replace(/\.myshopify\.com$/i, "");
   const appHandle =
     process.env.SHOPIFY_APP_HANDLE?.trim() || "virello-ai-optimizer";
-  const url = new URL(
-    `/store/${encodeURIComponent(storeHandle)}/apps/${encodeURIComponent(appHandle)}`,
-    "https://admin.shopify.com"
-  );
-  url.searchParams.set("shop", normalized);
-  for (const [key, value] of Object.entries(extra)) {
-    url.searchParams.set(key, value);
+  const href = shopifyAdminAppHref(shop, extra, appHandle);
+  if (!href) {
+    throw new Error("Invalid Shopify store.");
   }
-  return url;
+  return new URL(href);
 }
 
 export function buildShopifyAuthorizeUrl(input: {

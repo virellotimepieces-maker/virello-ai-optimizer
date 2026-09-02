@@ -9,7 +9,11 @@ import {
   getSessionBinding,
   rehomeUninstalledBilling,
 } from "../../../_lib/shop-binding";
-import { saveShopifySession } from "../../../_lib/shopify-auth";
+import {
+  classifyShopifyTokenError,
+  exchangeShopifyAuthorizationCode,
+  saveShopifySession,
+} from "../../../_lib/shopify-auth";
 import { billingForShop } from "../../../_lib/stripe-billing";
 import {
   classifyShopifySecretKind,
@@ -26,6 +30,9 @@ import {
 import { shopifyAdminAppUrl, shopifyCallbackUrl } from "../../../_lib/shopify-oauth";
 import { hasRequiredShopifyScopes } from "../../../_lib/shopify-scopes";
 
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
 function redirectError(
   origin: string,
   message: string,
@@ -33,6 +40,7 @@ function redirectError(
     secretCount?: number;
     secretLengths?: number[];
     secretKind?: string;
+    token?: string;
   }
 ) {
   console.error("SHOPIFY_OAUTH_CALLBACK_REJECTED", {
@@ -40,6 +48,7 @@ function redirectError(
     ...(diag
       ? {
           paramKeys: diag.paramKeys,
+          officialKeys: diag.officialKeys,
           hasHost: diag.hasHost,
           hostKind: diag.hostKind,
           hostLength: diag.hostLength,
@@ -52,6 +61,7 @@ function redirectError(
           secretKind: diag.secretKind,
           messageCount: diag.messageCount,
           hasInvokeQuery: diag.hasInvokeQuery,
+          token: diag.token,
         }
       : {}),
   });
@@ -63,6 +73,7 @@ function redirectError(
       "oauth_diag",
       [
         `keys=${diag.paramKeys.join(",")}`,
+        `inmsg=${(diag.officialKeys || []).join(",") || "none"}`,
         `hmac=${diag.hmacLength}${diag.hmacHex ? "hex" : ""}`,
         `secrets=${(diag.secretLengths || []).join(".")}`,
         `secret=${diag.secretKind || "n"}`,
@@ -71,6 +82,7 @@ function redirectError(
         `code=${diag.codeLength}`,
         `msgs=${diag.messageCount}`,
         `invoke=${diag.hasInvokeQuery ? "1" : "0"}`,
+        `token=${diag.token || "none"}`,
       ].join("|")
     );
   }
@@ -107,29 +119,64 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const verifiedSecret = secrets.find((secret) =>
+    let verifiedSecret = secrets.find((secret) =>
       verifyShopifyCallbackHmac(request, secret)
     );
+    let exchanged:
+      | { accessToken: string; scope: string }
+      | null = null;
+    let tokenDiag = "none";
+
     if (!verifiedSecret) {
-      const secretKind = classifyShopifySecretKind(secrets[0], apiKey);
-      const usedClientId = secrets.some((secret) =>
-        shopifySecretLooksLikeClientId(secret, apiKey)
-      );
-      return redirectError(
-        returnOrigin,
-        usedClientId
-          ? "SHOPIFY_API_SECRET is the Client ID, not the Client secret. Paste the Client secret from Shopify Dev Dashboard → this app → Settings."
-          : "Shopify authorization signature is invalid.",
-        {
+      const signedForRecovery = secrets
+        .map((secret) => parseSignedOAuthState(state, shop, secret))
+        .find(Boolean);
+      if (code && shop && state && signedForRecovery) {
+        for (const secret of secrets) {
+          const result = await exchangeShopifyAuthorizationCode({
+            shop,
+            apiKey,
+            secret,
+            code,
+          });
+          if (result.ok) {
+            console.error("SHOPIFY_OAUTH_HMAC_RECOVERED", {
+              shop,
+              officialKeys: shopifyCallbackHmacDiagnostics(request).officialKeys,
+            });
+            verifiedSecret = secret;
+            exchanged = { accessToken: result.accessToken, scope: result.scope };
+            tokenDiag = "ok";
+            break;
+          }
+          tokenDiag = classifyShopifyTokenError(result.error, result.errorCode);
+        }
+      } else if (code && shop && state) {
+        tokenDiag = "state";
+      }
+
+      if (!verifiedSecret) {
+        const secretKind = classifyShopifySecretKind(secrets[0], apiKey);
+        const usedClientId = secrets.some((secret) =>
+          shopifySecretLooksLikeClientId(secret, apiKey)
+        );
+        const hmacError =
+          usedClientId
+            ? "SHOPIFY_API_SECRET is the Client ID, not the Client secret. Paste the Client secret from Shopify Dev Dashboard → this app → Settings."
+            : tokenDiag === "client"
+              ? "SHOPIFY_API_SECRET does not match this Shopify app. Paste the Client secret from Dev Dashboard → virello-ai-optimizer → Settings."
+              : "Shopify authorization signature is invalid.";
+        return redirectError(returnOrigin, hmacError, {
           ...shopifyCallbackHmacDiagnostics(request),
           secretCount: secrets.length,
           secretLengths: secrets.map((value) => value.length).sort((a, b) => a - b),
           secretKind,
-        }
-      );
+          token: tokenDiag,
+        });
+      }
     }
 
-    if (oauthError) {
+    if (oauthError && !exchanged) {
       return redirectError(
         returnOrigin,
         oauthErrorDescription || oauthError
@@ -158,32 +205,23 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const tokenResponse = await fetch(`https://${shop}/admin/oauth/access_token`, {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({
-        client_id: apiKey,
-        client_secret: verifiedSecret,
+    if (!exchanged) {
+      const result = await exchangeShopifyAuthorizationCode({
+        shop,
+        apiKey,
+        secret: verifiedSecret,
         code,
-      }).toString(),
-      cache: "no-store",
-    });
-
-    const data = (await tokenResponse.json().catch(() => null)) as {
-      access_token?: string;
-      scope?: string;
-      error?: string;
-      error_description?: string;
-    } | null;
-
-    if (!tokenResponse.ok || !data?.access_token) {
-      return redirectError(
-        returnOrigin,
-        data?.error_description || data?.error || "Shopify authorization failed."
-      );
+      });
+      if (!result.ok) {
+        return redirectError(
+          returnOrigin,
+          result.error || "Shopify authorization failed."
+        );
+      }
+      exchanged = { accessToken: result.accessToken, scope: result.scope };
     }
 
-    if (!hasRequiredShopifyScopes(data.scope || "")) {
+    if (!hasRequiredShopifyScopes(exchanged.scope)) {
       return redirectError(
         returnOrigin,
         "Virello needs read_products and write_products. Reinstall and approve those scopes."
@@ -194,7 +232,7 @@ export async function GET(request: NextRequest) {
       await rehomeUninstalledBilling(binding.sessionShop, shop);
     }
 
-    await saveShopifySession(shop, data.access_token, data.scope || "");
+    await saveShopifySession(shop, exchanged.accessToken, exchanged.scope);
     const billing = await billingForShop(shop);
     const sessionId = await issueAppSession({
       shop,

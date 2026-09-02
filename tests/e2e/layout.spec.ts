@@ -66,4 +66,13 @@ test.describe("responsive layout", () => {
     await expect(connect).toBeVisible();
     await assertNoHorizontalOverflow(page);
   });
+
+  test("Open in Shopify Admin stays on-screen for a pending store", async ({ page }) => {
+    await page.setViewportSize({ width: 360, height: 780 });
+    await page.goto("/connect?shop=gfd1cp-1y.myshopify.com");
+    const admin = page.getByTestId("open-shopify-admin");
+    await expect(admin).toBeVisible();
+    await expect(admin).toHaveText(/Shopify Admin/);
+    await assertNoHorizontalOverflow(page);
+  });
 });

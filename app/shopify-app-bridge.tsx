@@ -1,29 +1,70 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
+
+function isEmbeddedBrowser(): boolean {
+  const params = new URLSearchParams(window.location.search);
+  if (params.get("embedded") === "1" || Boolean(params.get("host"))) {
+    return true;
+  }
+  try {
+    return window.top !== window.self;
+  } catch {
+    return true;
+  }
+}
 
 export default function ShopifyAppBridge() {
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const embedded =
-      params.get("embedded") === "1" ||
-      Boolean(params.get("host"));
+  const started = useRef(false);
 
-    if (
-      !embedded ||
-      document.querySelector(
-        'script[data-virello-app-bridge="true"]'
-      )
-    ) {
-      return;
+  useEffect(() => {
+    if (started.current || !isEmbeddedBrowser()) return;
+    started.current = true;
+
+    let cancelled = false;
+
+    async function handshake() {
+      const deadline = Date.now() + 8000;
+      while (!window.shopify?.idToken && Date.now() < deadline) {
+        await new Promise((resolve) => window.setTimeout(resolve, 50));
+      }
+      if (cancelled || !window.shopify?.idToken) return;
+
+      const token = await window.shopify.idToken();
+      if (!token) return;
+
+      const response = await fetch("/api/auth/shopify/session", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        },
+        credentials: "include",
+      });
+      const data = (await response.json().catch(() => null)) as {
+        success?: boolean;
+        connected?: boolean;
+        shop?: string;
+      } | null;
+      if (cancelled || !data?.success || !data.connected) return;
+
+      const path = window.location.pathname;
+      if (path === "/connect" || path.startsWith("/connect/")) {
+        const next = new URL("/", window.location.origin);
+        next.searchParams.set("connected", "1");
+        if (data.shop) next.searchParams.set("shop", data.shop);
+        window.location.replace(next.toString());
+      }
     }
 
-    const script = document.createElement("script");
-    script.src =
-      "https://cdn.shopify.com/shopifycloud/app-bridge.js";
-    script.async = true;
-    script.dataset.virelloAppBridge = "true";
-    document.head.appendChild(script);
+    handshake().catch((error) => {
+      console.error("SHOPIFY_SESSION_HANDSHAKE_ERROR", error);
+    });
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   return null;

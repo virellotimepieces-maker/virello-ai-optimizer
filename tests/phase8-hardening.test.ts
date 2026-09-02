@@ -180,5 +180,11 @@ describe("Phase 8 hardening", () => {
     expect(COPY.fil.invalidAuthorizeUrl).toMatch(/myshopify\.com\/admin\/oauth\/authorize/);
     expect(COPY.en.oauthHmacHelp).toMatch(/Client secret/);
     expect(COPY.fil.oauthHmacHelp).toMatch(/Client secret/);
+    expect(COPY.en.openInShopifyAdmin).toMatch(/Shopify Admin/);
+    expect(COPY.fil.openInShopifyAdmin).toMatch(/Shopify Admin/);
+    const layout = readFileSync("app/layout.tsx", "utf8");
+    expect(layout).toMatch(/cdn\.shopify\.com\/shopifycloud\/app-bridge\.js/);
+    expect(layout).toMatch(/beforeInteractive/);
+    expect(connect).toMatch(/openInShopifyAdmin/);
   });
 });

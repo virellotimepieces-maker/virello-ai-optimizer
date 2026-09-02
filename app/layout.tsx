@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { cookies } from "next/headers";
+import Script from "next/script";
 import "../styles.css";
 import { getShopifyClientId } from "./api/_lib/shopify-config";
 import { parseAppLocale, UI_LANG_COOKIE } from "./api/_lib/locales";
@@ -26,6 +27,10 @@ export default async function RootLayout({
         <meta
           name="shopify-api-key"
           content={getShopifyClientId()}
+        />
+        <Script
+          src="https://cdn.shopify.com/shopifycloud/app-bridge.js"
+          strategy="beforeInteractive"
         />
       </head>
       <body>

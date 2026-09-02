@@ -1468,6 +1468,14 @@ textarea {
   word-break: break-word;
 }
 
+.oauth-admin-help {
+  margin: 8px 0 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: #475569;
+  overflow-wrap: anywhere;
+}
+
 .dashboard-grid {
   align-items: stretch;
 }

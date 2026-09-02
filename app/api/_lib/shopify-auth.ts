@@ -92,6 +92,59 @@ export async function storedAccessToken(shop: string): Promise<string> {
   return decryptShopifyToken(String(rows[0]?.encrypted_access_token || ""));
 }
 
+export type ShopifyCodeExchangeResult =
+  | { ok: true; accessToken: string; scope: string }
+  | { ok: false; error: string; errorCode: string; status: number };
+
+export function classifyShopifyTokenError(
+  error?: string | null,
+  errorCode?: string | null
+): string {
+  const value = `${errorCode || ""} ${error || ""}`.toLowerCase();
+  if (value.includes("invalid_client")) return "client";
+  if (value.includes("invalid_grant")) return "grant";
+  if (value.includes("invalid_request")) return "request";
+  if (value.includes("redirect_uri")) return "redirect";
+  if (value.trim()) return "token";
+  return "none";
+}
+
+export async function exchangeShopifyAuthorizationCode(input: {
+  shop: string;
+  apiKey: string;
+  secret: string;
+  code: string;
+}): Promise<ShopifyCodeExchangeResult> {
+  const response = await fetch(`https://${input.shop}/admin/oauth/access_token`, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      client_id: input.apiKey,
+      client_secret: input.secret,
+      code: input.code,
+    }).toString(),
+    cache: "no-store",
+  });
+
+  const data = (await response.json().catch(() => null)) as {
+    access_token?: string;
+    scope?: string;
+    error?: string;
+    error_description?: string;
+  } | null;
+
+  if (!response.ok || !data?.access_token) {
+    return {
+      ok: false,
+      error: data?.error_description || data?.error || "Shopify authorization failed.",
+      errorCode: data?.error || "",
+      status: response.status,
+    };
+  }
+
+  return { ok: true, accessToken: data.access_token, scope: data.scope || "" };
+}
+
 async function exchangeOfflineToken(
   shop: string,
   idToken: string,

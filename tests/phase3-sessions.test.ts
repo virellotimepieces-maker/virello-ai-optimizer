@@ -31,6 +31,7 @@ import {
 } from "../app/api/_lib/shopify-config";
 import {
   createSignedOAuthState,
+  shopifyOfficialHmacMessageKeys,
   verifyShopifyCallbackHmac,
   verifyShopifySessionToken,
   verifyShopifyWebhookHmac,
@@ -286,6 +287,25 @@ describe("Phase 3 Shopify security module", () => {
     expect(verifyShopifyCallbackHmac(request, secret)).toBe(true);
   });
 
+  it("lists official HMAC message keys including host", () => {
+    const params = new URLSearchParams({
+      code: "0907a61c0c8d55e99db179b68161bc00",
+      hmac: "0".repeat(64),
+      host: "YWRtaW4uc2hvcGlmeS5jb20vc3RvcmUvZ2ZkMWNwLTF5",
+      shop: "gfd1cp-1y.myshopify.com",
+      state: "payload.signature",
+      timestamp: "1337178173",
+      _rsc: "1",
+    });
+    expect(shopifyOfficialHmacMessageKeys(params)).toEqual([
+      "code",
+      "host",
+      "shop",
+      "state",
+      "timestamp",
+    ]);
+  });
+
   it("detects when the stored Shopify secret is actually the Client ID", () => {
     const clientId = "99a9fda60d48cb24828f243360fffc40";
     expect(shopifySecretLooksLikeClientId(clientId, clientId)).toBe(true);
@@ -347,6 +367,8 @@ describe("Phase 3 Shopify security module", () => {
       `https://virello-ai-optimizer.vercel.app/api/auth/shopify/callback?hmac=${hmac}&shop=gfd1cp-1y.myshopify.com&timestamp=1337178173`
     );
     expect(verifyShopifyCallbackHmac(request, getShopifyClientSecrets()[0])).toBe(true);
+    process.env.SHOPIFY_API_SECRET = "test-shopify-oauth-secret\u00A0";
+    expect(getShopifyClientSecrets()).toEqual(["test-shopify-oauth-secret"]);
   });
 
   it("signs and verifies OAuth state for the expected shop only", () => {

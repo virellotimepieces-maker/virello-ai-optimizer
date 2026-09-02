@@ -50,6 +50,25 @@ export function isShopifyStorefrontHost(hostname: string): boolean {
  * https://{shop}.myshopify.com/admin/oauth/authorize
  * Never the public storefront root, and never admin.shopify.com/store/...
  */
+export function shopifyAdminAppHref(
+  shop: string,
+  extra: Record<string, string> = {},
+  appHandle = "virello-ai-optimizer"
+): string {
+  const normalized = normalizeShop(shop);
+  if (!normalized) return "";
+  const storeHandle = normalized.replace(/\.myshopify\.com$/i, "");
+  const url = new URL(
+    `/store/${encodeURIComponent(storeHandle)}/apps/${encodeURIComponent(appHandle)}`,
+    "https://admin.shopify.com"
+  );
+  url.searchParams.set("shop", normalized);
+  for (const [key, value] of Object.entries(extra)) {
+    url.searchParams.set(key, value);
+  }
+  return url.toString();
+}
+
 export function isShopifyAdminAuthorizeUrl(value: string): boolean {
   try {
     const url = new URL(value);
