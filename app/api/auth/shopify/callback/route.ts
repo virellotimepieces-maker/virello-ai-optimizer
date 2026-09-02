@@ -38,6 +38,10 @@ function redirectError(
       ? {
           paramKeys: diag.paramKeys,
           hasHost: diag.hasHost,
+          hostKind: diag.hostKind,
+          hostLength: diag.hostLength,
+          stateLength: diag.stateLength,
+          codeLength: diag.codeLength,
           hmacLength: diag.hmacLength,
           hmacHex: diag.hmacHex,
           secretCount: diag.secretCount,
@@ -57,10 +61,12 @@ function redirectError(
         `keys=${diag.paramKeys.join(",")}`,
         `hmac=${diag.hmacLength}${diag.hmacHex ? "hex" : ""}`,
         `secrets=${(diag.secretLengths || []).join(".")}`,
+        `host=${diag.hostKind}:${diag.hostLength}`,
+        `state=${diag.stateLength}`,
+        `code=${diag.codeLength}`,
         `msgs=${diag.messageCount}`,
         `invoke=${diag.hasInvokeQuery ? "1" : "0"}`,
-        `host=${diag.hasHost ? "1" : "0"}`,
-      ].join(";")
+      ].join("|")
     );
   }
   return NextResponse.redirect(url);

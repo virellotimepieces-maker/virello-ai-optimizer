@@ -176,8 +176,6 @@ function isHmacOrSignature(key: string): boolean {
   return decoded === "hmac" || decoded === "signature" || key === "hmac" || key === "signature";
 }
 
-const OAUTH_SIGNED_KEYS = ["code", "host", "shop", "state", "timestamp"] as const;
-
 function isFrameworkQueryKey(key: string): boolean {
   const decoded = decodeQueryKeepPlus(key);
   return (
@@ -189,42 +187,29 @@ function isFrameworkQueryKey(key: string): boolean {
   );
 }
 
-function isPlausibleShopifyHostParam(value: string): boolean {
-  if (!value) return false;
-  const lower = value.toLowerCase();
+function pairsForHmac(pairs: Array<[string, string]>): Array<[string, string]> {
+  return pairs.filter(([key]) => !isHmacOrSignature(key) && !isFrameworkQueryKey(key));
+}
+
+function shopifyDocsNodeMessage(pairs: Array<[string, string]>): string {
+  const query = Object.fromEntries(pairsForHmac(pairs));
+  return Object.entries(query)
+    .sort()
+    .map(([key, value]) => `${key}=${value}`)
+    .join("&");
+}
+
+function classifyHostParam(value: string): "b64" | "url" | "other" | "missing" {
+  if (!value) return "missing";
+  if (/^[A-Za-z0-9+/_-]+=*$/.test(value) && !value.includes(".")) return "b64";
   if (
-    lower.includes("vercel.app") ||
-    lower.includes("localhost") ||
-    /\.myshopify\.com$/i.test(value) ||
-    lower.includes("admin.shopify.com")
+    /myshopify\.com/i.test(value) ||
+    /admin\.shopify\.com/i.test(value) ||
+    /vercel\.app/i.test(value)
   ) {
-    return false;
+    return "url";
   }
-  return /^[A-Za-z0-9+/_=-]+$/.test(value);
-}
-
-function sanitizeHmacPairs(pairs: Array<[string, string]>): Array<[string, string]> {
-  return pairs.filter(([key, value]) => {
-    if (isHmacOrSignature(key) || isFrameworkQueryKey(key)) return false;
-    const decodedKey = decodeQueryKeepPlus(key);
-    if (decodedKey === "host") {
-      return isPlausibleShopifyHostParam(value) || isPlausibleShopifyHostParam(decodeQueryKeepPlus(value));
-    }
-    return true;
-  });
-}
-
-function canonicalOAuthPairs(pairs: Array<[string, string]>): Array<[string, string]> {
-  const values = new Map<string, string>();
-  for (const [key, value] of sanitizeHmacPairs(pairs)) {
-    const decodedKey = decodeQueryKeepPlus(key);
-    if ((OAUTH_SIGNED_KEYS as readonly string[]).includes(decodedKey) && !values.has(decodedKey)) {
-      values.set(decodedKey, decodeQueryKeepPlus(value));
-    }
-  }
-  return OAUTH_SIGNED_KEYS.filter((key) => values.has(key)).map(
-    (key) => [key, values.get(key) || ""] as [string, string]
-  );
+  return "other";
 }
 
 function rubyWwwFormComponent(value: string): string {
@@ -276,14 +261,19 @@ function shopifyApiJsAdminMessage(pairs: Array<[string, string]>): string {
 }
 
 function addEncodedMessages(messages: Set<string>, pairs: Array<[string, string]>): void {
-  if (!pairs.length) return;
-  messages.add(sortedOAuthMessage(pairs, "none"));
-  messages.add(sortedOAuthMessage(pairs, "values-and-keys"));
-  messages.add(sortedOAuthMessage(pairs, "keys-eq-only"));
-  const apiJs = shopifyApiJsAdminMessage(pairs);
+  const usable = pairsForHmac(pairs);
+  if (!usable.length) return;
+  const docs = shopifyDocsNodeMessage(usable);
+  if (docs) messages.add(docs);
+  messages.add(sortedOAuthMessage(usable, "none"));
+  messages.add(sortedOAuthMessage(usable, "values-and-keys"));
+  messages.add(sortedOAuthMessage(usable, "keys-eq-only"));
+  const apiJs = shopifyApiJsAdminMessage(usable);
   if (apiJs) messages.add(apiJs);
-  const ruby = rubyWwwFormMessage(pairs);
+  const ruby = rubyWwwFormMessage(usable);
   if (ruby) messages.add(ruby);
+  const originalOrder = usable.map(([key, value]) => `${key}=${value}`).join("&");
+  if (originalOrder) messages.add(originalOrder);
 }
 
 function addPairSetMessages(
@@ -291,22 +281,16 @@ function addPairSetMessages(
   pairs: Array<[string, string]>
 ): void {
   if (!pairs.length) return;
-  const sanitized = sanitizeHmacPairs(pairs);
-  const decodedKeepPlus = sanitized.map(
+  const usable = pairsForHmac(pairs);
+  const decodedKeepPlus = usable.map(
     ([key, value]) => [decodeQueryKeepPlus(key), decodeQueryKeepPlus(value)] as [string, string]
   );
-  const decodedForm = sanitized.map(
+  const decodedForm = usable.map(
     ([key, value]) => [decodeQueryForm(key), decodeQueryForm(value)] as [string, string]
   );
-  for (const decoded of [sanitized, decodedKeepPlus, decodedForm]) {
+  for (const decoded of [usable, decodedKeepPlus, decodedForm]) {
     addEncodedMessages(messages, decoded);
   }
-  addEncodedMessages(messages, canonicalOAuthPairs(pairs));
-  const raw = sanitized
-    .map(([key, value]) => `${key}=${value}`)
-    .sort()
-    .join("&");
-  if (raw) messages.add(raw);
 }
 
 function pairsFromInvokeQuery(header: string | null): Array<[string, string]> {
@@ -391,23 +375,38 @@ export function shopifyCallbackHmacDiagnostics(request: NextRequest): {
   messageCount: number;
   hasInvokeQuery: boolean;
   hasHost: boolean;
+  hostKind: "b64" | "url" | "other" | "missing";
+  hostLength: number;
+  stateLength: number;
+  codeLength: number;
 } {
   const params = request.nextUrl.searchParams;
   const suppliedHmac = (params.get("hmac") || "").trim();
+  const host = params.get("host") || "";
   return {
     paramKeys: [...params.keys()].sort(),
     hmacLength: suppliedHmac.length,
     hmacHex: /^[a-f0-9]{64}$/i.test(suppliedHmac),
     messageCount: shopifyCallbackHmacMessages(request).length,
     hasInvokeQuery: Boolean(request.headers.get("x-invoke-query")),
-    hasHost: Boolean(params.get("host")),
+    hasHost: Boolean(host),
+    hostKind: classifyHostParam(host),
+    hostLength: host.length,
+    stateLength: (params.get("state") || "").length,
+    codeLength: (params.get("code") || "").length,
   };
 }
 
 function hmacKeyMaterials(secret: string): Array<string | Buffer> {
   const keys: Array<string | Buffer> = [secret];
-  if (/^[a-f0-9]+$/i.test(secret) && secret.length % 2 === 0 && secret.length >= 16) {
-    keys.push(Buffer.from(secret, "hex"));
+  for (const prefix of ["shpss_", "shpca_"]) {
+    if (secret.startsWith(prefix) && secret.length > prefix.length) {
+      keys.push(secret.slice(prefix.length));
+    }
+  }
+  const unprefixed = secret.replace(/^(shpss_|shpca_)/, "");
+  if (/^[a-f0-9]+$/i.test(unprefixed) && unprefixed.length % 2 === 0 && unprefixed.length >= 16) {
+    keys.push(Buffer.from(unprefixed, "hex"));
   }
   return keys;
 }

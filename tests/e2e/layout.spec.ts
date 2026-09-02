@@ -43,6 +43,20 @@ test.describe("responsive layout", () => {
     });
   }
 
+  test("connect OAuth diagnostic wraps on a 360px screen instead of overflowing", async ({ page }) => {
+    await page.setViewportSize({ width: 360, height: 780 });
+    await page.goto(
+      "/connect?status=error&error_description=Shopify+authorization+signature+is+invalid.&oauth_diag=keys%3Dcode%2Chmac%2Chost%2Cshop%2Cstate%2Ctimestamp%7Chmac%3D64hex%7Csecrets%3D38%7Chost%3Db64%3A44%7Cstate%3D204%7Ccode%3D32%7Cmsgs%3D12%7Cinvoke%3D0"
+    );
+    const diag = page.getByTestId("oauth-diag");
+    await expect(diag).toBeVisible();
+    await expect(diag).toContainText("keys=code,hmac,host,shop,state,timestamp");
+    const box = await diag.boundingBox();
+    expect(box).not.toBeNull();
+    expect(box!.x + box!.width).toBeLessThanOrEqual(361);
+    await assertNoHorizontalOverflow(page);
+  });
+
   test("connect page primary buttons stay in view on a Samsung-sized screen", async ({ page }) => {
     await page.setViewportSize({ width: 360, height: 780 });
     await page.goto("/connect");

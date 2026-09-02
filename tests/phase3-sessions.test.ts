@@ -231,17 +231,83 @@ describe("Phase 3 Shopify security module", () => {
     expect(verifyShopifyCallbackHmac(request, secret)).toBe(true);
   });
 
-  it("verifies HMAC when Shopify signs only OAuth fields and the callback includes extras", () => {
+  it("verifies the real callback parameter set including host exactly as received", () => {
+    const secret = "test-shopify-oauth-secret";
+    const host = Buffer.from("gfd1cp-1y.myshopify.com/admin").toString("base64");
+    const params = new URLSearchParams({
+      code: "0907a61c0c8d55e99db179b68161bc00",
+      host,
+      shop: "gfd1cp-1y.myshopify.com",
+      state: "0.6784241404160823",
+      timestamp: "1337178173",
+    });
+    const message = Object.entries(Object.fromEntries(params))
+      .sort()
+      .map(([key, value]) => `${key}=${value}`)
+      .join("&");
+    params.set("hmac", createHmac("sha256", secret).update(message).digest("hex"));
+    const request = new NextRequest(
+      `https://virello-ai-optimizer.vercel.app/api/auth/shopify/callback?${params.toString()}`
+    );
+    expect([...request.nextUrl.searchParams.keys()].sort()).toEqual([
+      "code",
+      "hmac",
+      "host",
+      "shop",
+      "state",
+      "timestamp",
+    ]);
+    expect(host).toMatch(/=/);
+    expect(verifyShopifyCallbackHmac(request, secret)).toBe(true);
+  });
+
+  it("includes a hostname-style host parameter in the HMAC instead of dropping it", () => {
+    const secret = "test-shopify-oauth-secret";
+    const host = "admin.shopify.com/store/gfd1cp-1y";
+    const params = new URLSearchParams({
+      code: "0907a61c0c8d55e99db179b68161bc00",
+      host,
+      shop: "gfd1cp-1y.myshopify.com",
+      state: "0.6784241404160823",
+      timestamp: "1337178173",
+    });
+    const message = Object.entries(Object.fromEntries(params))
+      .sort()
+      .map(([key, value]) => `${key}=${value}`)
+      .join("&");
+    params.set("hmac", createHmac("sha256", secret).update(message).digest("hex"));
+    const request = new NextRequest(
+      `https://virello-ai-optimizer.vercel.app/api/auth/shopify/callback?${params.toString()}`
+    );
+    expect(verifyShopifyCallbackHmac(request, secret)).toBe(true);
+  });
+
+  it("verifies HMAC when the configured secret includes a Shopify shpss prefix", () => {
+    const bare = "demo-secret-value";
+    const message =
+      "code=0907a61c0c8d55e99db179b68161bc00&host=abc&shop=gfd1cp-1y.myshopify.com&state=0.6784241404160823&timestamp=1337178173";
+    const hmac = createHmac("sha256", bare).update(message).digest("hex");
+    const request = new NextRequest(
+      `https://virello-ai-optimizer.vercel.app/api/auth/shopify/callback?code=0907a61c0c8d55e99db179b68161bc00&hmac=${hmac}&host=abc&shop=gfd1cp-1y.myshopify.com&state=0.6784241404160823&timestamp=1337178173`
+    );
+    expect(verifyShopifyCallbackHmac(request, `shpss_${bare}`)).toBe(true);
+  });
+
+  it("verifies HMAC over every received callback field except hmac, signature, and framework keys", () => {
     const secret = "test-shopify-oauth-secret";
     const host = Buffer.from("admin.shopify.com/store/gfd1cp-1y").toString("base64");
     const signed = [
       ["code", "0907a61c0c8d55e99db179b68161bc00"],
+      ["embedded", "1"],
       ["host", host],
       ["shop", "gfd1cp-1y.myshopify.com"],
       ["state", "0.6784241404160823"],
       ["timestamp", "1337178173"],
     ] as const;
-    const message = signed.map(([key, value]) => `${key}=${value}`).join("&");
+    const message = Object.entries(Object.fromEntries(signed))
+      .sort()
+      .map(([key, value]) => `${key}=${value}`)
+      .join("&");
     const hmac = createHmac("sha256", secret).update(message).digest("hex");
     const request = new NextRequest(
       "https://virello-ai-optimizer.vercel.app/api/auth/shopify/callback?" +

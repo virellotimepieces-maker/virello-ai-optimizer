@@ -275,9 +275,14 @@ export default function ConnectPage() {
 
       {error && <div className="error-bar">{error}</div>}
       {error && oauthDiag && (
-        <p className="hero-hint" data-testid="oauth-diag">
-          Signature check: {oauthDiag}
-        </p>
+        <div className="oauth-diag" data-testid="oauth-diag">
+          <div className="oauth-diag-title">Signature check</div>
+          {oauthDiag.split(/[|;]/).filter(Boolean).map((part) => (
+            <div key={part} className="oauth-diag-row">
+              {part}
+            </div>
+          ))}
+        </div>
       )}
       {error && /unauthorized access/i.test(error) && (
         <div className="error-bar error-shopify">{copy.oauthUnauthorizedHelp}</div>

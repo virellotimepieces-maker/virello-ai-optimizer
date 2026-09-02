@@ -1197,9 +1197,14 @@ textarea {
   }
 
   .error-bar,
-  .success-bar {
+  .success-bar,
+  .oauth-diag {
     margin: 8px 12px 0;
     font-size: 14px;
+  }
+
+  .oauth-diag {
+    font-size: 12px;
   }
 
   .optimizer-panel {
@@ -1436,6 +1441,31 @@ textarea {
 
 .hero-hint {
   opacity: 0.8;
+}
+
+.oauth-diag {
+  margin: 8px 32px 0;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: #f8fafc;
+  color: #334155;
+  border: 1px solid #e2e8f0;
+  font-size: 12px;
+  line-height: 1.45;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  white-space: normal;
+}
+
+.oauth-diag-title {
+  font-weight: 800;
+  margin-bottom: 6px;
+}
+
+.oauth-diag-row {
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .dashboard-grid {
