@@ -32,7 +32,7 @@ npm test
 | Route | What it is |
 | --- | --- |
 | `/` | Home — what Virello is and how to fix AI contents |
-| `/studio` | Paste contents, flag symptoms, run diagnose + rewrite |
+| `/studio` | Paste the current prompt or knowledge, flag what is going wrong, then diagnose and rewrite |
 | `/studio?sample=virello` | Loads a demo paste so you can see the clinic work |
 
 How to use `/studio`:
