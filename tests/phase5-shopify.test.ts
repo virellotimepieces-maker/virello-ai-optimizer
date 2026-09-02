@@ -74,6 +74,28 @@ describe("Phase 5 shop domains and OAuth", () => {
     );
   });
 
+  it("reports Shopify secret kind and length without exposing the secret", async () => {
+    process.env.SHOPIFY_API_KEY = "99a9fda60d48cb24828f243360fffc40";
+    process.env.SHOPIFY_API_SECRET = "shpss_xxxx-secret-value";
+    const { GET } = await import("../app/api/auth/shopify/secret-status/route");
+    const response = await GET();
+    const body = (await response.json()) as {
+      success?: boolean;
+      secretKind?: string;
+      secretLength?: number;
+      looksLikeClientId?: boolean;
+      clientId?: string;
+    };
+    expect(body.success).toBe(true);
+    expect(body.secretKind).toBe("shpss");
+    expect(body.secretLength).toBe("shpss_xxxx-secret-value".length);
+    expect(body.looksLikeClientId).toBe(false);
+    expect(body.clientId).toBe("99a9fda60d48cb24828f243360fffc40");
+    const text = JSON.stringify(body);
+    expect(text).not.toMatch(/xxxx-secret-value/);
+    expect(text).not.toMatch(/shpss_/);
+  });
+
   it("rejects storefront roots and admin.shopify.com rewrites for gfd1cp-1v", () => {
     expect(
       isShopifyAdminAuthorizeUrl(

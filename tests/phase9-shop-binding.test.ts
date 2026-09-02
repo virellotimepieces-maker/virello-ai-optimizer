@@ -253,6 +253,21 @@ describe("Phase 9 shop-binding lifecycle", () => {
     expect(await isShopifyInstallationActive(SHOP_NEXT)).toBe(true);
   });
 
+  it("completes installation from Shopify token exchange even when OAuth state is invalid", async () => {
+    const { GET: callback } = await import("../app/api/auth/shopify/callback/route");
+    const params = new URLSearchParams({
+      code: "auth-code",
+      shop: SHOP_NEXT,
+      state: "not-a-signed-state",
+      hmac: "0".repeat(64),
+    });
+    const response = await callback(
+      new NextRequest(`${ORIGIN}/api/auth/shopify/callback?${params}`)
+    );
+    expect(response.headers.get("location") || "").toMatch(/connected=1/);
+    expect(await isShopifyInstallationActive(SHOP_NEXT)).toBe(true);
+  });
+
   it("keeps the store disconnected when HMAC and Shopify token exchange both fail", async () => {
     vi.stubGlobal(
       "fetch",

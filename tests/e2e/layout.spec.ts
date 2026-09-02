@@ -67,6 +67,16 @@ test.describe("responsive layout", () => {
     await assertNoHorizontalOverflow(page);
   });
 
+  test("HMAC error shows retry help and Admin CTA without overflow", async ({ page }) => {
+    await page.setViewportSize({ width: 360, height: 780 });
+    await page.goto(
+      "/connect?status=error&error_description=Shopify+authorization+signature+is+invalid.&shop=gfd1cp-1y.myshopify.com"
+    );
+    await expect(page.getByTestId("hmac-retry-help")).toBeVisible();
+    await expect(page.getByTestId("open-shopify-admin-top")).toBeVisible();
+    await assertNoHorizontalOverflow(page);
+  });
+
   test("Open in Shopify Admin stays on-screen for a pending store", async ({ page }) => {
     await page.setViewportSize({ width: 360, height: 780 });
     await page.goto("/connect?shop=gfd1cp-1y.myshopify.com");

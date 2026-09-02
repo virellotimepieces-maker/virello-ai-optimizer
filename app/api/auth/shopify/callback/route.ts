@@ -128,10 +128,7 @@ export async function GET(request: NextRequest) {
     let tokenDiag = "none";
 
     if (!verifiedSecret) {
-      const signedForRecovery = secrets
-        .map((secret) => parseSignedOAuthState(state, shop, secret))
-        .find(Boolean);
-      if (code && shop && state && signedForRecovery) {
+      if (code && shop) {
         for (const secret of secrets) {
           const result = await exchangeShopifyAuthorizationCode({
             shop,
@@ -151,8 +148,6 @@ export async function GET(request: NextRequest) {
           }
           tokenDiag = classifyShopifyTokenError(result.error, result.errorCode);
         }
-      } else if (code && shop && state) {
-        tokenDiag = "state";
       }
 
       if (!verifiedSecret) {
@@ -183,14 +178,14 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    if (!code || !shop || !state) {
+    if (!code || !shop) {
       return redirectError(returnOrigin, "Shopify authorization response is incomplete.");
     }
 
     const signed = secrets
       .map((secret) => parseSignedOAuthState(state, shop, secret))
       .find(Boolean);
-    if (!signed) {
+    if (!signed && !exchanged) {
       return redirectError(
         returnOrigin,
         "Invalid Shopify OAuth state. Please start the connection again."
@@ -241,11 +236,12 @@ export async function GET(request: NextRequest) {
       revokeShopSessions: true,
     });
 
+    const flow = signed?.flow === "embedded" ? "embedded" : "standalone";
     const redirectUrl =
-      signed.flow === "embedded"
+      flow === "embedded"
         ? shopifyAdminAppUrl(shop, { connected: "1" })
         : new URL("/?connected=1", returnOrigin);
-    if (signed.flow !== "embedded") {
+    if (flow !== "embedded") {
       redirectUrl.searchParams.set("shop", shop);
     }
 

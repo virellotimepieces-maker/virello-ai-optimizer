@@ -95,6 +95,9 @@ export type CopyKey =
   | "oauthHmacHelp"
   | "openInShopifyAdmin"
   | "openInShopifyAdminHelp"
+  | "hmacRetryNow"
+  | "secretStatusReady"
+  | "secretStatusWrong"
   | "fieldTitle"
   | "fieldDescription"
   | "onePerLine"
@@ -208,6 +211,12 @@ export const COPY: Record<AppLocale, Record<CopyKey, string>> = {
     openInShopifyAdmin: "Open in Shopify Admin",
     openInShopifyAdminHelp:
       "The app is already listed on this store. Open it from Shopify Admin to finish connecting if Connect Shopify fails the signature check.",
+    hmacRetryNow:
+      "This morning's signature error is from the old build. Tap Connect Shopify again now. If it still fails, tap Open in Shopify Admin, or replace Vercel Production SHOPIFY_API_SECRET with the current Client secret and Redeploy.",
+    secretStatusReady:
+      "Shopify credentials are loaded (Client ID {id}, secret {kind} {length} chars).",
+    secretStatusWrong:
+      "SHOPIFY_API_SECRET looks like the Client ID. Paste the Client secret from Dev Dashboard → Settings.",
     fieldTitle: "Product title",
     fieldDescription: "Product description",
     onePerLine: "One item per line",
@@ -320,6 +329,12 @@ export const COPY: Record<AppLocale, Record<CopyKey, string>> = {
     openInShopifyAdmin: "Buksan sa Shopify Admin",
     openInShopifyAdminHelp:
       "Naka-lista na ang app sa store na ito. Buksan ito mula sa Shopify Admin kung may invalid signature pagkatapos mag-Connect.",
+    hmacRetryNow:
+      "Ang invalid signature kaninang umaga ay sa lumang build. I-tap ulit ang Connect Shopify ngayon. Kung hindi pa rin, i-tap ang Buksan sa Shopify Admin, o palitan ang Vercel Production SHOPIFY_API_SECRET ng kasalukuyang Client secret tapos i-Redeploy.",
+    secretStatusReady:
+      "Naka-load ang Shopify credentials (Client ID {id}, secret {kind} {length} chars).",
+    secretStatusWrong:
+      "Ang SHOPIFY_API_SECRET ay parang Client ID. I-paste ang Client secret mula sa Dev Dashboard → Settings.",
     fieldTitle: "Product title",
     fieldDescription: "Product description",
     onePerLine: "Isang item bawat line",

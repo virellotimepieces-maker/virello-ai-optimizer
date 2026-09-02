@@ -30,6 +30,13 @@ export default function ConnectPage() {
   const [status, setStatus] = useState<ConnectionStatus | null>(null);
   const [error, setError] = useState("");
   const [oauthDiag, setOauthDiag] = useState("");
+  const [secretStatus, setSecretStatus] = useState<{
+    configured?: boolean;
+    clientId?: string;
+    secretKind?: string;
+    secretLength?: number;
+    looksLikeClientId?: boolean;
+  } | null>(null);
 
   async function saveLocales(nextUi: AppLocale, nextOutput: AppLocale) {
     setUi(nextUi);
@@ -52,12 +59,15 @@ export default function ConnectPage() {
 
     async function bootstrap() {
       try {
-        const [prefRes, statusRes] = await Promise.all([
+        const [prefRes, statusRes, secretRes] = await Promise.all([
           shopifyFetch("/api/preferences", { cache: "no-store" }),
           shopifyFetch("/api/subscriber/status", { cache: "no-store" }),
+          shopifyFetch("/api/auth/shopify/secret-status", { cache: "no-store" }),
         ]);
         const pref = await prefRes.json().catch(() => null);
         const billing = await statusRes.json().catch(() => null);
+        const secret = await secretRes.json().catch(() => null);
+        if (secret?.success) setSecretStatus(secret);
         if (pref?.ui) setUi(pref.ui === "fil" ? "fil" : "en");
         if (pref?.output) setOutput(pref.output === "fil" ? "fil" : "en");
         setSubscriberActive(
@@ -288,6 +298,14 @@ export default function ConnectPage() {
       </header>
 
       {error && <div className="error-bar">{error}</div>}
+      {error &&
+        /signature is invalid|Client ID, not the Client secret|does not match this Shopify app/i.test(
+          error
+        ) && (
+          <div className="error-bar error-shopify" data-testid="hmac-retry-help">
+            {copy.hmacRetryNow}
+          </div>
+        )}
       {error && oauthDiag && (
         <div className="oauth-diag" data-testid="oauth-diag">
           <div className="oauth-diag-title">Signature check</div>
@@ -305,6 +323,23 @@ export default function ConnectPage() {
         /signature is invalid|Client ID, not the Client secret|does not match this Shopify app/i.test(
           error
         ) && <div className="error-bar error-shopify">{copy.oauthHmacHelp}</div>}
+      {error &&
+        /signature is invalid|Client ID, not the Client secret|does not match this Shopify app/i.test(
+          error
+        ) &&
+        Boolean(cleanShopDomain(shop)) && (
+          <div className="workspace" style={{ paddingTop: 0 }}>
+            <button
+              type="button"
+              className="subscribe-button"
+              data-testid="open-shopify-admin-top"
+              onClick={openInShopifyAdmin}
+              disabled={connecting || changingStore}
+            >
+              {copy.openInShopifyAdmin}
+            </button>
+          </div>
+        )}
 
       <section className="hero">
         <div className="hero-inner">
@@ -377,6 +412,16 @@ export default function ConnectPage() {
           <article className="content-card">
             <h2>{copy.connectHeadline}</h2>
             <p>{copy.connectSubhead}</p>
+            {secretStatus && (
+              <p data-testid="shopify-secret-status">
+                {secretStatus.looksLikeClientId
+                  ? copy.secretStatusWrong
+                  : copy.secretStatusReady
+                      .replace("{id}", secretStatus.clientId || "—")
+                      .replace("{kind}", secretStatus.secretKind || "missing")
+                      .replace("{length}", String(secretStatus.secretLength || 0))}
+              </p>
+            )}
             <p data-testid="store-binding-status">
               {storeBinding.kind === "connected"
                 ? `${copy.connected}: ${storeBinding.domain}`
