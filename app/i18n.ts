@@ -99,6 +99,7 @@ export type CopyKey =
   | "secretStatusReady"
   | "secretStatusWrong"
   | "secretStatusMissing"
+  | "alreadyBilledHelp"
   | "fieldTitle"
   | "fieldDescription"
   | "onePerLine"
@@ -220,6 +221,8 @@ export const COPY: Record<AppLocale, Record<CopyKey, string>> = {
       "SHOPIFY_API_SECRET looks like the Client ID. Paste the Client secret from Dev Dashboard → Settings.",
     secretStatusMissing:
       "SHOPIFY_API_SECRET is missing on Production. In Vercel add one Production-only row with the Client secret from Dev Dashboard → virello-ai-optimizer → Settings. Do not use a Production and Preview row. Then Redeploy Production without build cache.",
+    alreadyBilledHelp:
+      "This store already has your $29.99 subscription. Tap Connect Shopify again after this update. Your billing stays. Use Change Store only if you meant a different shop.",
     fieldTitle: "Product title",
     fieldDescription: "Product description",
     onePerLine: "One item per line",
@@ -340,6 +343,8 @@ export const COPY: Record<AppLocale, Record<CopyKey, string>> = {
       "Ang SHOPIFY_API_SECRET ay parang Client ID. I-paste ang Client secret mula sa Dev Dashboard → Settings.",
     secretStatusMissing:
       "Wala ang SHOPIFY_API_SECRET sa Production. Sa Vercel, magdagdag ng isang Production-only row: Client secret mula sa Dev Dashboard → virello-ai-optimizer → Settings. Huwag Production and Preview. Tapos i-Redeploy ang Production nang walang existing build cache.",
+    alreadyBilledHelp:
+      "Naka-subscribe na ang store na ito ($29.99). I-tap ulit ang Connect Shopify. Mananatili ang billing. Gamitin ang Palitan ang store kung ibang shop ang gusto mo.",
     fieldTitle: "Product title",
     fieldDescription: "Product description",
     onePerLine: "Isang item bawat line",

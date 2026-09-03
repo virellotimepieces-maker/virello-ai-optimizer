@@ -329,6 +329,11 @@ export default function ConnectPage() {
         /signature is invalid|Client ID, not the Client secret|does not match this Shopify app/i.test(
           error
         ) && <div className="error-bar error-shopify">{copy.oauthHmacHelp}</div>}
+      {error && /already has a Stripe subscription/i.test(error) && (
+        <div className="error-bar error-shopify" data-testid="already-billed-help">
+          {copy.alreadyBilledHelp}
+        </div>
+      )}
       {error &&
         /signature is invalid|Client ID, not the Client secret|does not match this Shopify app/i.test(
           error

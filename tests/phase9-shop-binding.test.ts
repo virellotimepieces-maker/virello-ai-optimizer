@@ -381,6 +381,124 @@ describe("Phase 9 shop-binding lifecycle", () => {
     expect((await billingForShop(SHOP_NEXT))?.subscriptionId).toBe("sub_replace");
   });
 
+  it("connects a shop that already has this subscriber's Stripe billing", async () => {
+    await upsertStripeCustomer({
+      customerId: "cus_paid",
+      shop: SHOP_NEXT,
+      livemode: false,
+    });
+    await saveShopSubscription({
+      shop: SHOP_NEXT,
+      customerId: "cus_paid",
+      subscriptionId: "sub_paid",
+      status: "active",
+      currentPeriodStart: 10,
+      currentPeriodEnd: 20,
+    });
+    const sessionId = await issueAppSession({
+      shop: SHOP_FAILED,
+      stripeCustomerId: "cus_paid",
+    });
+    const { GET: callback } = await import("../app/api/auth/shopify/callback/route");
+    const done = await callback(
+      callbackRequest({ shop: SHOP_NEXT, cookie: cookieHeader(sessionId) })
+    );
+    expect(done.headers.get("location") || "").toMatch(/connected=1/);
+    expect(await isShopifyInstallationActive(SHOP_NEXT)).toBe(true);
+    expect((await billingForShop(SHOP_NEXT))?.subscriptionId).toBe("sub_paid");
+    expect((await billingForShop(SHOP_NEXT))?.customerId).toBe("cus_paid");
+  });
+
+  it("keeps target billing when rehoming from a session shop with no subscription", async () => {
+    await saveShopSubscription({
+      shop: SHOP_NEXT,
+      customerId: "cus_target",
+      subscriptionId: "sub_target",
+      status: "active",
+      currentPeriodStart: 10,
+      currentPeriodEnd: 20,
+    });
+    await rehomeUninstalledBilling(SHOP_FAILED, SHOP_NEXT);
+    expect((await billingForShop(SHOP_NEXT))?.subscriptionId).toBe("sub_target");
+  });
+
+  it("keeps target billing when the session customer already paid for that shop", async () => {
+    await upsertStripeCustomer({
+      customerId: "cus_old",
+      shop: SHOP_FAILED,
+      livemode: false,
+    });
+    await saveShopSubscription({
+      shop: SHOP_FAILED,
+      customerId: "cus_old",
+      subscriptionId: "sub_old",
+      status: "active",
+      currentPeriodStart: 10,
+      currentPeriodEnd: 20,
+    });
+    await upsertStripeCustomer({
+      customerId: "cus_paid",
+      shop: SHOP_NEXT,
+      livemode: false,
+    });
+    await saveShopSubscription({
+      shop: SHOP_NEXT,
+      customerId: "cus_paid",
+      subscriptionId: "sub_paid",
+      status: "active",
+      currentPeriodStart: 10,
+      currentPeriodEnd: 20,
+    });
+    const sessionId = await issueAppSession({
+      shop: SHOP_FAILED,
+      stripeCustomerId: "cus_paid",
+    });
+    const { GET: callback } = await import("../app/api/auth/shopify/callback/route");
+    const done = await callback(
+      callbackRequest({ shop: SHOP_NEXT, cookie: cookieHeader(sessionId) })
+    );
+    expect(done.headers.get("location") || "").toMatch(/connected=1/);
+    expect((await billingForShop(SHOP_NEXT))?.subscriptionId).toBe("sub_paid");
+    expect((await billingForShop(SHOP_FAILED))?.subscriptionId).toBe("sub_old");
+  });
+
+  it("refuses to attach a different customer's Stripe subscription", async () => {
+    await upsertStripeCustomer({
+      customerId: "cus_mine",
+      shop: SHOP_FAILED,
+      livemode: false,
+    });
+    await saveShopSubscription({
+      shop: SHOP_FAILED,
+      customerId: "cus_mine",
+      subscriptionId: "sub_mine",
+      status: "active",
+      currentPeriodStart: 10,
+      currentPeriodEnd: 20,
+    });
+    await upsertStripeCustomer({
+      customerId: "cus_other",
+      shop: SHOP_NEXT,
+      livemode: false,
+    });
+    await saveShopSubscription({
+      shop: SHOP_NEXT,
+      customerId: "cus_other",
+      subscriptionId: "sub_other",
+      status: "active",
+      currentPeriodStart: 10,
+      currentPeriodEnd: 20,
+    });
+    await expect(
+      rehomeUninstalledBilling(SHOP_FAILED, SHOP_NEXT, "cus_mine")
+    ).rejects.toMatchObject({
+      name: "ShopBindingError",
+      message: expect.stringMatching(/already has a different Stripe customer|already has a Stripe subscription/),
+    });
+    expect((await billingForShop(SHOP_FAILED))?.subscriptionId).toBe("sub_mine");
+    expect((await billingForShop(SHOP_NEXT))?.subscriptionId).toBe("sub_other");
+  });
+
   it("blocks a different shop after a completed installation until Change Store", async () => {
     await saveShopifySession(SHOP_FAILED, "offline-token-installed", "write_products");
     const sessionId = await issueAppSession({

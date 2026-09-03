@@ -224,7 +224,11 @@ export async function GET(request: NextRequest) {
     }
 
     if (binding?.sessionShop && binding.sessionShop !== shop && !binding.installedShop) {
-      await rehomeUninstalledBilling(binding.sessionShop, shop);
+      await rehomeUninstalledBilling(
+        binding.sessionShop,
+        shop,
+        binding.stripeCustomerId
+      );
     }
 
     await saveShopifySession(shop, exchanged.accessToken, exchanged.scope);

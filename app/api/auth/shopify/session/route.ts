@@ -8,6 +8,7 @@ import {
 import {
   getSessionBinding,
   rehomeUninstalledBilling,
+  ShopBindingError,
 } from "../../../_lib/shop-binding";
 import {
   authenticateShopifyRequest,
@@ -39,7 +40,11 @@ export async function POST(request: NextRequest) {
     }
 
     if (binding?.sessionShop && binding.sessionShop !== shop && !binding.installedShop) {
-      await rehomeUninstalledBilling(binding.sessionShop, shop);
+      await rehomeUninstalledBilling(
+        binding.sessionShop,
+        shop,
+        binding.stripeCustomerId
+      );
     }
 
     const billing = await billingForShop(shop);
@@ -60,7 +65,8 @@ export async function POST(request: NextRequest) {
     const status =
       error instanceof OriginGuardError ||
       error instanceof RateLimitError ||
-      error instanceof ShopifyAuthError
+      error instanceof ShopifyAuthError ||
+      error instanceof ShopBindingError
         ? error.status
         : 500;
     return NextResponse.json(
