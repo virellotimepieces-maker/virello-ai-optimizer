@@ -201,6 +201,9 @@ export async function rehomeUninstalledBilling(
     fromSubs[0]?.stripe_subscription_id === toSubs[0]?.stripe_subscription_id;
   const targetAlreadyBilled = toCustomers.length > 0 || toSubs.length > 0;
   const sourceHasNoBilling = fromCustomers.length === 0 && fromSubs.length === 0;
+  const sessionOwnsSource = Boolean(
+    sessionCustomer && fromCustomerId && sessionCustomer === fromCustomerId
+  );
   const keepTargetBilling =
     targetAlreadyBilled &&
     (sourceHasNoBilling || sameCustomer || sameSubscription || sessionOwnsTarget);
@@ -212,6 +215,20 @@ export async function rehomeUninstalledBilling(
       await attachSessionsToShop(from, to);
       return;
     }
+  } else if (sessionOwnsSource && toCustomerId && toCustomerId !== fromCustomerId) {
+    await dbQuery(`DELETE FROM subscriber_usage WHERE shop = $1`, [to]);
+    await dbQuery(
+      `DELETE FROM shop_subscriptions
+       WHERE shop = $1
+         AND stripe_customer_id <> $2`,
+      [to, sessionCustomer]
+    );
+    await dbQuery(
+      `DELETE FROM stripe_customers
+       WHERE shop = $1
+         AND stripe_customer_id <> $2`,
+      [to, sessionCustomer]
+    );
   } else if (toCustomerId && fromCustomerId && toCustomerId !== fromCustomerId) {
     throw new ShopBindingError(
       "Target shop already has a different Stripe customer.",

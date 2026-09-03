@@ -91,8 +91,9 @@ export default function ConnectPage() {
             shop: nextBillingShop,
             pendingShop: nextPending,
           });
-          if (!installed && nextBilled) setShop(nextBilled);
+          if (!installed && nextPending) setShop(nextPending);
           else if (display.domain) setShop(display.domain);
+          else if (!installed && nextBilled) setShop(nextBilled);
         }
       } catch {
         setSubscriberActive(false);
@@ -341,6 +342,11 @@ export default function ConnectPage() {
       {error && /already has a Stripe subscription/i.test(error) && (
         <div className="error-bar error-shopify" data-testid="already-billed-help">
           {copy.alreadyBilledHelp}
+        </div>
+      )}
+      {error && /different Stripe customer/i.test(error) && (
+        <div className="error-bar error-shopify" data-testid="different-customer-help">
+          {copy.differentCustomerHelp}
         </div>
       )}
       {error &&

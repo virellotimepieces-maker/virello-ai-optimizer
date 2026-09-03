@@ -41,7 +41,8 @@ function redirectError(
     secretLengths?: number[];
     secretKind?: string;
     token?: string;
-  }
+  },
+  shop = ""
 ) {
   console.error("SHOPIFY_OAUTH_CALLBACK_REJECTED", {
     message,
@@ -68,6 +69,8 @@ function redirectError(
   const url = new URL("/connect", origin);
   url.searchParams.set("status", "error");
   url.searchParams.set("error_description", message);
+  const attempted = normalizeShop(shop);
+  if (attempted) url.searchParams.set("shop", attempted);
   if (diag) {
     url.searchParams.set(
       "oauth_diag",
@@ -91,6 +94,11 @@ function redirectError(
 
 export async function GET(request: NextRequest) {
   const returnOrigin = getAppUrl();
+  const callbackShop = normalizeShop(request.nextUrl.searchParams.get("shop") || "");
+  const fail = (
+    message: string,
+    diag?: Parameters<typeof redirectError>[2]
+  ) => redirectError(returnOrigin, message, diag, callbackShop);
 
   try {
     const params = request.nextUrl.searchParams;
@@ -103,13 +111,12 @@ export async function GET(request: NextRequest) {
     const apiKey = getShopifyClientId();
     const secrets = getShopifyClientSecrets();
     if (!apiKey || secrets.length === 0) {
-      return redirectError(returnOrigin, "Shopify credentials are not configured.");
+      return fail("Shopify credentials are not configured.");
     }
 
     const suppliedHmac = params.get("hmac") || "";
     if (!suppliedHmac) {
-      return redirectError(
-        returnOrigin,
+      return fail(
         "Shopify authorization was cancelled or did not complete. The store is still disconnected.",
         {
           ...shopifyCallbackHmacDiagnostics(request),
@@ -161,7 +168,7 @@ export async function GET(request: NextRequest) {
             : tokenDiag === "client"
               ? "SHOPIFY_API_SECRET does not match this Shopify app. Paste the Client secret from Dev Dashboard → virello-ai-optimizer → Settings."
               : "Shopify authorization signature is invalid.";
-        return redirectError(returnOrigin, hmacError, {
+        return fail(hmacError, {
           ...shopifyCallbackHmacDiagnostics(request),
           secretCount: secrets.length,
           secretLengths: secrets.map((value) => value.length).sort((a, b) => a - b),
@@ -172,30 +179,23 @@ export async function GET(request: NextRequest) {
     }
 
     if (oauthError && !exchanged) {
-      return redirectError(
-        returnOrigin,
-        oauthErrorDescription || oauthError
-      );
+      return fail(oauthErrorDescription || oauthError);
     }
 
     if (!code || !shop) {
-      return redirectError(returnOrigin, "Shopify authorization response is incomplete.");
+      return fail("Shopify authorization response is incomplete.");
     }
 
     const signed = secrets
       .map((secret) => parseSignedOAuthState(state, shop, secret))
       .find(Boolean);
     if (!signed && !exchanged) {
-      return redirectError(
-        returnOrigin,
-        "Invalid Shopify OAuth state. Please start the connection again."
-      );
+      return fail("Invalid Shopify OAuth state. Please start the connection again.");
     }
 
     const binding = await getSessionBinding(request);
     if (binding?.installedShop && binding.installedShop !== shop) {
-      return redirectError(
-        returnOrigin,
+      return fail(
         "This Virello session is already linked to a different Shopify store. Use Change Store to disconnect it first."
       );
     }
@@ -208,17 +208,13 @@ export async function GET(request: NextRequest) {
         code,
       });
       if (!result.ok) {
-        return redirectError(
-          returnOrigin,
-          result.error || "Shopify authorization failed."
-        );
+        return fail(result.error || "Shopify authorization failed.");
       }
       exchanged = { accessToken: result.accessToken, scope: result.scope };
     }
 
     if (!hasRequiredShopifyScopes(exchanged.scope)) {
-      return redirectError(
-        returnOrigin,
+      return fail(
         "Virello needs read_products and write_products. Reinstall and approve those scopes."
       );
     }
@@ -251,7 +247,7 @@ export async function GET(request: NextRequest) {
 
     const expectedCallback = shopifyCallbackUrl(returnOrigin);
     if (!request.nextUrl.pathname.endsWith("/api/auth/shopify/callback")) {
-      return redirectError(returnOrigin, "Unexpected Shopify callback path.");
+      return fail("Unexpected Shopify callback path.");
     }
     void expectedCallback;
 
@@ -267,8 +263,7 @@ export async function GET(request: NextRequest) {
     return response;
   } catch (error) {
     console.error("SHOPIFY_CALLBACK_ERROR:", error);
-    return redirectError(
-      returnOrigin,
+    return fail(
       error instanceof Error ? error.message : "Unable to complete Shopify connection."
     );
   }

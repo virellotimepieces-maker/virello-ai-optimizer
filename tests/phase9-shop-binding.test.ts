@@ -300,6 +300,7 @@ describe("Phase 9 shop-binding lifecycle", () => {
     const location = response.headers.get("location") || "";
     expect(location).toMatch(/signature(\+|%20)is(\+|%20)invalid|does(\+|%20)not(\+|%20)match(\+|%20)this(\+|%20)Shopify(\+|%20)app/i);
     expect(location).toMatch(/token=client|token%3Dclient/);
+    expect(location).toMatch(/shop=bcya1v-xp\.myshopify\.com|shop%3Dbcya1v-xp/);
     expect(await isShopifyInstallationActive(SHOP_NEXT)).toBe(false);
   });
 
@@ -514,7 +515,7 @@ describe("Phase 9 shop-binding lifecycle", () => {
     expect((await billingForShop(SHOP_FAILED))?.subscriptionId).toBe("sub_old");
   });
 
-  it("refuses to attach a different customer's Stripe subscription", async () => {
+  it("moves this subscriber's billing onto the shop they meant when leftover billing is in the way", async () => {
     await upsertStripeCustomer({
       customerId: "cus_mine",
       shop: SHOP_FAILED,
@@ -541,9 +542,48 @@ describe("Phase 9 shop-binding lifecycle", () => {
       currentPeriodStart: 10,
       currentPeriodEnd: 20,
     });
-    await expect(
-      rehomeUninstalledBilling(SHOP_FAILED, SHOP_NEXT, "cus_mine")
-    ).rejects.toMatchObject({
+    const sessionId = await issueAppSession({
+      shop: SHOP_FAILED,
+      stripeCustomerId: "cus_mine",
+    });
+    const { GET: callback } = await import("../app/api/auth/shopify/callback/route");
+    const done = await callback(
+      callbackRequest({ shop: SHOP_NEXT, cookie: cookieHeader(sessionId) })
+    );
+    expect(done.headers.get("location") || "").toMatch(/connected=1/);
+    expect((await billingForShop(SHOP_NEXT))?.customerId).toBe("cus_mine");
+    expect((await billingForShop(SHOP_NEXT))?.subscriptionId).toBe("sub_mine");
+    expect((await billingForShop(SHOP_FAILED))?.customerId).toBeUndefined();
+  });
+
+  it("keeps a different customer's billing when the session does not own the source shop", async () => {
+    await upsertStripeCustomer({
+      customerId: "cus_mine",
+      shop: SHOP_FAILED,
+      livemode: false,
+    });
+    await saveShopSubscription({
+      shop: SHOP_FAILED,
+      customerId: "cus_mine",
+      subscriptionId: "sub_mine",
+      status: "active",
+      currentPeriodStart: 10,
+      currentPeriodEnd: 20,
+    });
+    await upsertStripeCustomer({
+      customerId: "cus_other",
+      shop: SHOP_NEXT,
+      livemode: false,
+    });
+    await saveShopSubscription({
+      shop: SHOP_NEXT,
+      customerId: "cus_other",
+      subscriptionId: "sub_other",
+      status: "active",
+      currentPeriodStart: 10,
+      currentPeriodEnd: 20,
+    });
+    await expect(rehomeUninstalledBilling(SHOP_FAILED, SHOP_NEXT)).rejects.toMatchObject({
       name: "ShopBindingError",
       message: expect.stringMatching(/already has a different Stripe customer|already has a Stripe subscription/),
     });

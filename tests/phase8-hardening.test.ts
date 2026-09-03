@@ -188,12 +188,16 @@ describe("Phase 8 hardening", () => {
     expect(COPY.fil.secretStatusMissing).toMatch(/Production-only/);
     expect(COPY.en.alreadyBilledHelp).toMatch(/Connect Shopify/);
     expect(COPY.fil.alreadyBilledHelp).toMatch(/Connect Shopify/);
+    expect(COPY.en.differentCustomerHelp).toMatch(/gfd1cp-1y/);
+    expect(COPY.fil.differentCustomerHelp).toMatch(/gfd1cp-1y/);
     expect(COPY.en.billedStore).toMatch(/\$29\.99/);
     expect(COPY.fil.billedStore).toMatch(/\$29\.99/);
     expect(COPY.en.domainHint).toMatch(/gfd1cp-1y vs gfd1cp-1v/);
     expect(COPY.fil.domainHint).toMatch(/gfd1cp-1y vs gfd1cp-1v/);
     expect(connect).toMatch(/alreadyBilledHelp/);
+    expect(connect).toMatch(/differentCustomerHelp/);
     expect(connect).toMatch(/billedStore/);
+    expect(connect).toMatch(/nextPending/);
     expect(connect).toMatch(/domainHint/);
     const layout = readFileSync("app/layout.tsx", "utf8");
     expect(layout).toMatch(/cdn\.shopify\.com\/shopifycloud\/app-bridge\.js/);
