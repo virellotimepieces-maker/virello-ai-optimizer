@@ -157,10 +157,10 @@ textarea {
   margin: 16px 0 16px;
 
   color: #101217;
-  font-size: clamp(40px, 5vw, 66px);
-  line-height: 0.98;
-  letter-spacing: -3.5px;
-  font-weight: 850;
+  font-size: clamp(28px, 4vw, 44px);
+  line-height: 1.08;
+  letter-spacing: -1.4px;
+  font-weight: 800;
 }
 
 .hero h1 span {
@@ -172,8 +172,23 @@ textarea {
   margin: 0;
 
   color: #69707a;
-  font-size: clamp(16px, 1.4vw, 18px);
-  line-height: 1.6;
+  font-size: clamp(14px, 1.3vw, 16px);
+  line-height: 1.55;
+}
+
+.hero-hint {
+  margin-top: 8px;
+  font-size: 13px;
+}
+
+.hero-compact .hero-inner {
+  padding: 18px 0 14px;
+}
+
+.hero-compact h1 {
+  margin: 6px 0 0;
+  font-size: clamp(20px, 3.4vw, 28px);
+  letter-spacing: -0.6px;
 }
 
 /* =========================
@@ -350,15 +365,15 @@ textarea {
 .content-card > h2 {
   margin: 0 0 8px;
   color: #15171b;
-  font-size: clamp(22px, 2.4vw, 28px);
-  line-height: 1.2;
-  letter-spacing: -0.5px;
+  font-size: clamp(17px, 1.8vw, 20px);
+  line-height: 1.25;
+  letter-spacing: -0.3px;
 }
 
 .content-card > p {
   margin: 0 0 12px;
   color: #5b616b;
-  font-size: 16px;
+  font-size: 14px;
   line-height: 1.5;
 }
 
@@ -755,9 +770,52 @@ textarea {
    SCORE OVERVIEW
 ========================= */
 
+.connected-shop {
+  display: inline-flex;
+  max-width: 100%;
+  margin: 4px 0 12px;
+  font-size: 12px;
+}
+
+.conversion-highlight {
+  margin-top: 4px;
+  padding: 14px 16px;
+  border: 1px solid #dce8dc;
+  border-radius: 12px;
+  background: #f4faf5;
+}
+
+.conversion-highlight .eyebrow {
+  color: #2f6b3a;
+}
+
+.conversion-highlight p {
+  margin: 8px 0 0;
+  color: #1f2933;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.conversion-highlight ul {
+  margin: 10px 0 0;
+  padding-left: 18px;
+  color: #374151;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.conversion-highlight li + li {
+  margin-top: 4px;
+}
+
+.listing-scores {
+  margin: 0 0 16px;
+  padding: 0;
+}
+
 .score-overview {
   margin-bottom: 14px;
-  padding: 22px;
+  padding: 18px 20px;
 
   display: flex;
   align-items: center;
@@ -807,9 +865,9 @@ textarea {
 
 .overall-score strong {
   color: #ffffff;
-  font-size: 50px;
+  font-size: 40px;
   line-height: 1;
-  letter-spacing: -2.5px;
+  letter-spacing: -1.6px;
 }
 
 .overall-score span {
@@ -1083,7 +1141,7 @@ textarea {
   }
 
   .hero h1 {
-    font-size: clamp(38px, 7vw, 54px);
+    font-size: clamp(26px, 5.5vw, 36px);
   }
 
   .workspace {
@@ -1139,27 +1197,32 @@ textarea {
 
   .hero-inner {
     width: calc(100% - 24px);
-    padding: 20px 0 18px;
+    padding: 14px 0 12px;
   }
 
   .eyebrow,
   .step-label {
-    font-size: 10px;
+    font-size: 9px;
     letter-spacing: 0.12em;
   }
 
   .hero h1 {
     max-width: 100%;
-    margin: 10px 0 12px;
-    font-size: clamp(36px, 8vw, 44px);
-    line-height: 1.12;
-    letter-spacing: -1.2px;
+    margin: 8px 0 8px;
+    font-size: clamp(20px, 6.2vw, 26px);
+    line-height: 1.15;
+    letter-spacing: -0.5px;
+  }
+
+  .hero-compact h1 {
+    font-size: 18px;
+    margin: 4px 0 0;
   }
 
   .hero p {
     max-width: 100%;
-    font-size: clamp(16px, 4vw, 18px);
-    line-height: 1.5;
+    font-size: 13px;
+    line-height: 1.45;
   }
 
   .workspace {
@@ -1173,11 +1236,14 @@ textarea {
   }
 
   .content-card > h2 {
-    font-size: clamp(28px, 7vw, 34px);
+    font-size: 16px;
+    letter-spacing: -0.2px;
   }
 
-  .content-card > p {
-    font-size: 16px;
+  .content-card > p,
+  .empty-copy,
+  .approve-box {
+    font-size: 13px;
   }
 
   .subscribe-button,
@@ -1187,7 +1253,7 @@ textarea {
   .save-button {
     width: auto;
     min-height: 44px;
-    font-size: 14px;
+    font-size: 13px;
     white-space: normal;
   }
 
@@ -1260,6 +1326,10 @@ textarea {
     margin-top: 10px;
   }
 
+  .listing-scores .score-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .score-grid > .search-input:last-child {
     grid-column: auto;
   }
@@ -1292,6 +1362,30 @@ textarea {
     min-height: 220px;
     padding: 20px 12px;
   }
+
+  .score-overview {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 14px;
+  }
+
+  .score-overview h2 {
+    font-size: 16px;
+  }
+
+  .overall-score strong {
+    font-size: 32px;
+  }
+
+  .conversion-highlight p {
+    font-size: 13px;
+  }
+
+  .connected-shop {
+    max-width: 100%;
+    font-size: 11px;
+  }
 }
 
 /* =========================
@@ -1309,13 +1403,13 @@ textarea {
   }
 
   .hero h1 {
-    font-size: 36px;
-    letter-spacing: -1.1px;
+    font-size: 20px;
+    letter-spacing: -0.4px;
   }
 
   .hero p,
   .content-card > p {
-    font-size: 16px;
+    font-size: 13px;
   }
 
   .content-card {
@@ -1323,7 +1417,18 @@ textarea {
   }
 
   .content-card > h2 {
-    font-size: 28px;
+    font-size: 16px;
+  }
+
+  .score-overview {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 14px;
+  }
+
+  .overall-score strong {
+    font-size: 36px;
   }
 }
 
@@ -1495,6 +1600,7 @@ textarea {
   border: 1px solid #d6d8de;
   border-radius: 10px;
   font-size: 16px;
+  line-height: 1.3;
 }
 
 .review-grid {

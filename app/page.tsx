@@ -6,7 +6,8 @@ import { COPY } from "./i18n";
 import type { AppLocale } from "./api/_lib/locales";
 import { normalizeShop, isShopifyAdminAuthorizeUrl, resolveStoreBindingDisplay } from "./api/_lib/shop-domain";
 import { assignTopLevel } from "./shopify-embed";
-import { buildShopifyDescriptionHtml } from "./api/_lib/listing-html";
+import { buildShopifyDescriptionHtml, stripHtml } from "./api/_lib/listing-html";
+import { scoreListing, type ListingGrade } from "./api/_lib/listing-score";
 
 type Product = {
   id: string;
@@ -72,6 +73,12 @@ function normalizeShopInput(value: string) {
   return normalizeShop(value);
 }
 
+function gradeCopy(copy: (typeof COPY)["en"], grade: ListingGrade) {
+  if (grade === "high") return copy.gradeHigh;
+  if (grade === "good") return copy.gradeGood;
+  return copy.gradeNeedsWork;
+}
+
 export default function Home() {
   const [ui, setUi] = useState<AppLocale>("en");
   const [output, setOutput] = useState<AppLocale>("en");
@@ -116,6 +123,24 @@ export default function Home() {
     pendingShop,
   });
   const showChangeStore = Boolean(canManage || shop || pendingShop || shopInstalled);
+  const listingScores =
+    selected && optimization && analysis
+      ? scoreListing({
+          sourceTitle: selected.title,
+          title: optimization.title,
+          description: optimization.description,
+          benefitBullets: optimization.benefitBullets,
+          seoTitle: optimization.seoTitle,
+          metaDescription: optimization.metaDescription,
+          tags: optimization.tags,
+          callToAction: optimization.callToAction,
+          conversionCopy: optimization.conversionCopy,
+          conversionOpportunities: analysis.conversionOpportunities,
+          objections: analysis.objections.length,
+          targetCustomer: analysis.targetCustomer,
+          missingInformation: analysis.missingInformation.length,
+        })
+      : null;
 
   function showError(kind: typeof errorKind, text: string) {
     setErrorKind(kind);
@@ -342,7 +367,7 @@ export default function Home() {
           product: {
             id: selected.id,
             title: selected.title,
-            description: selected.description,
+            description: stripHtml(selected.description || ""),
             productType: selected.productType,
             vendor: selected.vendor,
             tags: selected.tags,
@@ -495,12 +520,16 @@ export default function Home() {
       )}
       {message && !error && <div className="success-bar">{message}</div>}
 
-      <section className="hero">
+      <section className={shopInstalled ? "hero hero-compact" : "hero"}>
         <div className="hero-inner">
           <div className="eyebrow">{copy.eyebrow}</div>
           <h1>{copy.headline}</h1>
-          <p>{copy.subhead}</p>
-          <p className="hero-hint">{copy.standaloneHint}</p>
+          {!shopInstalled && (
+            <>
+              <p>{copy.subhead}</p>
+              <p className="hero-hint">{copy.standaloneHint}</p>
+            </>
+          )}
         </div>
       </section>
 
@@ -515,12 +544,18 @@ export default function Home() {
                   ? `${copy.pendingStore}: ${storeBinding.domain}. ${copy.notConnected}`
                   : copy.notConnected}
             </p>
-            <input
-              className="shop-input"
-              value={shopInput}
-              onChange={(event) => setShopInput(event.target.value)}
-              placeholder={copy.shopPlaceholder}
-            />
+            {storeBinding.kind === "connected" ? (
+              <p className="shop-pill connected-shop" data-testid="connected-shop">
+                {storeBinding.domain}
+              </p>
+            ) : (
+              <input
+                className="shop-input"
+                value={shopInput}
+                onChange={(event) => setShopInput(event.target.value)}
+                placeholder={copy.shopPlaceholder}
+              />
+            )}
             <button type="button" className="subscribe-button" onClick={connectShopify} disabled={connecting || changingStore}>
               {connecting ? copy.connecting : shopInstalled ? copy.reconnect : copy.connectShopify}
             </button>
@@ -594,6 +629,52 @@ export default function Home() {
           ) : (
             <>
               <p className="empty-copy">{copy.reviewHint}</p>
+              {listingScores && (
+                <div className="results listing-scores" data-testid="listing-scores">
+                  <div className="score-overview">
+                    <div>
+                      <div className="step-label light">{copy.listingScores}</div>
+                      <h2>{gradeCopy(copy, listingScores.grade)}</h2>
+                      <p>{copy.conversionHighlight}</p>
+                    </div>
+                    <div className="overall-score">
+                      <strong>{listingScores.overall}</strong>
+                      <span>{copy.outOf100}</span>
+                    </div>
+                  </div>
+                  <div className="score-grid">
+                    {(
+                      [
+                        { label: copy.scoreTitle, value: listingScores.title },
+                        { label: copy.scoreDescription, value: listingScores.description },
+                        { label: copy.scoreSeo, value: listingScores.seo },
+                        { label: copy.scoreConversion, value: listingScores.conversion },
+                      ] as const
+                    ).map((row) => (
+                      <div className="score-card" key={row.label}>
+                        <div className="score-header">
+                          <span>{row.label}</span>
+                          <strong>{row.value}</strong>
+                        </div>
+                        <div className="score-track">
+                          <div className="score-fill" style={{ width: `${row.value}%` }} />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="conversion-highlight" data-testid="conversion-highlight">
+                    <div className="eyebrow">{copy.conversionHighlight}</div>
+                    <p>{optimization.conversionCopy || copy.emptyReview}</p>
+                    {analysis.conversionOpportunities.length > 0 && (
+                      <ul>
+                        {analysis.conversionOpportunities.map((item) => (
+                          <li key={item}>{item}</li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                </div>
+              )}
               {(analysis.warnings.length > 0 || missing.length > 0) && (
                 <ul className="warning-list">
                   {(analysis.warnings.length ? analysis.warnings : missing).map((warning) => (
@@ -605,7 +686,7 @@ export default function Home() {
                 <section>
                   <h3>{copy.original}</h3>
                   <p><strong>{selected.title}</strong></p>
-                  <p>{selected.description || "—"}</p>
+                  <p>{stripHtml(selected.description || "") || "—"}</p>
                   {selected.vendor ? <p>{selected.vendor}</p> : null}
                   {selected.variants?.length ? <p>{selected.variants.join(" · ")}</p> : null}
                 </section>

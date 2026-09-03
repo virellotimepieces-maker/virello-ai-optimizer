@@ -108,7 +108,18 @@ export type CopyKey =
   | "fieldTitle"
   | "fieldDescription"
   | "onePerLine"
-  | "objectionResponse";
+  | "objectionResponse"
+  | "listingScores"
+  | "overallScore"
+  | "scoreTitle"
+  | "scoreDescription"
+  | "scoreSeo"
+  | "scoreConversion"
+  | "gradeHigh"
+  | "gradeGood"
+  | "gradeNeedsWork"
+  | "conversionHighlight"
+  | "outOf100";
 
 export const COPY: Record<AppLocale, Record<CopyKey, string>> = {
   en: {
@@ -139,7 +150,8 @@ export const COPY: Record<AppLocale, Record<CopyKey, string>> = {
     uiLanguage: "Interface",
     outputLanguage: "Product copy",
     emptyProducts: "No products imported yet.",
-    emptyReview: "Optimize a product to review title, description, benefits, SEO, tags, and conversion copy.",
+    emptyReview:
+      "Optimize a product to see conversion scores, high-conversion copy, title, benefits, SEO, and tags.",
     quotaError: "You have used all 1000 AI optimizations for this billing period.",
     paymentError: "An eligible $29.99/month subscription is required.",
     shopifyError: "Reconnect Shopify before importing, optimizing, or saving.",
@@ -240,6 +252,17 @@ export const COPY: Record<AppLocale, Record<CopyKey, string>> = {
     fieldDescription: "Product description",
     onePerLine: "One item per line",
     objectionResponse: "Honest response",
+    listingScores: "Listing scores",
+    overallScore: "Overall",
+    scoreTitle: "Title",
+    scoreDescription: "Description",
+    scoreSeo: "SEO",
+    scoreConversion: "Conversion",
+    gradeHigh: "High conversion",
+    gradeGood: "Ready to convert",
+    gradeNeedsWork: "Needs stronger copy",
+    conversionHighlight: "High-conversion copy",
+    outOf100: "/ 100",
   },
   fil: {
     brandSmall: "VIRELLO AI",
@@ -269,7 +292,8 @@ export const COPY: Record<AppLocale, Record<CopyKey, string>> = {
     uiLanguage: "Interface",
     outputLanguage: "Product copy",
     emptyProducts: "Wala pang na-import na products.",
-    emptyReview: "Mag-optimize muna ng product para ma-review ang title, description, benefits, SEO, tags, at conversion copy.",
+    emptyReview:
+      "Mag-optimize muna ng product para makita ang conversion scores, high-conversion copy, title, benefits, SEO, at tags.",
     quotaError: "Naubos na ang 1000 AI optimizations para sa billing period na ito.",
     paymentError: "Kailangan ng $29.99/month na subscription.",
     shopifyError: "I-reconnect ang Shopify bago mag-import, mag-optimize, o mag-save.",
@@ -370,6 +394,17 @@ export const COPY: Record<AppLocale, Record<CopyKey, string>> = {
     fieldDescription: "Product description",
     onePerLine: "Isang item bawat line",
     objectionResponse: "Tapat na sagot",
+    listingScores: "Mga listing score",
+    overallScore: "Overall",
+    scoreTitle: "Title",
+    scoreDescription: "Description",
+    scoreSeo: "SEO",
+    scoreConversion: "Conversion",
+    gradeHigh: "High conversion",
+    gradeGood: "Handang mag-convert",
+    gradeNeedsWork: "Kailangan pa ng mas malakas na copy",
+    conversionHighlight: "High-conversion copy",
+    outOf100: "/ 100",
   },
 };
 

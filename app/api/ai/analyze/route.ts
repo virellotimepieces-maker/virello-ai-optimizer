@@ -6,6 +6,7 @@ import {
 import { OriginGuardError, assertSafeMutation } from "../../_lib/origin-guard";
 import { ProductAccessError } from "../../_lib/product-access";
 import { ShopifyAuthError } from "../../_lib/shopify-auth";
+import { stripHtml } from "../../_lib/listing-html";
 import {
   optimizeProduct,
   OptimizerError,
@@ -32,8 +33,8 @@ export async function POST(request: NextRequest) {
     const source = body?.product && typeof body.product === "object" ? body.product : body;
     const product: OptimizerProduct = {
       id: typeof source.id === "string" ? source.id : undefined,
-      title: typeof source.title === "string" ? source.title : "",
-      description: typeof source.description === "string" ? source.description : "",
+      title: typeof source.title === "string" ? stripHtml(source.title) : "",
+      description: typeof source.description === "string" ? stripHtml(source.description) : "",
       productType: typeof source.productType === "string" ? source.productType : "",
       vendor: typeof source.vendor === "string" ? source.vendor : "",
       tags: Array.isArray(source.tags) ? source.tags : [],

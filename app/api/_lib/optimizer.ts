@@ -1,6 +1,9 @@
 import { parseAppLocale, type AppLocale } from "./locales";
+import { stripHtml } from "./listing-html";
+import { scoreListing, type ListingScores } from "./listing-score";
 
 export { buildShopifyDescriptionHtml } from "./listing-html";
+export type { ListingScores } from "./listing-score";
 
 export type OptimizerProduct = {
   id?: string;
@@ -44,6 +47,7 @@ export type OptimizationResult = {
     conversionCopy: string;
   };
   reasoning: string;
+  scores: ListingScores;
 };
 
 export class OptimizerError extends Error {
@@ -67,7 +71,33 @@ export function setOptimizerFetchForTests(fn: FetchLike | null): void {
 }
 
 function cleanText(value: unknown): string {
-  return typeof value === "string" ? value.trim() : "";
+  return typeof value === "string" ? stripHtml(value).trim() : "";
+}
+
+function pickText(...values: unknown[]): string {
+  for (const value of values) {
+    const text = cleanText(value);
+    if (text) return text;
+  }
+  return "";
+}
+
+function recordOf(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+}
+
+function fallbackDescription(product?: OptimizerProduct): string {
+  if (!product) return "";
+  const facts = [
+    cleanText(product.title),
+    cleanText(product.description),
+    product.vendor ? `${product.vendor}` : "",
+    product.productType,
+    product.price ? `${product.price}` : "",
+    ...(product.options ?? []).slice(0, 4),
+    ...(product.variants ?? []).slice(0, 3),
+  ].filter(Boolean);
+  return uniqueTexts(facts.filter((item): item is string => Boolean(item))).join(". ").slice(0, 900);
 }
 
 function cleanArray(value: unknown): string[] {
@@ -148,13 +178,13 @@ export function inventedClaimsIn(source: string, generated: string): string[] {
   return issues;
 }
 
-export function validateOptimizationResult(raw: unknown): OptimizationResult {
-  const data = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
-  const analysis = data.analysis && typeof data.analysis === "object" ? (data.analysis as Record<string, unknown>) : {};
-  const optimization =
-    data.optimization && typeof data.optimization === "object"
-      ? (data.optimization as Record<string, unknown>)
-      : {};
+export function validateOptimizationResult(
+  raw: unknown,
+  source?: OptimizerProduct
+): OptimizationResult {
+  const data = recordOf(raw);
+  const analysis = recordOf(data.analysis);
+  const optimization = recordOf(data.optimization);
 
   const missingInformation = cleanArray(analysis.missingInformation);
   const benefitBullets = uniqueTexts([
@@ -168,8 +198,47 @@ export function validateOptimizationResult(raw: unknown): OptimizationResult {
     ),
   ]).slice(0, 12);
 
-  const seoTitle = cleanText(optimization.seoTitle).slice(0, 70);
-  const metaDescription = cleanText(optimization.metaDescription).slice(0, 160);
+  const recoveredTitle = pickText(
+    optimization.title,
+    optimization.productTitle,
+    optimization.listingTitle,
+    data.title,
+    data.productTitle,
+    source?.title
+  ).slice(0, 120);
+  const recoveredDescription = pickText(
+    optimization.description,
+    optimization.body,
+    optimization.productDescription,
+    data.description,
+    source?.description,
+    fallbackDescription(source)
+  );
+  if (
+    (!cleanText(optimization.title) || !cleanText(optimization.description)) &&
+    recoveredTitle &&
+    recoveredDescription
+  ) {
+    warnings.push("AI omitted the title or description; Virello filled it from the product listing.");
+  }
+
+  const title = recoveredTitle;
+  const description = recoveredDescription;
+  const seoTitle = pickText(optimization.seoTitle, data.seoTitle, title).slice(0, 70);
+  const metaDescription = pickText(
+    optimization.metaDescription,
+    data.metaDescription,
+    description
+  ).slice(0, 160);
+  const callToAction = pickText(optimization.callToAction, data.callToAction);
+  const conversionCopy = pickText(
+    optimization.conversionCopy,
+    analysis.conversionCopy,
+    data.conversionCopy,
+    callToAction,
+    benefitBullets[0],
+    description
+  );
 
   const result: OptimizationResult = {
     analysis: {
@@ -184,22 +253,45 @@ export function validateOptimizationResult(raw: unknown): OptimizationResult {
       warnings,
     },
     optimization: {
-      title: cleanText(optimization.title).slice(0, 120),
-      description: cleanText(optimization.description),
+      title,
+      description,
       benefitBullets,
       seoTitle,
       metaDescription,
       tags: uniqueTexts(cleanArray(optimization.tags)).slice(0, 20),
       keywords: uniqueTexts(cleanArray(optimization.keywords)).slice(0, 20),
-      callToAction: cleanText(optimization.callToAction),
-      conversionCopy: cleanText(optimization.conversionCopy),
+      callToAction,
+      conversionCopy,
     },
     reasoning: cleanText(data.reasoning),
+    scores: {
+      overall: 0,
+      title: 0,
+      description: 0,
+      seo: 0,
+      conversion: 0,
+      grade: "needs_work",
+    },
   };
 
   if (!result.optimization.title || !result.optimization.description) {
     throw new OptimizerError("AI result is missing a product title or description.", 502);
   }
+  result.scores = scoreListing({
+    sourceTitle: source?.title || result.optimization.title,
+    title: result.optimization.title,
+    description: result.optimization.description,
+    benefitBullets: result.optimization.benefitBullets,
+    seoTitle: result.optimization.seoTitle,
+    metaDescription: result.optimization.metaDescription,
+    tags: result.optimization.tags,
+    callToAction: result.optimization.callToAction,
+    conversionCopy: result.optimization.conversionCopy,
+    conversionOpportunities: result.analysis.conversionOpportunities,
+    objections: result.analysis.objections.length,
+    targetCustomer: result.analysis.targetCustomer,
+    missingInformation: result.analysis.missingInformation.length,
+  });
   return result;
 }
 
@@ -266,6 +358,8 @@ Preserve vendor, brand names, and important variant facts.
 Avoid generic filler and repetition. Make copy specific to this product and the likely buyer.
 Write short mobile-friendly paragraphs and scannable benefit bullets.
 SEO title: aim 50-60 characters, never over 70. SEO meta description: aim 140-160 characters, never over 160.
+optimization.title and optimization.description are required non-empty plain-text strings. Never leave them blank.
+Write conversionCopy as a short high-conversion summary a shopper can act on, using only stated facts.
 ${languageInstruction(outputLocale)}
 Return JSON only with:
 analysis.targetCustomer,
@@ -351,7 +445,7 @@ export async function optimizeProduct(
         attempt === 0 ? system : `${system}\nRetry: return valid JSON and do not invent facts.`,
         user
       );
-      const result = validateOptimizationResult(parseModelText(content));
+      const result = validateOptimizationResult(parseModelText(content), product);
       assertGroundedResult(product, result);
       return result;
     } catch (error) {

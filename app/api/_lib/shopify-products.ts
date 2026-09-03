@@ -1,3 +1,4 @@
+import { stripHtml } from "./listing-html";
 import { shopifyAdminGraphql, SHOPIFY_PRODUCT_PAGE_SIZE } from "./shopify-admin";
 import { hasRequiredShopifyScopes } from "./shopify-scopes";
 import { storedShopifyScope } from "./shopify-auth";
@@ -146,7 +147,7 @@ export async function importProductPage(
     .map((product) => ({
       id: product.id,
       title: product.title || "",
-      description: product.descriptionHtml || "",
+      description: stripHtml(product.descriptionHtml || ""),
       productType: product.productType || "",
       vendor: product.vendor || "",
       price: product.variants?.nodes?.[0]?.price || "",

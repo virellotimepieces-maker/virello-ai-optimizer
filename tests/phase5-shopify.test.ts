@@ -275,6 +275,7 @@ describe("Phase 5 import, save, and access", () => {
     expect(page.products).toHaveLength(1);
     expect(page.pageInfo.endCursor).toBe("cursor-2");
     expect(page.products[0].title).toBe("Gold watch");
+    expect(page.products[0].description).toBe("Swiss");
     expect(page.products[0].handle).toBe("");
     expect(page.products[0].variants[0]).toContain("29.99");
   });

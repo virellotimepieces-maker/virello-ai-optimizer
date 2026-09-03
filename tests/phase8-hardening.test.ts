@@ -188,6 +188,10 @@ describe("Phase 8 hardening", () => {
     expect(COPY.fil.secretStatusMissing).toMatch(/Production-only/);
     expect(COPY.en.alreadyBilledHelp).toMatch(/Connect Shopify/);
     expect(COPY.fil.alreadyBilledHelp).toMatch(/Connect Shopify/);
+    expect(COPY.en.emptyReview).toMatch(/conversion scores/);
+    expect(COPY.fil.emptyReview).toMatch(/conversion scores/);
+    expect(COPY.en.gradeHigh).toBe("High conversion");
+    expect(COPY.fil.alreadyBilledHelp).toMatch(/Connect Shopify/);
     expect(COPY.en.differentCustomerHelp).toMatch(/gfd1cp-1y/);
     expect(COPY.fil.differentCustomerHelp).toMatch(/gfd1cp-1y/);
     expect(COPY.en.differentCustomerHelp).toMatch(/Use this store/);
@@ -217,6 +221,8 @@ describe("Phase 8 hardening", () => {
     const home = readFileSync("app/page.tsx", "utf8");
     expect(home).not.toMatch(/window\.location\.replace\(admin/);
     expect(home).toMatch(/assignTopLevel/);
+    expect(home).toMatch(/listing-scores/);
+    expect(home).toMatch(/conversion-highlight/);
     expect(readFileSync("app/shopify-app-bridge.tsx", "utf8")).toMatch(/copyEmbedQuery/);
     expect(readFileSync("app/shopify-embed.ts", "utf8")).toMatch(/window\.open\(url, "_top"\)/);
   });
