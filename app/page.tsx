@@ -5,6 +5,7 @@ import { shopifyFetch } from "./shopify-fetch";
 import { COPY } from "./i18n";
 import type { AppLocale } from "./api/_lib/locales";
 import { normalizeShop, isShopifyAdminAuthorizeUrl, resolveStoreBindingDisplay } from "./api/_lib/shop-domain";
+import { assignTopLevel } from "./shopify-embed";
 import { buildShopifyDescriptionHtml } from "./api/_lib/listing-html";
 
 type Product = {
@@ -134,21 +135,7 @@ export default function Home() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const shopFromUrl = params.get("shop") || "";
-    const embedded = params.get("embedded") === "1" || Boolean(params.get("host"));
     const checkout = params.get("checkout");
-    if (
-      embedded &&
-      window.top === window.self &&
-      /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.myshopify\.com$/i.test(shopFromUrl)
-    ) {
-      const handle = shopFromUrl.toLowerCase().replace(/\.myshopify\.com$/i, "");
-      const admin = new URL(`/store/${handle}/apps/virello-ai-optimizer`, "https://admin.shopify.com");
-      admin.searchParams.set("shop", shopFromUrl.toLowerCase());
-      if (checkout) admin.searchParams.set("checkout", checkout);
-      window.location.replace(admin.toString());
-      return;
-    }
-
     if (params.get("connected") === "1") setMessage(copy.connected);
     if (shopFromUrl) setShopInput(normalizeShopInput(shopFromUrl));
 
@@ -215,7 +202,7 @@ export default function Home() {
         showError(response.status === 402 ? "payment" : "", data?.error || copy.paymentError);
         return;
       }
-      window.location.assign(data.url);
+      assignTopLevel(data.url);
     } catch {
       showError("payment", copy.paymentError);
     } finally {
@@ -230,7 +217,7 @@ export default function Home() {
       const response = await shopifyFetch("/api/stripe/portal", { method: "POST" });
       const data = await response.json().catch(() => null);
       if (!response.ok || !data?.url) throw new Error(data?.error || copy.portalError);
-      window.location.assign(data.url);
+      assignTopLevel(data.url);
     } catch (err) {
       showError("payment", err instanceof Error ? err.message : copy.portalError);
       setPortalLoading(false);
@@ -265,7 +252,7 @@ export default function Home() {
         showError("shopify", data?.error || copy.invalidAuthorizeUrl);
         return;
       }
-      window.location.assign(data.url);
+      assignTopLevel(data.url);
     } catch (err) {
       showError("shopify", err instanceof Error ? err.message : copy.shopifyError);
     } finally {

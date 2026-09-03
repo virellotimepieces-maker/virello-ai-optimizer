@@ -5,6 +5,7 @@ import { shopifyFetch } from "../shopify-fetch";
 import { COPY } from "../i18n";
 import type { AppLocale } from "../api/_lib/locales";
 import { normalizeShop, isShopifyAdminAuthorizeUrl, resolveStoreBindingDisplay, shopifyAdminAppHref } from "../api/_lib/shop-domain";
+import { assignTopLevel, copyEmbedQuery, isShopifyAdminIframe } from "../shopify-embed";
 
 type ConnectionStatus = {
   success?: boolean;
@@ -122,7 +123,7 @@ export default function ConnectPage() {
         if (!response.ok || !data?.url) {
           throw new Error(data?.error || copy.paymentError);
         }
-        window.location.assign(data.url);
+        assignTopLevel(data.url);
       } catch (err) {
         setError(err instanceof Error ? err.message : copy.paymentError);
         setBillingLoading(false);
@@ -141,7 +142,7 @@ export default function ConnectPage() {
       if (!response.ok || !data?.url) {
         throw new Error(data?.error || copy.portalError);
       }
-      window.location.assign(data.url);
+      assignTopLevel(data.url);
     } catch (err) {
       setError(err instanceof Error ? err.message : copy.portalError);
       setBillingLoading(false);
@@ -205,7 +206,7 @@ export default function ConnectPage() {
         setConnecting(false);
         return;
       }
-      window.location.assign(data.url);
+      assignTopLevel(data.url);
     } catch (err) {
       setError(err instanceof Error ? err.message : copy.shopifyError);
       setConnecting(false);
@@ -249,11 +250,15 @@ export default function ConnectPage() {
       setError(copy.invalidShop);
       return;
     }
-    window.location.assign(href);
+    if (isShopifyAdminIframe()) return;
+    assignTopLevel(href);
   }
 
   function continueToVirello() {
-    const target = new URL("/", window.location.origin);
+    const target = copyEmbedQuery(
+      new URLSearchParams(window.location.search),
+      new URL("/", window.location.origin)
+    );
     if (shop) target.searchParams.set("shop", cleanShopDomain(shop));
     window.location.assign(target.toString());
   }

@@ -14,11 +14,27 @@ import {
   authenticateShopifyRequest,
   ShopifyAuthError,
 } from "../../../_lib/shopify-auth";
+import { buildShopifyAuthorizeUrl } from "../../../_lib/shopify-oauth";
+import {
+  getShopifyIdToken,
+  verifyShopifySessionToken,
+} from "../../../_lib/shopify-security";
 import { billingForShop } from "../../../_lib/stripe-billing";
 import { assertRateLimit, RateLimitError, tenantRateKey } from "../../../_lib/rate-limit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+function reauthorizeUrlFromRequest(request: NextRequest): string {
+  try {
+    const token = getShopifyIdToken(request);
+    if (!token) return "";
+    const { shop } = verifyShopifySessionToken(token);
+    return buildShopifyAuthorizeUrl({ shop, flow: "standalone" }).url;
+  } catch {
+    return "";
+  }
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -69,7 +85,7 @@ export async function POST(request: NextRequest) {
       error instanceof ShopBindingError
         ? error.status
         : 500;
-    return NextResponse.json(
+    const response = NextResponse.json(
       {
         success: false,
         connected: false,
@@ -80,5 +96,15 @@ export async function POST(request: NextRequest) {
       },
       { status, headers: { "Cache-Control": "no-store" } }
     );
+    if (error instanceof ShopifyAuthError) {
+      const reauthorize = reauthorizeUrlFromRequest(request);
+      if (reauthorize) {
+        response.headers.set(
+          "X-Shopify-API-Request-Failure-Reauthorize-Url",
+          reauthorize
+        );
+      }
+    }
+    return response;
   }
 }

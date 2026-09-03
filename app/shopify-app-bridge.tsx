@@ -1,17 +1,14 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { copyEmbedQuery, isShopifyAdminIframe } from "./shopify-embed";
 
 function isEmbeddedBrowser(): boolean {
   const params = new URLSearchParams(window.location.search);
   if (params.get("embedded") === "1" || Boolean(params.get("host"))) {
     return true;
   }
-  try {
-    return window.top !== window.self;
-  } catch {
-    return true;
-  }
+  return isShopifyAdminIframe();
 }
 
 export default function ShopifyAppBridge() {
@@ -51,7 +48,10 @@ export default function ShopifyAppBridge() {
 
       const path = window.location.pathname;
       if (path === "/connect" || path.startsWith("/connect/")) {
-        const next = new URL("/", window.location.origin);
+        const next = copyEmbedQuery(
+          new URLSearchParams(window.location.search),
+          new URL("/", window.location.origin)
+        );
         next.searchParams.set("connected", "1");
         if (data.shop) next.searchParams.set("shop", data.shop);
         window.location.replace(next.toString());

@@ -51,6 +51,17 @@ function hmacParams(params: URLSearchParams, secret: string): string {
   return createHmac("sha256", secret).update(message).digest("hex");
 }
 
+function signJwt(payload: Record<string, unknown>, secret: string) {
+  const header = Buffer.from(JSON.stringify({ alg: "HS256", typ: "JWT" })).toString(
+    "base64url"
+  );
+  const body = Buffer.from(JSON.stringify(payload)).toString("base64url");
+  const signature = createHmac("sha256", secret)
+    .update(`${header}.${body}`)
+    .digest("base64url");
+  return `${header}.${body}.${signature}`;
+}
+
 function callbackRequest(input: {
   shop: string;
   code?: string;
@@ -290,6 +301,47 @@ describe("Phase 9 shop-binding lifecycle", () => {
     expect(location).toMatch(/signature(\+|%20)is(\+|%20)invalid|does(\+|%20)not(\+|%20)match(\+|%20)this(\+|%20)Shopify(\+|%20)app/i);
     expect(location).toMatch(/token=client|token%3Dclient/);
     expect(await isShopifyInstallationActive(SHOP_NEXT)).toBe(false);
+  });
+
+  it("tells App Bridge to reauthorize at the top window when token exchange fails", async () => {
+    vi.stubGlobal(
+      "fetch",
+      async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes("/admin/oauth/access_token")) {
+          return jsonFetch({ error: "invalid_grant" }, 400);
+        }
+        throw new Error(`unexpected fetch ${url}`);
+      }
+    );
+    const now = Math.floor(Date.now() / 1000);
+    const token = signJwt(
+      {
+        aud: "shopify-client-id",
+        dest: `https://${SHOP_NEXT}`,
+        iss: `https://${SHOP_NEXT}/admin`,
+        sub: "user-1",
+        exp: now + 60,
+        nbf: now - 10,
+      },
+      SECRET
+    );
+    const { POST } = await import("../app/api/auth/shopify/session/route");
+    const response = await POST(
+      new NextRequest(`${ORIGIN}/api/auth/shopify/session`, {
+        method: "POST",
+        headers: {
+          origin: ORIGIN,
+          authorization: `Bearer ${token}`,
+          "content-type": "application/json",
+        },
+      })
+    );
+    expect(response.status).toBe(401);
+    const reauth = response.headers.get("X-Shopify-API-Request-Failure-Reauthorize-Url") || "";
+    expect(reauth).toContain(`${SHOP_NEXT}/admin/oauth/authorize`);
+    expect(reauth).not.toContain("accounts.shopify.com");
+    expect(reauth).not.toContain("admin.shopify.com/store/");
   });
 
   it("does not persist an installation when token exchange fails", async () => {

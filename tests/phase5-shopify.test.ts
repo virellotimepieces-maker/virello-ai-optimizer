@@ -8,6 +8,7 @@ import {
   requirePaidProductAccess,
 } from "../app/api/_lib/product-access";
 import { isShopifyAdminAuthorizeUrl, normalizeShop, shopifyAdminAppHref } from "../app/api/_lib/shop-domain";
+import { copyEmbedQuery } from "../app/shopify-embed";
 import { saveShopifySession } from "../app/api/_lib/shopify-auth";
 import {
   setShopifyAdminFetchForTests,
@@ -72,6 +73,13 @@ describe("Phase 5 shop domains and OAuth", () => {
     expect(shopifyAdminAppHref("gfd1cp-1y.myshopify.com")).toBe(
       "https://admin.shopify.com/store/gfd1cp-1y/apps/virello-ai-optimizer?shop=gfd1cp-1y.myshopify.com"
     );
+    const kept = copyEmbedQuery(
+      new URLSearchParams("embedded=1&host=abc&shop=gfd1cp-1y.myshopify.com"),
+      new URL("https://app.virello.example/")
+    );
+    expect(kept.searchParams.get("host")).toBe("abc");
+    expect(kept.searchParams.get("shop")).toBe("gfd1cp-1y.myshopify.com");
+    expect(kept.searchParams.get("embedded")).toBe("1");
   });
 
   it("reports Shopify secret kind and length without exposing the secret", async () => {

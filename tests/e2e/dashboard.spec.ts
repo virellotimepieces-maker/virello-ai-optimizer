@@ -23,8 +23,9 @@ test.describe("Virello dashboard", () => {
     await expect(page.getByRole("heading", { name: /Ikonekta ang iyong Shopify store/i })).toBeVisible();
   });
 
-  test("embedded query string still renders the optimizer shell", async ({ page }) => {
-    await page.goto("/?embedded=1");
+  test("embedded shop query still renders the optimizer instead of bouncing to Admin", async ({ page }) => {
+    await page.goto("/?embedded=1&shop=gfd1cp-1y.myshopify.com");
+    await expect(page).not.toHaveURL(/admin\.shopify\.com|accounts\.shopify\.com/);
     await expect(page.locator(".brand-name")).toContainText("Virello AI Optimizer");
     await expect(page.getByRole("button", { name: /Import|Mag-import/i })).toBeVisible();
   });

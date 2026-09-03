@@ -199,5 +199,10 @@ describe("Phase 8 hardening", () => {
     expect(layout).toMatch(/cdn\.shopify\.com\/shopifycloud\/app-bridge\.js/);
     expect(layout).toMatch(/beforeInteractive/);
     expect(connect).toMatch(/openInShopifyAdmin/);
+    const home = readFileSync("app/page.tsx", "utf8");
+    expect(home).not.toMatch(/window\.location\.replace\(admin/);
+    expect(home).toMatch(/assignTopLevel/);
+    expect(readFileSync("app/shopify-app-bridge.tsx", "utf8")).toMatch(/copyEmbedQuery/);
+    expect(readFileSync("app/shopify-embed.ts", "utf8")).toMatch(/window\.open\(url, "_top"\)/);
   });
 });
