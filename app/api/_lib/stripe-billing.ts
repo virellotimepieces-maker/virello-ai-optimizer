@@ -204,6 +204,21 @@ export async function shopForSubscriptionId(
   return normalizeShop(String(rows[0]?.shop || ""));
 }
 
+export async function shopForCustomerId(customerId: string): Promise<string> {
+  const id = customerId.trim();
+  if (!id) return "";
+  const fromSubs = await dbQuery<{ shop: string }>(
+    `SELECT shop FROM shop_subscriptions WHERE stripe_customer_id = $1 LIMIT 1`,
+    [id]
+  );
+  if (fromSubs[0]?.shop) return normalizeShop(String(fromSubs[0].shop));
+  const fromCustomers = await dbQuery<{ shop: string }>(
+    `SELECT shop FROM stripe_customers WHERE stripe_customer_id = $1 LIMIT 1`,
+    [id]
+  );
+  return normalizeShop(String(fromCustomers[0]?.shop || ""));
+}
+
 export async function saveStripeInvoice(invoice: InvoiceSnapshot): Promise<void> {
   const shop = invoice.shop ? await upsertShop(invoice.shop, { markInstalled: false }) : null;
   await dbQuery(

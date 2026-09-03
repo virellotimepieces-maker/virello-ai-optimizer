@@ -718,6 +718,39 @@ describe("Phase 9 shop-binding lifecycle", () => {
     expect(COPY.fil.changeStore).toMatch(/Palitan/);
   });
 
+  it("exposes the Stripe billed shop when the session shop is a leftover domain", async () => {
+    await upsertStripeCustomer({
+      customerId: "cus_paid_domain",
+      shop: SHOP_NEXT,
+      livemode: false,
+    });
+    await saveShopSubscription({
+      shop: SHOP_NEXT,
+      customerId: "cus_paid_domain",
+      subscriptionId: "sub_paid_domain",
+      status: "active",
+      currentPeriodStart: 10,
+      currentPeriodEnd: 20,
+    });
+    const sessionId = await issueAppSession({
+      shop: SHOP_FAILED,
+      stripeCustomerId: "cus_paid_domain",
+    });
+    const { GET } = await import("../app/api/subscriber/status/route");
+    const response = await GET(
+      new NextRequest(`${ORIGIN}/api/subscriber/status`, {
+        headers: { cookie: cookieHeader(sessionId) },
+      })
+    );
+    const body = (await response.json()) as {
+      shop?: string;
+      billedShop?: string | null;
+      pendingShop?: string | null;
+    };
+    expect(body.shop).toBe(SHOP_FAILED);
+    expect(body.billedShop).toBe(SHOP_NEXT);
+  });
+
   it("clears a pending shop without confirm when no installation exists", async () => {
     const sessionId = await issueAppSession({ shop: SHOP_FAILED });
     await setPendingShop(sessionId, SHOP_FAILED);

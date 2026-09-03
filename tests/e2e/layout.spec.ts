@@ -83,6 +83,7 @@ test.describe("responsive layout", () => {
     const admin = page.getByTestId("open-shopify-admin");
     await expect(admin).toBeVisible();
     await expect(admin).toHaveText(/Shopify Admin/);
+    await expect(page.getByTestId("domain-hint")).toContainText("gfd1cp-1y vs gfd1cp-1v");
     await assertNoHorizontalOverflow(page);
   });
 });

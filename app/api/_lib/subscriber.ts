@@ -14,6 +14,7 @@ import { accessStateForShop, applySubscriptionEvent } from "./stripe-events";
 import {
   billingForShop,
   saveShopSubscription as persistShopSubscription,
+  shopForCustomerId,
   shopForSubscriptionId,
 } from "./stripe-billing";
 import { assertConfiguredStripePrice } from "./stripe-price";
@@ -57,6 +58,7 @@ export type ActiveSubscriberStatus = {
   canManage: boolean;
   shopInstalled: boolean;
   shop: string | null;
+  billedShop: string | null;
   pendingShop: string | null;
   canReplaceShop: boolean;
   customerId: string | null;
@@ -520,6 +522,9 @@ async function statusForShop(shop: string): Promise<ActiveSubscriberStatus> {
     canManage: access.canManage,
     shopInstalled,
     shop,
+    billedShop: billing?.customerId
+      ? (await shopForCustomerId(billing.customerId)) || shop
+      : null,
     pendingShop: null,
     canReplaceShop: !shopInstalled,
     customerId: billing?.customerId ?? null,
@@ -555,6 +560,7 @@ export async function getActiveSubscriberStatus(
     canManage: false,
     shopInstalled: false,
     shop: null,
+    billedShop: null,
     pendingShop: null,
     canReplaceShop: true,
     customerId: null,
@@ -572,8 +578,12 @@ export async function getActiveSubscriberStatus(
     }
 
     if (!shop) {
+      const billedShop = binding?.stripeCustomerId
+        ? (await shopForCustomerId(binding.stripeCustomerId)) || null
+        : null;
       return {
         ...empty,
+        billedShop,
         pendingShop: binding?.pendingShop ?? null,
         canReplaceShop: binding?.canReplaceShop ?? true,
       };
@@ -585,8 +595,11 @@ export async function getActiveSubscriberStatus(
       // Use stored billing when Stripe is unreachable.
     }
     const status = await statusForShop(shop);
+    const customerId = binding?.stripeCustomerId || status.customerId || "";
+    const billedShop = customerId ? (await shopForCustomerId(customerId)) || null : status.billedShop;
     return {
       ...status,
+      billedShop: billedShop || status.billedShop,
       pendingShop: binding?.pendingShop ?? null,
       canReplaceShop: binding?.canReplaceShop ?? !status.shopInstalled,
     };

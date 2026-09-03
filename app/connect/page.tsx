@@ -25,6 +25,7 @@ export default function ConnectPage() {
   const [shopInstalled, setShopInstalled] = useState(false);
   const [pendingShop, setPendingShop] = useState("");
   const [billingShop, setBillingShop] = useState("");
+  const [billedShop, setBilledShop] = useState("");
   const [billingLoading, setBillingLoading] = useState(false);
   const [shop, setShop] = useState("");
   const [status, setStatus] = useState<ConnectionStatus | null>(null);
@@ -78,16 +79,19 @@ export default function ConnectPage() {
         const installed = Boolean(billing?.shopInstalled);
         const nextBillingShop = typeof billing?.shop === "string" ? billing.shop : "";
         const nextPending = typeof billing?.pendingShop === "string" ? billing.pendingShop : "";
+        const nextBilled = typeof billing?.billedShop === "string" ? billing.billedShop : "";
         setShopInstalled(installed);
         setBillingShop(nextBillingShop);
         setPendingShop(nextPending);
+        setBilledShop(nextBilled);
         if (!shopFromUrl) {
           const display = resolveStoreBindingDisplay({
             shopInstalled: installed,
             shop: nextBillingShop,
             pendingShop: nextPending,
           });
-          if (display.domain) setShop(display.domain);
+          if (!installed && nextBilled) setShop(nextBilled);
+          else if (display.domain) setShop(display.domain);
         }
       } catch {
         setSubscriberActive(false);
@@ -442,6 +446,9 @@ export default function ConnectPage() {
                   ? `${copy.pendingStore}: ${storeBinding.domain}. ${copy.notConnected}`
                   : copy.notConnected}
             </p>
+            {Boolean(billedShop) && (
+              <p data-testid="billed-store">{copy.billedStore.replace("{shop}", billedShop)}</p>
+            )}
             <label htmlFor="shop" className="input-label">
               {copy.shopDomainLabel}
             </label>
@@ -463,6 +470,16 @@ export default function ConnectPage() {
               autoComplete="off"
               className="shop-input"
             />
+            <p className="oauth-admin-help" data-testid="domain-hint">
+              {copy.domainHint}
+            </p>
+            {Boolean(billedShop) &&
+              Boolean(cleanShopDomain(shop)) &&
+              cleanShopDomain(shop) !== billedShop && (
+                <div className="error-bar error-shopify" data-testid="domain-mismatch">
+                  {copy.domainMismatch.replace("{shop}", billedShop)}
+                </div>
+              )}
             <button
               type="button"
               className="subscribe-button"
