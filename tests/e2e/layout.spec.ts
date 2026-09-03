@@ -24,15 +24,12 @@ test.describe("responsive layout", () => {
     test(`home fits ${viewport.width}px without clipping primary controls`, async ({ page }) => {
       await page.setViewportSize(viewport);
       await page.goto("/");
-      const subscribe = page.getByRole("button", { name: /Subscribe|Mag-subscribe|Checking|Manage Subscription|I-manage/i });
-      const connect = page.getByRole("button", { name: /Connect Shopify|Ikonekta/i });
-      const en = page.getByRole("button", { name: "EN" }).first();
-      const fil = page.getByRole("button", { name: "FIL" }).first();
+      const subscribe = page.getByRole("button", { name: /Subscribe|Checking|Manage Subscription/i });
+      const connect = page.getByRole("button", { name: /Connect Shopify/i });
       await expect(subscribe).toBeVisible();
       await expect(connect).toBeVisible();
-      await expect(en).toBeVisible();
-      await expect(fil).toBeVisible();
-      for (const button of [subscribe, connect, en, fil]) {
+      await expect(page.getByRole("button", { name: "FIL" })).toHaveCount(0);
+      for (const button of [subscribe, connect]) {
         const box = await button.boundingBox();
         expect(box).not.toBeNull();
         expect(box!.height).toBeGreaterThanOrEqual(40);
@@ -60,8 +57,8 @@ test.describe("responsive layout", () => {
   test("connect page primary buttons stay in view on a Samsung-sized screen", async ({ page }) => {
     await page.setViewportSize({ width: 360, height: 780 });
     await page.goto("/connect");
-    const billing = page.getByRole("button", { name: /Subscribe|Mag-subscribe|Manage Subscription|I-manage|Checking|Opening/i });
-    const connect = page.getByRole("button", { name: /Connect Shopify|Ikonekta/i });
+    const billing = page.getByRole("button", { name: /Subscribe|Manage Subscription|Checking|Opening/i });
+    const connect = page.getByRole("button", { name: /Connect Shopify/i });
     await expect(billing).toBeVisible();
     await expect(connect).toBeVisible();
     await assertNoHorizontalOverflow(page);

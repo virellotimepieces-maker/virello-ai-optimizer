@@ -1,9 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { shopifyFetch } from "./shopify-fetch";
 import { COPY } from "./i18n";
-import type { AppLocale } from "./api/_lib/locales";
 import { normalizeShop, isShopifyAdminAuthorizeUrl, resolveStoreBindingDisplay } from "./api/_lib/shop-domain";
 import { assignTopLevel, isShopifyAdminIframe } from "./shopify-embed";
 import { buildShopifyDescriptionHtml, stripHtml } from "./api/_lib/listing-html";
@@ -81,9 +80,7 @@ function gradeCopy(copy: (typeof COPY)["en"], grade: ListingGrade) {
 }
 
 export default function Home() {
-  const [ui, setUi] = useState<AppLocale>("en");
-  const [output, setOutput] = useState<AppLocale>("en");
-  const copy = useMemo(() => COPY[ui], [ui]);
+  const copy = COPY.en;
 
   const [canManage, setCanManage] = useState(false);
   const [productAccess, setProductAccess] = useState(false);
@@ -106,7 +103,6 @@ export default function Home() {
   const [approved, setApproved] = useState(false);
   const [adminIframe, setAdminIframe] = useState(false);
   const [stripeMode, setStripeMode] = useState<"live" | "test" | null>(null);
-  const [sandboxBilling, setSandboxBilling] = useState(false);
 
   const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [portalLoading, setPortalLoading] = useState(false);
@@ -151,16 +147,6 @@ export default function Home() {
     setError(text);
   }
 
-  async function saveLocales(nextUi: AppLocale, nextOutput: AppLocale) {
-    setUi(nextUi);
-    setOutput(nextOutput);
-    await shopifyFetch("/api/preferences", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ui: nextUi, output: nextOutput }),
-    }).catch(() => null);
-  }
-
   useEffect(() => {
     setAdminIframe(isShopifyAdminIframe());
     const params = new URLSearchParams(window.location.search);
@@ -171,16 +157,11 @@ export default function Home() {
 
     async function bootstrap() {
       try {
-        const [prefRes, statusRes] = await Promise.all([
-          shopifyFetch("/api/preferences", { cache: "no-store" }),
+        const [statusRes] = await Promise.all([
           shopifyFetch("/api/subscriber/status", { cache: "no-store" }),
         ]);
-        const pref = await prefRes.json().catch(() => null);
         const status = await statusRes.json().catch(() => null);
-        if (pref?.ui) setUi(pref.ui === "fil" ? "fil" : "en");
-        if (pref?.output) setOutput(pref.output === "fil" ? "fil" : "en");
         setCanManage(Boolean(status?.canManage) && !status?.sandboxBilling);
-        setSandboxBilling(Boolean(status?.sandboxBilling));
         setStripeMode(status?.stripeMode === "live" || status?.stripeMode === "test" ? status.stripeMode : null);
         setProductAccess(Boolean(status?.active));
         setShopInstalled(Boolean(status?.shopInstalled));
@@ -254,7 +235,6 @@ export default function Home() {
       const message = err instanceof Error ? err.message : copy.portalError;
       if (isStripeWrongModeObjectError(message) || /test-mode only/i.test(message)) {
         setCanManage(false);
-        setSandboxBilling(true);
         showError("payment", copy.sandboxBillingBanner);
       } else {
         showError("payment", message);
@@ -377,7 +357,7 @@ export default function Home() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          outputLocale: output,
+          outputLocale: "en",
           product: {
             id: selected.id,
             title: selected.title,
@@ -527,22 +507,6 @@ export default function Home() {
           <div className="brand-name">{copy.brand}</div>
         </div>
         <div className="topbar-actions">
-          <div className="lang-toggle" role="group" aria-label={copy.uiLanguage}>
-            <button
-              type="button"
-              className={ui === "en" ? "lang-button active" : "lang-button"}
-              onClick={() => saveLocales("en", output)}
-            >
-              EN
-            </button>
-            <button
-              type="button"
-              className={ui === "fil" ? "lang-button active" : "lang-button"}
-              onClick={() => saveLocales("fil", output)}
-            >
-              FIL
-            </button>
-          </div>
           {canManage ? (
             <button type="button" className="subscribe-button" onClick={openPortal} disabled={checking || portalLoading}>
               {portalLoading ? copy.opening : copy.manage}
@@ -562,11 +526,6 @@ export default function Home() {
       )}
       {error && /unauthorized access/i.test(error) && (
         <div className="error-bar error-shopify">{copy.oauthUnauthorizedHelp}</div>
-      )}
-      {sandboxBilling && (
-        <div className="error-bar error-shopify" data-testid="sandbox-billing-banner">
-          {copy.sandboxBillingBanner}
-        </div>
       )}
       {stripeMode === "test" && (
         <div className="error-bar error-shopify" data-testid="test-mode-banner">
@@ -634,14 +593,6 @@ export default function Home() {
 
           <article className="content-card">
             <h2>{copy.outputLanguage}</h2>
-            <div className="lang-toggle">
-              <button type="button" className={output === "en" ? "lang-button active" : "lang-button"} onClick={() => saveLocales(ui, "en")}>
-                EN
-              </button>
-              <button type="button" className={output === "fil" ? "lang-button active" : "lang-button"} onClick={() => saveLocales(ui, "fil")}>
-                FIL
-              </button>
-            </div>
             <p>{copy.usage}: {usage ? `${usage.used} / ${usage.limit}` : "0 / 1000"}</p>
             <button type="button" className="subscribe-button" onClick={() => importProducts()} disabled={importing || !productAccess}>
               {importing ? copy.importing : copy.importProducts}

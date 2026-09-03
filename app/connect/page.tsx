@@ -1,9 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { shopifyFetch } from "../shopify-fetch";
 import { COPY } from "../i18n";
-import type { AppLocale } from "../api/_lib/locales";
 import { normalizeShop, isShopifyAdminAuthorizeUrl, resolveStoreBindingDisplay, shopifyAdminAppHref } from "../api/_lib/shop-domain";
 import { assignTopLevel, copyEmbedQuery, isShopifyAdminIframe } from "../shopify-embed";
 import { isStripeWrongModeObjectError } from "../api/_lib/stripe-mode";
@@ -17,9 +16,7 @@ type ConnectionStatus = {
 };
 
 export default function ConnectPage() {
-  const [ui, setUi] = useState<AppLocale>("en");
-  const [output, setOutput] = useState<AppLocale>("en");
-  const copy = useMemo(() => COPY[ui], [ui]);
+  const copy = COPY.en;
   const [loading, setLoading] = useState(true);
   const [connecting, setConnecting] = useState(false);
   const [changingStore, setChangingStore] = useState(false);
@@ -43,17 +40,6 @@ export default function ConnectPage() {
     previous?: boolean;
   } | null>(null);
   const [stripeMode, setStripeMode] = useState<"live" | "test" | null>(null);
-  const [sandboxBilling, setSandboxBilling] = useState(false);
-
-  async function saveLocales(nextUi: AppLocale, nextOutput: AppLocale) {
-    setUi(nextUi);
-    setOutput(nextOutput);
-    await shopifyFetch("/api/preferences", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ui: nextUi, output: nextOutput }),
-    }).catch(() => null);
-  }
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -66,18 +52,13 @@ export default function ConnectPage() {
 
     async function bootstrap() {
       try {
-        const [prefRes, statusRes, secretRes] = await Promise.all([
-          shopifyFetch("/api/preferences", { cache: "no-store" }),
+        const [statusRes, secretRes] = await Promise.all([
           shopifyFetch("/api/subscriber/status", { cache: "no-store" }),
           shopifyFetch("/api/auth/shopify/secret-status", { cache: "no-store" }),
         ]);
-        const pref = await prefRes.json().catch(() => null);
         const billing = await statusRes.json().catch(() => null);
         const secret = await secretRes.json().catch(() => null);
         if (secret?.success) setSecretStatus(secret);
-        if (pref?.ui) setUi(pref.ui === "fil" ? "fil" : "en");
-        if (pref?.output) setOutput(pref.output === "fil" ? "fil" : "en");
-        setSandboxBilling(Boolean(billing?.sandboxBilling));
         setSubscriberActive(
           Boolean(
             billing?.success &&
@@ -157,7 +138,6 @@ export default function ConnectPage() {
       const message = err instanceof Error ? err.message : copy.portalError;
       if (isStripeWrongModeObjectError(message) || /test-mode only/i.test(message)) {
         setSubscriberActive(false);
-        setSandboxBilling(true);
         setError(copy.sandboxBillingBanner);
       } else {
         setError(message);
@@ -354,22 +334,6 @@ export default function ConnectPage() {
           <div className="brand-name">{copy.brand}</div>
         </div>
         <div className="topbar-actions">
-          <div className="lang-toggle" role="group" aria-label={copy.uiLanguage}>
-            <button
-              type="button"
-              className={ui === "en" ? "lang-button active" : "lang-button"}
-              onClick={() => saveLocales("en", output)}
-            >
-              EN
-            </button>
-            <button
-              type="button"
-              className={ui === "fil" ? "lang-button active" : "lang-button"}
-              onClick={() => saveLocales("fil", output)}
-            >
-              FIL
-            </button>
-          </div>
           <button
             type="button"
             className="subscribe-button"
@@ -382,11 +346,6 @@ export default function ConnectPage() {
       </header>
 
       {error && <div className="error-bar">{error}</div>}
-      {sandboxBilling && (
-        <div className="error-bar error-shopify" data-testid="sandbox-billing-banner">
-          {copy.sandboxBillingBanner}
-        </div>
-      )}
       {stripeMode === "test" && (
         <div className="error-bar error-shopify" data-testid="test-mode-banner">
           {copy.testModeBanner}

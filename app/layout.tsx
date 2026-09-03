@@ -1,9 +1,7 @@
 import type { ReactNode } from "react";
-import { cookies } from "next/headers";
 import Script from "next/script";
 import "../styles.css";
 import { getShopifyClientId } from "./api/_lib/shopify-config";
-import { parseAppLocale, UI_LANG_COOKIE } from "./api/_lib/locales";
 import ShopifyAppBridge from "./shopify-app-bridge";
 
 export const dynamic = "force-dynamic";
@@ -19,10 +17,8 @@ export default async function RootLayout({
 }: {
   children: ReactNode;
 }) {
-  const cookieStore = await cookies();
-  const ui = parseAppLocale(cookieStore.get(UI_LANG_COOKIE)?.value);
   return (
-    <html lang={ui === "fil" ? "fil" : "en"}>
+    <html lang="en">
       <head>
         <meta
           name="shopify-api-key"
