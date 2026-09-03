@@ -1,6 +1,8 @@
 import { NextRequest } from "next/server";
 import { shopFromSessionCookie } from "./app-session";
+import { isShopifyInstallationActive } from "./shops";
 import { normalizeShop } from "./shop-domain";
+import { accessStateForShop } from "./stripe-events";
 import {
   getShopifyIdToken,
   ShopifySecurityError,
@@ -70,13 +72,23 @@ export async function resolveCheckoutShop(
 
   const sessionShop = await shopFromSessionCookie(request);
   if (sessionShop) {
-    if (bodyShop && bodyShop !== sessionShop) {
-      throw new CheckoutShopError(
-        "Checkout shop does not match this Virello session.",
-        403
-      );
-    }
     const flow = requestedFlow(body) || "standalone";
+    if (bodyShop && bodyShop !== sessionShop) {
+      if (await isShopifyInstallationActive(sessionShop)) {
+        throw new CheckoutShopError(
+          "This Virello session is already linked to a connected Shopify store. Use Change Store first.",
+          403
+        );
+      }
+      const { billing } = await accessStateForShop(sessionShop, false);
+      if (billing) {
+        throw new CheckoutShopError(
+          `Your $29.99 is still on ${sessionShop}. Keep that store, or tap Use this store to move billing, then Subscribe.`,
+          403
+        );
+      }
+      return { shop: bodyShop, flow, source: "body" };
+    }
     return { shop: sessionShop, flow, source: "session" };
   }
 

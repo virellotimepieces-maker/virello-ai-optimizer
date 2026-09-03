@@ -20,6 +20,7 @@ import {
 import { upsertStripeCustomer } from "../app/api/_lib/stripe-billing";
 import { upsertShop } from "../app/api/_lib/shops";
 import { COPY } from "../app/i18n";
+import { saveShopifySession } from "../app/api/_lib/shopify-auth";
 import { clearTestDatabase, usePglite } from "./helpers/pglite";
 
 const SHOP_A = "store-alpha.myshopify.com";
@@ -94,6 +95,7 @@ describe("Phase 8 hardening", () => {
   });
 
   it("lets standalone checkout use a typed shop and rejects a mismatched session shop", async () => {
+    process.env.STRIPE_SECRET_KEY = "sk_live_abc";
     const standalone = originRequest("https://app.virello.example/api/stripe/checkout", {
       method: "POST",
     });
@@ -103,16 +105,28 @@ describe("Phase 8 hardening", () => {
     });
     expect(identity).toMatchObject({ shop: SHOP_A, flow: "standalone", source: "body" });
 
-    const sessionId = await issueAppSession({ shop: SHOP_A });
-    const withSession = originRequest("https://app.virello.example/api/stripe/checkout", {
+    const leftover = await issueAppSession({ shop: SHOP_A });
+    const leftoverRequest = originRequest("https://app.virello.example/api/stripe/checkout", {
       method: "POST",
-      headers: { cookie: `virello_sid=${sessionId}` },
+      headers: { cookie: `virello_sid=${leftover}` },
+    });
+    const replaced = await resolveCheckoutShop(leftoverRequest, {
+      shop: SHOP_B,
+      flow: "standalone",
+    });
+    expect(replaced).toMatchObject({ shop: SHOP_B, flow: "standalone", source: "body" });
+
+    await saveShopifySession(SHOP_A, "offline-token-alpha", "read_products,write_products");
+    const installed = await issueAppSession({ shop: SHOP_A });
+    const installedRequest = originRequest("https://app.virello.example/api/stripe/checkout", {
+      method: "POST",
+      headers: { cookie: `virello_sid=${installed}` },
     });
     await expect(
-      resolveCheckoutShop(withSession, { shop: SHOP_B, flow: "standalone" })
+      resolveCheckoutShop(installedRequest, { shop: SHOP_B, flow: "standalone" })
     ).rejects.toBeInstanceOf(CheckoutShopError);
 
-    const sameShop = await resolveCheckoutShop(withSession, {
+    const sameShop = await resolveCheckoutShop(installedRequest, {
       shop: SHOP_A,
       flow: "standalone",
     });
