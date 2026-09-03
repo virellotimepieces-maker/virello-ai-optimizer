@@ -24,5 +24,8 @@ api_version = "2026-07"
 
 [[webhooks.subscriptions]]
 topics = ["app/uninstalled"]
+uri = "https://virello-ai-optimizer.vercel.app/api/webhooks"
+
+[[webhooks.subscriptions]]
 compliance_topics = ["customers/data_request", "customers/redact", "shop/redact"]
-uri = "/api/webhooks"
+uri = "https://virello-ai-optimizer.vercel.app/api/webhooks"
