@@ -27,5 +27,13 @@ topics = ["app/uninstalled"]
 uri = "https://virello-ai-optimizer.vercel.app/api/webhooks"
 
 [[webhooks.subscriptions]]
-compliance_topics = ["customers/data_request", "customers/redact", "shop/redact"]
-uri = "https://virello-ai-optimizer.vercel.app/api/webhooks"
+compliance_topics = ["customers/data_request"]
+uri = "https://virello-ai-optimizer.vercel.app/api/webhooks/customers/data_request"
+
+[[webhooks.subscriptions]]
+compliance_topics = ["customers/redact"]
+uri = "https://virello-ai-optimizer.vercel.app/api/webhooks/customers/redact"
+
+[[webhooks.subscriptions]]
+compliance_topics = ["shop/redact"]
+uri = "https://virello-ai-optimizer.vercel.app/api/webhooks/shop/redact"

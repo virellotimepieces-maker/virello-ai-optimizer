@@ -480,6 +480,9 @@ describe("Phase 5 OAuth start for development shops", () => {
     );
     expect(toml).not.toMatch(/use_legacy_install_flow\s*=\s*false/);
     expect(toml).toMatch(/compliance_topics\s*=\s*\[[^\]]*customers\/data_request/);
+    expect(toml).toMatch(/\/api\/webhooks\/customers\/data_request/);
+    expect(toml).toMatch(/\/api\/webhooks\/customers\/redact/);
+    expect(toml).toMatch(/\/api\/webhooks\/shop\/redact/);
   });
 });
 
