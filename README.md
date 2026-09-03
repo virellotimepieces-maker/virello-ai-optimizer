@@ -14,7 +14,7 @@ This is not a prompt clinic or Custom GPT rewriter.
 
 **Phase 7.** Tenant isolation, HMAC/state/webhook checks, encrypted tokens, session rotation, rate limits, GID validation, security headers, and Playwright desktop/mobile coverage. `npm audit` high+ is gated in `npm run security:check`.
 
-**Phase 9.** Shop binding is not permanent until Shopify OAuth completes (callback HMAC or Shopify's token endpoint, signed state, encrypted token, and installation row). Abandoned or failed OAuth leaves an expiring `pending_shop` that can be replaced. Change Store disconnects a completed install, keeps Stripe billing, and starts a fresh OAuth. Cross-tenant product access stays denied.
+**Phase 9.** Shop binding is not permanent until Shopify OAuth completes (callback HMAC or Shopify's token endpoint, signed state, encrypted token, and installation row). Abandoned or failed OAuth leaves an expiring `pending_shop` that can be replaced. **Use this store** moves this subscriber's $29.99 from a leftover `.myshopify.com` domain (`gfd1cp-1v`) onto the domain in the field (`gfd1cp-1y`) before Connect Shopify. Change Store disconnects a completed install, keeps Stripe billing, and starts a fresh OAuth. Cross-tenant product access stays denied.
 
 ## Run locally
 

@@ -5,7 +5,7 @@ import {
   shopifyAdminAppUrl,
 } from "../../_lib/shopify-oauth";
 import { getShopifyClientId, getShopifyClientSecret } from "../../_lib/shopify-config";
-import { getSessionBinding, setPendingShop } from "../../_lib/shop-binding";
+import { getSessionBinding, retargetUninstalledShop, setPendingShop, ShopBindingError } from "../../_lib/shop-binding";
 import { assertRateLimit, RateLimitError, tenantRateKey } from "../../_lib/rate-limit";
 
 function wantsJson(request: NextRequest): boolean {
@@ -126,6 +126,13 @@ export async function GET(request: NextRequest) {
         500
       );
     }
+    if (binding && !binding.installedShop) {
+      await retargetUninstalledShop(
+        binding.sessionShop,
+        shop,
+        binding.stripeCustomerId
+      );
+    }
     if (binding?.sessionId) {
       await setPendingShop(binding.sessionId, shop);
     }
@@ -136,7 +143,10 @@ export async function GET(request: NextRequest) {
     );
   } catch (error) {
     console.error("SHOPIFY_OAUTH_START_ERROR:", error);
-    const status = error instanceof RateLimitError ? error.status : 500;
+    const status =
+      error instanceof RateLimitError || error instanceof ShopBindingError
+        ? error.status
+        : 500;
     return oauthStartResponse(
       request,
       {

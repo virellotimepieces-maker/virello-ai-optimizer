@@ -177,6 +177,41 @@ export default function ConnectPage() {
     return normalizeShop(value);
   }
 
+  async function useThisStore() {
+    if (changingStore || connecting) return;
+    const cleanedShop = cleanShopDomain(shop);
+    if (!cleanedShop) {
+      setError(copy.invalidShop);
+      return;
+    }
+    if (shopInstalled) {
+      setError(copy.alreadyLinkedInstalled);
+      return;
+    }
+    setChangingStore(true);
+    setError("");
+    try {
+      const response = await shopifyFetch("/api/shopify/retarget", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ shop: cleanedShop }),
+      });
+      const data = await response.json().catch(() => null);
+      if (!response.ok || !data?.success) {
+        setError(data?.error || copy.shopifyError);
+        return;
+      }
+      setShop(cleanedShop);
+      setBilledShop(typeof data.billedShop === "string" ? data.billedShop : cleanedShop);
+      setPendingShop(typeof data.pendingShop === "string" ? data.pendingShop : cleanedShop);
+      setBillingShop(typeof data.shop === "string" ? data.shop : cleanedShop);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : copy.shopifyError);
+    } finally {
+      setChangingStore(false);
+    }
+  }
+
   async function connectShopify() {
     if (connecting) return;
     const cleanedShop = cleanShopDomain(shop);
@@ -192,6 +227,22 @@ export default function ConnectPage() {
     setConnecting(true);
     setError("");
     try {
+      if (billedShop && cleanedShop !== billedShop) {
+        const moved = await shopifyFetch("/api/shopify/retarget", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ shop: cleanedShop }),
+        });
+        const movedBody = await moved.json().catch(() => null);
+        if (!moved.ok || !movedBody?.success) {
+          setError(movedBody?.error || copy.shopifyError);
+          setConnecting(false);
+          return;
+        }
+        setBilledShop(cleanedShop);
+        setPendingShop(cleanedShop);
+        setBillingShop(cleanedShop);
+      }
       const response = await shopifyFetch(
         `/api/auth/shopify?shop=${encodeURIComponent(cleanedShop)}&flow=standalone`,
         { headers: { Accept: "application/json" }, cache: "no-store" }
@@ -489,6 +540,16 @@ export default function ConnectPage() {
               cleanShopDomain(shop) !== billedShop && (
                 <div className="error-bar error-shopify" data-testid="domain-mismatch">
                   {copy.domainMismatch.replace("{shop}", billedShop)}
+                  <button
+                    type="button"
+                    className="subscribe-button"
+                    data-testid="use-this-store"
+                    onClick={useThisStore}
+                    disabled={connecting || changingStore}
+                    style={{ marginTop: 12 }}
+                  >
+                    {changingStore ? copy.opening : copy.useThisStore}
+                  </button>
                 </div>
               )}
             <button

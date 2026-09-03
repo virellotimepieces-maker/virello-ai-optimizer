@@ -7,7 +7,7 @@ import {
 } from "../../../_lib/app-session";
 import {
   getSessionBinding,
-  rehomeUninstalledBilling,
+  retargetUninstalledShop,
   ShopBindingError,
 } from "../../../_lib/shop-binding";
 import {
@@ -55,8 +55,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (binding?.sessionShop && binding.sessionShop !== shop && !binding.installedShop) {
-      await rehomeUninstalledBilling(
+    if (binding && !binding.installedShop) {
+      await retargetUninstalledShop(
         binding.sessionShop,
         shop,
         binding.stripeCustomerId

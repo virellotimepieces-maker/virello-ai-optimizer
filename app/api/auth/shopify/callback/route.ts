@@ -7,7 +7,7 @@ import {
 } from "../../../_lib/app-session";
 import {
   getSessionBinding,
-  rehomeUninstalledBilling,
+  retargetUninstalledShop,
 } from "../../../_lib/shop-binding";
 import {
   classifyShopifyTokenError,
@@ -219,8 +219,8 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    if (binding?.sessionShop && binding.sessionShop !== shop && !binding.installedShop) {
-      await rehomeUninstalledBilling(
+    if (binding && !binding.installedShop) {
+      await retargetUninstalledShop(
         binding.sessionShop,
         shop,
         binding.stripeCustomerId

@@ -104,6 +104,7 @@ export type CopyKey =
   | "billedStore"
   | "domainHint"
   | "domainMismatch"
+  | "useThisStore"
   | "fieldTitle"
   | "fieldDescription"
   | "onePerLine"
@@ -228,12 +229,13 @@ export const COPY: Record<AppLocale, Record<CopyKey, string>> = {
     alreadyBilledHelp:
       "This store already has your $29.99 subscription. Tap Connect Shopify again after this update. Your billing stays. Use Change Store only if you meant a different shop.",
     differentCustomerHelp:
-      "Your $29.99 is on another .myshopify.com domain (often gfd1cp-1v). Keep gfd1cp-1y in the field and tap Connect Shopify again. Leftover billing on the other domain is moved. Do not let the field jump back to 1v.",
+      "Your $29.99 is on another .myshopify.com domain (often gfd1cp-1v). Keep gfd1cp-1y in the field, tap Use this store, then Connect Shopify. Leftover billing on the other domain is moved. Do not let the field jump back to 1v.",
     billedStore: "Your $29.99 subscription is on {shop}.",
     domainHint:
       "Use the exact .myshopify.com domain from Shopify Admin → Settings → Domains. A one-letter difference is a different store (gfd1cp-1y vs gfd1cp-1v). Do not use a custom domain.",
     domainMismatch:
-      "This is not the store your subscription is billed to. Connect {shop}, or use Change Store only if you meant a different shop.",
+      "Your $29.99 is still on {shop}. Tap Use this store to move billing to the domain in the field, then Connect Shopify.",
+    useThisStore: "Use this store",
     fieldTitle: "Product title",
     fieldDescription: "Product description",
     onePerLine: "One item per line",
@@ -357,12 +359,13 @@ export const COPY: Record<AppLocale, Record<CopyKey, string>> = {
     alreadyBilledHelp:
       "Naka-subscribe na ang store na ito ($29.99). I-tap ulit ang Connect Shopify. Mananatili ang billing. Gamitin ang Palitan ang store kung ibang shop ang gusto mo.",
     differentCustomerHelp:
-      "Nasa ibang .myshopify.com ang $29.99 mo (madalas gfd1cp-1v). Panatilihin ang gfd1cp-1y sa field at i-tap ulit ang Connect Shopify. Ililipat ang leftover billing. Huwag hayaang bumalik sa 1v.",
+      "Nasa ibang .myshopify.com ang $29.99 mo (madalas gfd1cp-1v). Panatilihin ang gfd1cp-1y sa field, i-tap ang Gamitin ang store na ito, tapos Connect Shopify. Ililipat ang leftover billing. Huwag hayaang bumalik sa 1v.",
     billedStore: "Naka-bill ang $29.99 subscription mo sa {shop}.",
     domainHint:
       "Gamitin ang exact .myshopify.com mula sa Shopify Admin → Settings → Domains. Isang letra lang ang pagkakaiba, ibang store na iyon (gfd1cp-1y vs gfd1cp-1v). Huwag custom domain.",
     domainMismatch:
-      "Hindi ito ang store na naka-bill. Ikonekta ang {shop}, o Palitan ang store kung ibang shop talaga ang gusto mo.",
+      "Nasa {shop} pa ang $29.99. I-tap ang Gamitin ang store na ito para ilipat ang billing sa domain sa field, tapos Connect Shopify.",
+    useThisStore: "Gamitin ang store na ito",
     fieldTitle: "Product title",
     fieldDescription: "Product description",
     onePerLine: "Isang item bawat line",

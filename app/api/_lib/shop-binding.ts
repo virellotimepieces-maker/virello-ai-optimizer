@@ -3,6 +3,7 @@ import { isSessionIdShape, readSessionId } from "./app-session";
 import { dbQuery } from "./database";
 import { normalizeShop } from "./shop-domain";
 import { isShopifyInstallationActive, upsertShop } from "./shops";
+import { shopForCustomerId } from "./stripe-billing";
 
 export const OAUTH_PENDING_TTL_MS = 10 * 60 * 1000;
 
@@ -270,4 +271,34 @@ export async function rehomeUninstalledBilling(
        AND revoked_at IS NULL`,
     [to, from]
   );
+}
+
+export async function retargetUninstalledShop(
+  sessionShop: string,
+  toShop: string,
+  subscriberCustomerId?: string | null
+): Promise<string> {
+  const session = normalizeShop(sessionShop);
+  const to = normalizeShop(toShop);
+  if (!to) {
+    throw new ShopBindingError("Invalid Shopify store.", 400);
+  }
+
+  const billed = subscriberCustomerId
+    ? await shopForCustomerId(subscriberCustomerId)
+    : "";
+  const from = billed || session;
+  if (from && from !== to) {
+    await rehomeUninstalledBilling(from, to, subscriberCustomerId);
+  }
+  if (session && session !== to && session !== from) {
+    if (await isShopifyInstallationActive(session)) {
+      throw new ShopBindingError(
+        "Cannot rehome billing while a Shopify installation is active.",
+        403
+      );
+    }
+    await attachSessionsToShop(session, to);
+  }
+  return to;
 }
