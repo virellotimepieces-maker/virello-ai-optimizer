@@ -118,6 +118,39 @@ describe("Phase 3 Shopify security module", () => {
     ).toBe(true);
   });
 
+  it("acks Shopify compliance webhooks after HMAC and rejects forged signatures", async () => {
+    const { POST } = await import("../app/api/webhooks/route");
+    const body = '{"shop_id":1,"shop_domain":"store-alpha.myshopify.com"}';
+    const hmac = createHmac("sha256", "shopify-client-secret-value")
+      .update(body, "utf8")
+      .digest("base64");
+    const valid = await POST(
+      new Request("https://app.virello.example/api/webhooks", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-shopify-hmac-sha256": hmac,
+          "x-shopify-topic": "customers/data_request",
+          "x-shopify-shop-domain": SHOP_A,
+        },
+        body,
+      })
+    );
+    expect(valid.status).toBe(200);
+    const forged = await POST(
+      new Request("https://app.virello.example/api/webhooks", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-shopify-hmac-sha256": "aW52YWxpZA==",
+          "x-shopify-topic": "customers/redact",
+        },
+        body,
+      })
+    );
+    expect(forged.status).toBe(401);
+  });
+
   it("verifies callback HMAC when host padding is percent-encoded", () => {
     const secret = "shopify-client-secret-value";
     const shop = "gfd1cp-1y.myshopify.com";
