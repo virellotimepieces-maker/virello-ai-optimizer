@@ -9,7 +9,10 @@ import {
   upsertStripeCustomer,
   type BillingSnapshot,
 } from "./stripe-billing";
-import { assertLivemodeMatchesSecret } from "./stripe-mode";
+import {
+  assertLivemodeMatchesSecret,
+  billingMatchesConfiguredMode,
+} from "./stripe-mode";
 import { assertSubscriptionPriceId } from "./stripe-price";
 
 export type StripeEventObject = {
@@ -297,9 +300,14 @@ export async function applyStripeObjectEvent(input: {
 }
 
 export async function accessStateForShop(shop: string, shopInstalled: boolean) {
-  const billing = await billingForShop(shop);
+  const stored = await billingForShop(shop);
+  const modeMismatch = Boolean(
+    stored && !billingMatchesConfiguredMode(stored.livemode)
+  );
+  const billing = modeMismatch ? null : stored;
   return {
     billing,
+    modeMismatch,
     access: productAccessDecision({
       shopInstalled,
       status: billing?.status ?? null,

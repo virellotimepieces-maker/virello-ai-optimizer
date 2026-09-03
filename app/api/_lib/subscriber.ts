@@ -18,7 +18,11 @@ import {
   shopForSubscriptionId,
 } from "./stripe-billing";
 import { assertConfiguredStripePrice } from "./stripe-price";
-import { assertLivemodeMatchesSecret, configuredStripeMode } from "./stripe-mode";
+import {
+  assertLivemodeMatchesSecret,
+  configuredStripeMode,
+  isStripeWrongModeObjectError,
+} from "./stripe-mode";
 import { requirePaidProductAccess } from "./product-access";
 import { decodeLegacySubscriberCookie } from "./legacy-subscriber-cookie";
 import { checkoutCancelUrl, type CheckoutFlow } from "./checkout-shop";
@@ -66,6 +70,7 @@ export type ActiveSubscriberStatus = {
   status: StripeSubscriptionStatus | null;
   reason?: string;
   usage?: { limit: number; used: number; remaining: number } | null;
+  sandboxBilling?: boolean;
 };
 
 function getStripeSecret(): string {
@@ -124,9 +129,13 @@ export async function stripeRequest<T>(
   }
 
   if (!response.ok) {
-    throw new ApiError(
+    const message =
       data?.error?.message ||
-        "Stripe request failed.",
+      "Stripe request failed.";
+    throw new ApiError(
+      isStripeWrongModeObjectError(message)
+        ? "Your previous subscription is test-mode only. Subscribe again with a real card."
+        : message,
       response.status >= 400
         ? response.status
         : 502
@@ -512,7 +521,7 @@ export async function getShopForSubscriberCookie(
 
 async function statusForShop(shop: string): Promise<ActiveSubscriberStatus> {
   const shopInstalled = await isShopifyInstallationActive(shop);
-  const { access, billing } = await accessStateForShop(shop, shopInstalled);
+  const { access, billing, modeMismatch } = await accessStateForShop(shop, shopInstalled);
   let usage = null;
   if (billing) {
     usage = await peekAiUsage(shop, billing.subscriptionId, billing.currentPeriodStart);
@@ -530,8 +539,9 @@ async function statusForShop(shop: string): Promise<ActiveSubscriberStatus> {
     customerId: billing?.customerId ?? null,
     subscriptionId: billing?.subscriptionId ?? null,
     status: billing?.status ?? null,
-    reason: access.reason,
+    reason: modeMismatch ? "sandbox_billing" : access.reason,
     usage,
+    sandboxBilling: modeMismatch,
   };
 }
 
@@ -566,6 +576,7 @@ export async function getActiveSubscriberStatus(
     customerId: null,
     subscriptionId: null,
     status: null,
+    sandboxBilling: false,
   };
 
   try {
@@ -595,7 +606,9 @@ export async function getActiveSubscriberStatus(
       // Use stored billing when Stripe is unreachable.
     }
     const status = await statusForShop(shop);
-    const customerId = binding?.stripeCustomerId || status.customerId || "";
+    const customerId = status.sandboxBilling
+      ? ""
+      : binding?.stripeCustomerId || status.customerId || "";
     const billedShop = customerId ? (await shopForCustomerId(customerId)) || null : status.billedShop;
     return {
       ...status,

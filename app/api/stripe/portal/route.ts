@@ -4,6 +4,7 @@ import { getActiveSubscriberStatus } from "../../_lib/subscriber";
 import {
   assertLivemodeMatchesSecret,
   configuredStripeMode,
+  isStripeWrongModeObjectError,
 } from "../../_lib/stripe-mode";
 
 export const runtime = "nodejs";
@@ -29,7 +30,12 @@ async function stripeRequest(path: string, body?: URLSearchParams) {
 
   const data = await response.json();
   if (!response.ok) {
-    throw new Error(data?.error?.message || "Stripe request failed.");
+    const message = data?.error?.message || "Stripe request failed.";
+    throw new Error(
+      isStripeWrongModeObjectError(message)
+        ? "Your previous subscription is test-mode only. Subscribe again with a real card."
+        : message
+    );
   }
   if (typeof data?.livemode === "boolean") {
     assertLivemodeMatchesSecret(data.livemode, path);
@@ -61,11 +67,13 @@ export async function POST(request: NextRequest) {
     configuredStripeMode();
     const status = await getActiveSubscriberStatus(request);
 
-    if (!status?.canManage || !status?.customerId) {
+    if (status?.sandboxBilling || !status?.canManage || !status?.customerId) {
       return NextResponse.json(
         {
           success: false,
-          error: "Active subscriber could not be verified.",
+          error: status?.sandboxBilling
+            ? "Your previous subscription is test-mode only. Subscribe again with a real card."
+            : "Active subscriber could not be verified.",
         },
         { status: 401 }
       );

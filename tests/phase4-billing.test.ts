@@ -29,7 +29,9 @@ import {
 import {
   assertStripeMode,
   assertWebhookSecretConfigured,
+  billingMatchesConfiguredMode,
   configuredStripeMode,
+  isStripeWrongModeObjectError,
   StripeModeError,
   stripeModeFromSecret,
 } from "../app/api/_lib/stripe-mode";
@@ -132,6 +134,17 @@ describe("Phase 4 Stripe price and mode", () => {
     ).toThrow(/live/);
     expect(() => assertWebhookSecretConfigured("not-a-secret")).toThrow(/WEBHOOK/);
     expect(() => assertWebhookSecretConfigured("whsec_abc")).not.toThrow();
+    expect(
+      isStripeWrongModeObjectError(
+        "No such customer: 'cus_VBdPgM9f6M5bcg'; a similar object exists in test mode, but a live mode key was used to make this request."
+      )
+    ).toBe(true);
+    expect(isStripeWrongModeObjectError("No such customer: cus_abc")).toBe(false);
+    process.env.STRIPE_SECRET_KEY = "sk_live_abc";
+    expect(billingMatchesConfiguredMode(false)).toBe(false);
+    expect(billingMatchesConfiguredMode(true)).toBe(true);
+    process.env.STRIPE_SECRET_KEY = "sk_test_abc";
+    expect(billingMatchesConfiguredMode(false)).toBe(true);
     process.env.STRIPE_PRICE_ID = "price_monthly";
     expect(() => assertSubscriptionPriceId("price_other")).toThrow(StripePriceError);
     delete process.env.STRIPE_PRICE_ID;
@@ -384,6 +397,22 @@ describe("Phase 4 billing persistence", () => {
     status = await storedSubscriberStatus(SHOP);
     expect(status.active).toBe(true);
     expect(status.shopInstalled).toBe(true);
+  });
+
+  it("ignores stored test-mode billing when the secret is live", async () => {
+    await applySubscriptionEvent({
+      shop: SHOP,
+      object: subscriptionObject("active"),
+      eventCreated: 40,
+      livemode: false,
+    });
+    expect((await storedSubscriberStatus(SHOP)).canManage).toBe(true);
+    process.env.STRIPE_SECRET_KEY = "sk_live_abc";
+    const live = await storedSubscriberStatus(SHOP);
+    expect(live.canManage).toBe(false);
+    expect(live.active).toBe(false);
+    expect(live.sandboxBilling).toBe(true);
+    expect(live.customerId).toBeNull();
   });
 
   it("denies unauthorized paid API access without an eligible subscription", async () => {

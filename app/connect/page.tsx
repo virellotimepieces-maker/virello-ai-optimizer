@@ -6,6 +6,7 @@ import { COPY } from "../i18n";
 import type { AppLocale } from "../api/_lib/locales";
 import { normalizeShop, isShopifyAdminAuthorizeUrl, resolveStoreBindingDisplay, shopifyAdminAppHref } from "../api/_lib/shop-domain";
 import { assignTopLevel, copyEmbedQuery, isShopifyAdminIframe } from "../shopify-embed";
+import { isStripeWrongModeObjectError } from "../api/_lib/stripe-mode";
 
 type ConnectionStatus = {
   success?: boolean;
@@ -42,6 +43,7 @@ export default function ConnectPage() {
     previous?: boolean;
   } | null>(null);
   const [stripeMode, setStripeMode] = useState<"live" | "test" | null>(null);
+  const [sandboxBilling, setSandboxBilling] = useState(false);
 
   async function saveLocales(nextUi: AppLocale, nextOutput: AppLocale) {
     setUi(nextUi);
@@ -75,8 +77,13 @@ export default function ConnectPage() {
         if (secret?.success) setSecretStatus(secret);
         if (pref?.ui) setUi(pref.ui === "fil" ? "fil" : "en");
         if (pref?.output) setOutput(pref.output === "fil" ? "fil" : "en");
+        setSandboxBilling(Boolean(billing?.sandboxBilling));
         setSubscriberActive(
-          Boolean(billing?.success && (billing?.canManage === true || billing?.active === true))
+          Boolean(
+            billing?.success &&
+              !billing?.sandboxBilling &&
+              (billing?.canManage === true || billing?.active === true)
+          )
         );
         const installed = Boolean(billing?.shopInstalled);
         const nextBillingShop = typeof billing?.shop === "string" ? billing.shop : "";
@@ -147,7 +154,14 @@ export default function ConnectPage() {
       }
       assignTopLevel(data.url);
     } catch (err) {
-      setError(err instanceof Error ? err.message : copy.portalError);
+      const message = err instanceof Error ? err.message : copy.portalError;
+      if (isStripeWrongModeObjectError(message) || /test-mode only/i.test(message)) {
+        setSubscriberActive(false);
+        setSandboxBilling(true);
+        setError(copy.sandboxBillingBanner);
+      } else {
+        setError(message);
+      }
       setBillingLoading(false);
     }
   }
@@ -368,6 +382,11 @@ export default function ConnectPage() {
       </header>
 
       {error && <div className="error-bar">{error}</div>}
+      {sandboxBilling && (
+        <div className="error-bar error-shopify" data-testid="sandbox-billing-banner">
+          {copy.sandboxBillingBanner}
+        </div>
+      )}
       {stripeMode === "test" && (
         <div className="error-bar error-shopify" data-testid="test-mode-banner">
           {copy.testModeBanner}

@@ -8,6 +8,7 @@ import { normalizeShop, isShopifyAdminAuthorizeUrl, resolveStoreBindingDisplay }
 import { assignTopLevel, isShopifyAdminIframe } from "./shopify-embed";
 import { buildShopifyDescriptionHtml, stripHtml } from "./api/_lib/listing-html";
 import { scoreListing, META_DESCRIPTION_MAX, SEO_TITLE_MAX, type ListingGrade } from "./api/_lib/listing-score";
+import { isStripeWrongModeObjectError } from "./api/_lib/stripe-mode";
 
 type Product = {
   id: string;
@@ -105,6 +106,7 @@ export default function Home() {
   const [approved, setApproved] = useState(false);
   const [adminIframe, setAdminIframe] = useState(false);
   const [stripeMode, setStripeMode] = useState<"live" | "test" | null>(null);
+  const [sandboxBilling, setSandboxBilling] = useState(false);
 
   const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [portalLoading, setPortalLoading] = useState(false);
@@ -177,7 +179,8 @@ export default function Home() {
         const status = await statusRes.json().catch(() => null);
         if (pref?.ui) setUi(pref.ui === "fil" ? "fil" : "en");
         if (pref?.output) setOutput(pref.output === "fil" ? "fil" : "en");
-        setCanManage(Boolean(status?.canManage));
+        setCanManage(Boolean(status?.canManage) && !status?.sandboxBilling);
+        setSandboxBilling(Boolean(status?.sandboxBilling));
         setStripeMode(status?.stripeMode === "live" || status?.stripeMode === "test" ? status.stripeMode : null);
         setProductAccess(Boolean(status?.active));
         setShopInstalled(Boolean(status?.shopInstalled));
@@ -248,7 +251,14 @@ export default function Home() {
       if (!response.ok || !data?.url) throw new Error(data?.error || copy.portalError);
       assignTopLevel(data.url);
     } catch (err) {
-      showError("payment", err instanceof Error ? err.message : copy.portalError);
+      const message = err instanceof Error ? err.message : copy.portalError;
+      if (isStripeWrongModeObjectError(message) || /test-mode only/i.test(message)) {
+        setCanManage(false);
+        setSandboxBilling(true);
+        showError("payment", copy.sandboxBillingBanner);
+      } else {
+        showError("payment", message);
+      }
       setPortalLoading(false);
     }
   }
@@ -552,6 +562,11 @@ export default function Home() {
       )}
       {error && /unauthorized access/i.test(error) && (
         <div className="error-bar error-shopify">{copy.oauthUnauthorizedHelp}</div>
+      )}
+      {sandboxBilling && (
+        <div className="error-bar error-shopify" data-testid="sandbox-billing-banner">
+          {copy.sandboxBillingBanner}
+        </div>
       )}
       {stripeMode === "test" && (
         <div className="error-bar error-shopify" data-testid="test-mode-banner">

@@ -64,3 +64,25 @@ export function assertWebhookSecretConfigured(secret: string | undefined): void 
     throw new StripeModeError("STRIPE_WEBHOOK_SECRET is missing or invalid.");
   }
 }
+
+export function isStripeWrongModeObjectError(message: string | undefined): boolean {
+  const value = (message || "").toLowerCase();
+  return (
+    value.includes("similar object exists in test mode") ||
+    value.includes("similar object exists in live mode") ||
+    value.includes("live mode key was used") ||
+    value.includes("test mode key was used")
+  );
+}
+
+export function billingMatchesConfiguredMode(
+  livemode: boolean | null | undefined,
+  secret = process.env.STRIPE_SECRET_KEY || ""
+): boolean {
+  if (typeof livemode !== "boolean") return true;
+  try {
+    return stripeModeFromLivemode(livemode) === configuredStripeMode(secret);
+  } catch {
+    return false;
+  }
+}

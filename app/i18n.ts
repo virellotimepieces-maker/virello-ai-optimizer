@@ -121,7 +121,8 @@ export type CopyKey =
   | "conversionHighlight"
   | "outOf100"
   | "liveBadge"
-  | "testModeBanner";
+  | "testModeBanner"
+  | "sandboxBillingBanner";
 
 export const COPY: Record<AppLocale, Record<CopyKey, string>> = {
   en: {
@@ -268,6 +269,8 @@ export const COPY: Record<AppLocale, Record<CopyKey, string>> = {
     liveBadge: "Live",
     testModeBanner:
       "Stripe is in test mode. Real cards are not charged until Vercel Production uses a live secret and live $29.99 Price.",
+    sandboxBillingBanner:
+      "Your previous $29.99 was a sandbox/test charge. Live Stripe cannot open that customer. Type the store you meant, then Subscribe again with a real card.",
   },
   fil: {
     brandSmall: "VIRELLO AI",
@@ -413,6 +416,8 @@ export const COPY: Record<AppLocale, Record<CopyKey, string>> = {
     liveBadge: "Live",
     testModeBanner:
       "Test mode ang Stripe. Hindi totoo ang charge hanggang live secret at live $29.99 Price sa Vercel Production.",
+    sandboxBillingBanner:
+      "Sandbox/test lang ang dating $29.99. Hindi ito mabubuksan ng Live Stripe. I-type ang store na gusto mo, tapos Mag-subscribe ulit ng tunay na card.",
   },
 };
 
