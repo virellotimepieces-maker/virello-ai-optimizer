@@ -86,6 +86,7 @@ export default function Home() {
   const [productAccess, setProductAccess] = useState(false);
   const [shopInstalled, setShopInstalled] = useState(false);
   const [pendingShop, setPendingShop] = useState("");
+  const [billedShop, setBilledShop] = useState("");
   const [canReplaceShop, setCanReplaceShop] = useState(true);
   const [shop, setShop] = useState("");
   const [usage, setUsage] = useState<{ used: number; limit: number; remaining: number } | null>(null);
@@ -166,6 +167,7 @@ export default function Home() {
         setProductAccess(Boolean(status?.active));
         setShopInstalled(Boolean(status?.shopInstalled));
         setPendingShop(typeof status?.pendingShop === "string" ? status.pendingShop : "");
+        setBilledShop(typeof status?.billedShop === "string" ? status.billedShop : "");
         setCanReplaceShop(status?.canReplaceShop !== false);
         setShop(typeof status?.shop === "string" ? status.shop : "");
         setUsage(status?.usage ?? null);
@@ -258,6 +260,21 @@ export default function Home() {
     setConnecting(true);
     setError("");
     try {
+      if (billedShop && cleaned !== billedShop) {
+        const moved = await shopifyFetch("/api/shopify/retarget", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ shop: cleaned }),
+        });
+        const movedBody = await moved.json().catch(() => null);
+        if (!moved.ok || !movedBody?.success) {
+          showError("shopify", movedBody?.error || copy.shopifyError);
+          return;
+        }
+        setBilledShop(cleaned);
+        setPendingShop(cleaned);
+        setShop(cleaned);
+      }
       const response = await shopifyFetch(
         `/api/auth/shopify?shop=${encodeURIComponent(cleaned)}&flow=standalone`,
         { headers: { Accept: "application/json" }, cache: "no-store" }
@@ -276,6 +293,42 @@ export default function Home() {
       showError("shopify", err instanceof Error ? err.message : copy.shopifyError);
     } finally {
       setConnecting(false);
+    }
+  }
+
+  async function useThisStore() {
+    if (changingStore || connecting) return;
+    const cleaned = normalizeShopInput(shopInput || shop);
+    if (!cleaned) {
+      showError("shopify", copy.invalidShop);
+      return;
+    }
+    if (shopInstalled) {
+      showError("shopify", copy.alreadyLinkedInstalled);
+      return;
+    }
+    setChangingStore(true);
+    setError("");
+    try {
+      const response = await shopifyFetch("/api/shopify/retarget", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ shop: cleaned }),
+      });
+      const data = await response.json().catch(() => null);
+      if (!response.ok || !data?.success) {
+        showError("shopify", data?.error || copy.shopifyError);
+        return;
+      }
+      setShopInput(cleaned);
+      setShop(cleaned);
+      setBilledShop(typeof data.billedShop === "string" ? data.billedShop : cleaned);
+      setPendingShop(typeof data.pendingShop === "string" ? data.pendingShop : cleaned);
+      setMessage(copy.alreadyBilledHelp);
+    } catch (err) {
+      showError("shopify", err instanceof Error ? err.message : copy.shopifyError);
+    } finally {
+      setChangingStore(false);
     }
   }
 
@@ -563,6 +616,9 @@ export default function Home() {
                   ? `${copy.pendingStore}: ${storeBinding.domain}. ${copy.notConnected}`
                   : copy.notConnected}
             </p>
+            {Boolean(billedShop) && (
+              <p data-testid="billed-store">{copy.billedStore.replace("{shop}", billedShop)}</p>
+            )}
             {storeBinding.kind === "connected" ? (
               <p className="shop-pill connected-shop" data-testid="connected-shop">
                 {storeBinding.domain}
@@ -575,6 +631,24 @@ export default function Home() {
                 placeholder={copy.shopPlaceholder}
               />
             )}
+            {Boolean(billedShop) &&
+              Boolean(normalizeShopInput(shopInput)) &&
+              normalizeShopInput(shopInput) !== billedShop &&
+              canReplaceShop && (
+                <div className="error-bar error-shopify" data-testid="domain-mismatch">
+                  {copy.domainMismatch.replace("{shop}", billedShop)}
+                  <button
+                    type="button"
+                    className="subscribe-button"
+                    data-testid="use-this-store"
+                    onClick={useThisStore}
+                    disabled={connecting || changingStore}
+                    style={{ marginTop: 12 }}
+                  >
+                    {changingStore ? copy.opening : copy.useThisStore}
+                  </button>
+                </div>
+              )}
             <button type="button" className="subscribe-button" onClick={connectShopify} disabled={connecting || changingStore}>
               {connecting ? copy.connecting : shopInstalled ? copy.reconnect : copy.connectShopify}
             </button>

@@ -237,6 +237,8 @@ describe("Phase 8 hardening", () => {
     expect(layout).toMatch(/beforeInteractive/);
     expect(connect).toMatch(/openInShopifyAdmin/);
     const home = readFileSync("app/page.tsx", "utf8");
+    expect(home).toMatch(/use-this-store/);
+    expect(home).toMatch(/\/api\/shopify\/retarget/);
     expect(home).not.toMatch(/window\.location\.replace\(admin/);
     expect(home).toMatch(/live-badge/);
     expect(home).toMatch(/save-dock/);
