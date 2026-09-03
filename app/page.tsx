@@ -5,9 +5,9 @@ import { shopifyFetch } from "./shopify-fetch";
 import { COPY } from "./i18n";
 import type { AppLocale } from "./api/_lib/locales";
 import { normalizeShop, isShopifyAdminAuthorizeUrl, resolveStoreBindingDisplay } from "./api/_lib/shop-domain";
-import { assignTopLevel } from "./shopify-embed";
+import { assignTopLevel, isShopifyAdminIframe } from "./shopify-embed";
 import { buildShopifyDescriptionHtml, stripHtml } from "./api/_lib/listing-html";
-import { scoreListing, type ListingGrade } from "./api/_lib/listing-score";
+import { scoreListing, META_DESCRIPTION_MAX, SEO_TITLE_MAX, type ListingGrade } from "./api/_lib/listing-score";
 
 type Product = {
   id: string;
@@ -103,6 +103,7 @@ export default function Home() {
   const [analysis, setAnalysis] = useState<Analysis | null>(null);
   const [missing, setMissing] = useState<string[]>([]);
   const [approved, setApproved] = useState(false);
+  const [adminIframe, setAdminIframe] = useState(false);
 
   const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [portalLoading, setPortalLoading] = useState(false);
@@ -158,6 +159,7 @@ export default function Home() {
   }
 
   useEffect(() => {
+    setAdminIframe(isShopifyAdminIframe());
     const params = new URLSearchParams(window.location.search);
     const shopFromUrl = params.get("shop") || "";
     const checkout = params.get("checkout");
@@ -469,8 +471,39 @@ export default function Home() {
     }
   }
 
+  function renderSaveDock(placement: "top" | "sticky") {
+    return (
+      <div
+        className={
+          placement === "sticky"
+            ? `save-dock${adminIframe ? " save-dock-admin" : ""}`
+            : "save-dock save-dock-inline"
+        }
+        data-testid={placement === "sticky" ? "save-dock" : "save-dock-top"}
+      >
+        <label className="approve-box">
+          <input
+            type="checkbox"
+            checked={approved}
+            onChange={(event) => setApproved(event.target.checked)}
+          />
+          {copy.approve}
+        </label>
+        <button
+          type="button"
+          className="subscribe-button"
+          data-testid={placement === "sticky" ? "save-shopify" : "save-shopify-top"}
+          onClick={saveProduct}
+          disabled={saving || !approved}
+        >
+          {saving ? copy.saving : copy.saveShopify}
+        </button>
+      </div>
+    );
+  }
+
   return (
-    <main className="app-shell">
+    <main className={optimization ? "app-shell has-save-dock" : "app-shell"}>
       <header className="topbar">
         <div>
           <div className="brand-small">{copy.brandSmall}</div>
@@ -673,6 +706,7 @@ export default function Home() {
                       </ul>
                     )}
                   </div>
+                  {renderSaveDock("top")}
                 </div>
               )}
               {(analysis.warnings.length > 0 || missing.length > 0) && (
@@ -724,24 +758,34 @@ export default function Home() {
                     onChange={(event) => setOptimization({ ...optimization, callToAction: event.target.value })}
                   />
                   <label className="input-label" htmlFor="opt-seo-title">
-                    {copy.seoTitle} ({optimization.seoTitle.length}/70)
+                    {copy.seoTitle} ({optimization.seoTitle.length}/{SEO_TITLE_MAX})
                   </label>
                   <input
                     id="opt-seo-title"
                     className="review-input"
-                    maxLength={70}
+                    maxLength={SEO_TITLE_MAX}
                     value={optimization.seoTitle}
-                    onChange={(event) => setOptimization({ ...optimization, seoTitle: event.target.value })}
+                    onChange={(event) =>
+                      setOptimization({
+                        ...optimization,
+                        seoTitle: event.target.value.slice(0, SEO_TITLE_MAX),
+                      })
+                    }
                   />
                   <label className="input-label" htmlFor="opt-seo-description">
-                    {copy.seoDescription} ({optimization.metaDescription.length}/160)
+                    {copy.seoDescription} ({optimization.metaDescription.length}/{META_DESCRIPTION_MAX})
                   </label>
                   <textarea
                     id="opt-seo-description"
                     className="review-input"
-                    maxLength={160}
+                    maxLength={META_DESCRIPTION_MAX}
                     value={optimization.metaDescription}
-                    onChange={(event) => setOptimization({ ...optimization, metaDescription: event.target.value })}
+                    onChange={(event) =>
+                      setOptimization({
+                        ...optimization,
+                        metaDescription: event.target.value.slice(0, META_DESCRIPTION_MAX),
+                      })
+                    }
                   />
                   <label className="input-label" htmlFor="opt-tags">{copy.tagsLabel}</label>
                   <textarea
@@ -847,17 +891,7 @@ export default function Home() {
                   ))}
                 </section>
               </div>
-              <label className="approve-box">
-                <input
-                  type="checkbox"
-                  checked={approved}
-                  onChange={(event) => setApproved(event.target.checked)}
-                />
-                {copy.approve}
-              </label>
-              <button type="button" className="subscribe-button" onClick={saveProduct} disabled={saving || !approved}>
-                {saving ? copy.saving : copy.saveShopify}
-              </button>
+              {renderSaveDock("sticky")}
             </>
           )}
         </article>

@@ -36,7 +36,9 @@ describe("Conversion-focused AI listing output", () => {
     expect(system).toMatch(/objections/);
     expect(system).toMatch(/callToAction/);
     expect(system).toMatch(/Never invent/);
-    expect(system).toMatch(/Filipino|English/);
+    expect(system).toMatch(/HARD MAX 60/);
+    expect(system).toMatch(/HARD MAX 160/);
+    expect(system).not.toMatch(/never over 70/);
   });
 
   it("normalizes conversion fields, SEO lengths, and missing-info warnings", () => {
@@ -64,7 +66,8 @@ describe("Conversion-focused AI listing output", () => {
       },
       reasoning: "Used only supplied facts.",
     });
-    expect(result.optimization.seoTitle).toHaveLength(70);
+    expect(result.optimization.seoTitle).toHaveLength(60);
+    expect(result.optimization.seoTitle.length).toBeLessThanOrEqual(60);
     expect(result.optimization.metaDescription).toHaveLength(160);
     expect(result.optimization.benefitBullets.length).toBeGreaterThan(0);
     expect(result.scores.overall).toBeGreaterThanOrEqual(60);
@@ -104,7 +107,33 @@ describe("Conversion-focused AI listing output", () => {
     expect(recovered.optimization.title).toMatch(/Pagani Design/);
     expect(recovered.optimization.description).toMatch(/Sapphire|Quartz/i);
     expect(recovered.optimization.conversionCopy).toBeTruthy();
+    expect(recovered.optimization.seoTitle.length).toBeLessThanOrEqual(60);
+    expect(recovered.optimization.metaDescription.length).toBeLessThanOrEqual(160);
+    expect(recovered.analysis.strongestFeatures.length).toBeGreaterThanOrEqual(3);
+    expect(recovered.optimization.benefitBullets.length).toBeGreaterThanOrEqual(3);
+    expect(recovered.optimization.callToAction).toBeTruthy();
     expect(recovered.scores.overall).toBeGreaterThan(0);
+  });
+
+  it("replaces generic SEO copy and keeps title at 60 and meta at 160", () => {
+    const result = validateOptimizationResult(
+      {
+        optimization: {
+          title: "Virello Gold Watch with Stainless Steel Case",
+          description: "A Virello gold watch with a stainless steel case and Japanese quartz movement.",
+          seoTitle: "Best Premium Quality Watch Sale",
+          metaDescription: "Shop now for amazing deals on luxury lifestyle watches today buy now.",
+        },
+      },
+      product
+    );
+    expect(result.optimization.seoTitle.length).toBeLessThanOrEqual(60);
+    expect(result.optimization.seoTitle).toMatch(/Virello/i);
+    expect(result.optimization.seoTitle).not.toMatch(/best premium|shop now/i);
+    expect(result.optimization.metaDescription.length).toBeLessThanOrEqual(160);
+    expect(result.optimization.metaDescription).toMatch(/Virello|stainless|quartz/i);
+    expect(result.analysis.strongestFeatures.length).toBeGreaterThan(0);
+    expect(result.optimization.benefitBullets.length).toBeGreaterThanOrEqual(3);
   });
 
   it("scores a complete listing higher than a thin listing", () => {

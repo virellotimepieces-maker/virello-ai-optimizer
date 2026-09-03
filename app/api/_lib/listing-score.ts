@@ -1,3 +1,6 @@
+export const SEO_TITLE_MAX = 60;
+export const META_DESCRIPTION_MAX = 160;
+
 export type ListingGrade = "high" | "good" | "needs_work";
 
 export type ListingScores = {
@@ -69,8 +72,9 @@ export function scoreListing(input: ScoredListing): ListingScores {
   const seoTitleLength = input.seoTitle.trim().length;
   const metaLength = input.metaDescription.trim().length;
   let seo = 16;
-  if (seoTitleLength >= 45 && seoTitleLength <= 70) seo += 32;
-  else if (seoTitleLength >= 20) seo += 14;
+  if (seoTitleLength >= 45 && seoTitleLength <= 60) seo += 32;
+  else if (seoTitleLength >= 20 && seoTitleLength <= 60) seo += 14;
+  if (seoTitleLength > 60) seo -= 20;
   if (metaLength >= 120 && metaLength <= 160) seo += 32;
   else if (metaLength >= 70) seo += 14;
   if (input.tags.length >= 4) seo += 12;

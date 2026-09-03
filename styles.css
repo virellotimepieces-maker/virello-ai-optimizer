@@ -1609,6 +1609,56 @@ textarea {
   gap: 16px;
 }
 
+.review-card {
+  position: relative;
+}
+
+.save-dock {
+  display: grid;
+  gap: 10px;
+  padding: 12px 14px calc(12px + env(safe-area-inset-bottom, 0px));
+  border: 1px solid #e5e7eb;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.97);
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.12);
+}
+
+.save-dock .approve-box {
+  margin: 0;
+  font-size: 13px;
+}
+
+.save-dock .subscribe-button {
+  width: 100%;
+}
+
+.save-dock-inline {
+  margin: 12px 0 16px;
+  box-shadow: none;
+}
+
+.has-save-dock .workspace {
+  padding-bottom: 120px;
+}
+
+@media (max-width: 640px) {
+  .save-dock:not(.save-dock-inline) {
+    position: fixed;
+    left: 8px;
+    right: 8px;
+    bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+    z-index: 80;
+  }
+
+  .save-dock-admin:not(.save-dock-inline) {
+    bottom: calc(72px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .has-save-dock .workspace {
+    padding-bottom: 168px;
+  }
+}
+
 .approve-box {
   display: flex;
   gap: 8px;
@@ -1664,6 +1714,10 @@ textarea {
   }
 
   .workspace {
-    padding: 16px;
+    padding: 16px 16px 24px;
+  }
+
+  .has-save-dock .workspace {
+    padding-bottom: 168px;
   }
 }

@@ -1,9 +1,10 @@
 import { parseAppLocale, type AppLocale } from "./locales";
 import { stripHtml } from "./listing-html";
-import { scoreListing, type ListingScores } from "./listing-score";
+import { scoreListing, META_DESCRIPTION_MAX, SEO_TITLE_MAX, type ListingScores } from "./listing-score";
 
 export { buildShopifyDescriptionHtml } from "./listing-html";
 export type { ListingScores } from "./listing-score";
+export { META_DESCRIPTION_MAX, SEO_TITLE_MAX } from "./listing-score";
 
 export type OptimizerProduct = {
   id?: string;
@@ -84,6 +85,157 @@ function pickText(...values: unknown[]): string {
 
 function recordOf(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+}
+
+const GENERIC_SEO =
+  /\b(best|premium|amazing|quality|stunning|exclusive|must[- ]have|perfect gift|top rated|shop now|buy now|deal of|hot sale|luxury lifestyle)\b/i;
+
+function clipAtLimit(value: string, max: number): string {
+  const text = cleanText(value);
+  if (text.length <= max) return text;
+  const sliced = text.slice(0, max).trim();
+  const space = sliced.lastIndexOf(" ");
+  if (space >= Math.min(36, Math.floor(max * 0.6))) {
+    return sliced.slice(0, space).replace(/[,:;.-]+$/, "").trim();
+  }
+  return sliced.replace(/[,:;.-]+$/, "").trim();
+}
+
+function sourceTokens(product?: OptimizerProduct): string[] {
+  if (!product) return [];
+  return uniqueTexts(
+    [product.vendor, product.title, product.productType, ...(product.tags || [])]
+      .flatMap((item) => cleanText(item).split(/[^a-zA-Z0-9]+/))
+      .filter((token) => token.length >= 4)
+  );
+}
+
+function looksGenericSeo(value: string, product?: OptimizerProduct): boolean {
+  const text = cleanText(value);
+  if (!text) return true;
+  if (GENERIC_SEO.test(text)) return true;
+  const tokens = sourceTokens(product);
+  if (!tokens.length) return false;
+  const lower = text.toLowerCase();
+  return !tokens.some((token) => lower.includes(token.toLowerCase()));
+}
+
+function productFactLines(product?: OptimizerProduct): string[] {
+  if (!product) return [];
+  const sentences = cleanText(product.description || "")
+    .split(/[.!\n]+/)
+    .map((item) => item.trim())
+    .filter((item) => item.length >= 8);
+  return uniqueTexts(
+    [
+      product.vendor,
+      product.productType,
+      product.price,
+      ...sentences,
+      ...(product.options || []),
+      ...(product.tags || []),
+      ...(product.variants || []).slice(0, 4),
+    ]
+      .map((item) => cleanText(item))
+      .filter((item) => item.length >= 3)
+  ).slice(0, 8);
+}
+
+function specificSeoTitle(
+  candidate: string,
+  listingTitle: string,
+  product?: OptimizerProduct
+): string {
+  const preferred = clipAtLimit(candidate, SEO_TITLE_MAX);
+  if (preferred && !looksGenericSeo(preferred, product) && preferred.length >= 18) {
+    return preferred;
+  }
+  return clipAtLimit(
+    [product?.vendor, listingTitle || product?.title, product?.productType]
+      .map((item) => cleanText(item))
+      .filter(Boolean)
+      .join(" "),
+    SEO_TITLE_MAX
+  );
+}
+
+function specificMetaDescription(
+  candidate: string,
+  listingTitle: string,
+  description: string,
+  product?: OptimizerProduct
+): string {
+  const preferred = clipAtLimit(candidate, META_DESCRIPTION_MAX);
+  if (preferred && !looksGenericSeo(preferred, product) && preferred.length >= 70) {
+    return preferred;
+  }
+  return clipAtLimit(
+    [listingTitle, description, product?.vendor, product?.productType, product?.price]
+      .map((item) => cleanText(item))
+      .filter(Boolean)
+      .join(". "),
+    META_DESCRIPTION_MAX
+  );
+}
+
+function ensureHighConversionFields(
+  result: OptimizationResult,
+  source?: OptimizerProduct
+): void {
+  const facts = productFactLines(source);
+  if (result.analysis.strongestFeatures.length === 0 && facts.length) {
+    result.analysis.strongestFeatures = facts.slice(0, 6);
+  }
+  if (result.optimization.benefitBullets.length < 3 && facts.length) {
+    result.optimization.benefitBullets = uniqueTexts([
+      ...result.optimization.benefitBullets,
+      ...facts,
+    ]).slice(0, 8);
+  }
+  result.analysis.benefitBullets = uniqueTexts([
+    ...result.optimization.benefitBullets,
+    ...result.analysis.benefitBullets,
+  ]).slice(0, 8);
+  if (!result.analysis.targetCustomer) {
+    result.analysis.targetCustomer = clipAtLimit(
+      [source?.productType || "Shopify", "shoppers looking for", source?.title || source?.vendor || "this product"]
+        .filter(Boolean)
+        .join(" "),
+      160
+    );
+  }
+  if (!result.analysis.purchaseMotivation) {
+    result.analysis.purchaseMotivation =
+      result.optimization.benefitBullets[0] || facts[0] || result.optimization.description;
+  }
+  if (result.analysis.conversionOpportunities.length === 0) {
+    result.analysis.conversionOpportunities = uniqueTexts(
+      [result.optimization.benefitBullets[0], facts[0], facts[1]].filter(
+        (item): item is string => Boolean(item)
+      )
+    ).slice(0, 4);
+  }
+  if (!result.optimization.callToAction) {
+    result.optimization.callToAction = clipAtLimit(
+      ["Choose", source?.vendor || source?.title || "this product", "from the facts on this listing."].join(" "),
+      120
+    );
+  }
+  if (!result.optimization.conversionCopy) {
+    result.optimization.conversionCopy =
+      result.optimization.benefitBullets.slice(0, 2).join(" ") || result.optimization.description;
+  }
+  if (result.analysis.objections.length === 0) {
+    const gap = result.analysis.missingInformation[0] || result.analysis.weaknesses[0];
+    if (gap) {
+      result.analysis.objections = [
+        {
+          objection: gap,
+          response: `${gap} is not listed on this product, so it is not claimed here.`,
+        },
+      ];
+    }
+  }
 }
 
 function fallbackDescription(product?: OptimizerProduct): string {
@@ -224,12 +376,17 @@ export function validateOptimizationResult(
 
   const title = recoveredTitle;
   const description = recoveredDescription;
-  const seoTitle = pickText(optimization.seoTitle, data.seoTitle, title).slice(0, 70);
-  const metaDescription = pickText(
-    optimization.metaDescription,
-    data.metaDescription,
-    description
-  ).slice(0, 160);
+  const seoTitle = specificSeoTitle(
+    pickText(optimization.seoTitle, data.seoTitle, title),
+    title,
+    source
+  );
+  const metaDescription = specificMetaDescription(
+    pickText(optimization.metaDescription, data.metaDescription, description),
+    title,
+    description,
+    source
+  );
   const callToAction = pickText(optimization.callToAction, data.callToAction);
   const conversionCopy = pickText(
     optimization.conversionCopy,
@@ -277,6 +434,18 @@ export function validateOptimizationResult(
   if (!result.optimization.title || !result.optimization.description) {
     throw new OptimizerError("AI result is missing a product title or description.", 502);
   }
+  ensureHighConversionFields(result, source);
+  result.optimization.seoTitle = specificSeoTitle(
+    result.optimization.seoTitle,
+    result.optimization.title,
+    source
+  );
+  result.optimization.metaDescription = specificMetaDescription(
+    result.optimization.metaDescription,
+    result.optimization.title,
+    result.optimization.description,
+    source
+  );
   result.scores = scoreListing({
     sourceTitle: source?.title || result.optimization.title,
     title: result.optimization.title,
@@ -355,11 +524,11 @@ Never invent materials, specifications, discounts, prices, reviews, guarantees, 
 If a shopper-facing claim is not in the source, omit it and list it under missingInformation and warnings.
 Translate stated features into customer benefits without adding new specs.
 Preserve vendor, brand names, and important variant facts.
-Avoid generic filler and repetition. Make copy specific to this product and the likely buyer.
-Write short mobile-friendly paragraphs and scannable benefit bullets.
-SEO title: aim 50-60 characters, never over 70. SEO meta description: aim 140-160 characters, never over 160.
-optimization.title and optimization.description are required non-empty plain-text strings. Never leave them blank.
-Write conversionCopy as a short high-conversion summary a shopper can act on, using only stated facts.
+Avoid generic filler such as "best quality", "premium watch", "amazing deal", or "shop now".
+SEO title: 50-60 characters, HARD MAX 60. Include the brand or model plus one stated spec. Never generic.
+SEO meta description: 140-160 characters, HARD MAX 160. Include two stated facts and a specific CTA with no fake urgency.
+analysis.strongestFeatures and optimization.benefitBullets: at least 3 non-empty items from stated facts. Never return empty feature fields when the product has a title, vendor, type, tags, options, or variants.
+optimization.title, description, seoTitle, metaDescription, conversionCopy, and callToAction must be non-empty.
 ${languageInstruction(outputLocale)}
 Return JSON only with:
 analysis.targetCustomer,

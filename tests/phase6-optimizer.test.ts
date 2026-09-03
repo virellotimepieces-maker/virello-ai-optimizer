@@ -64,7 +64,7 @@ describe("Phase 6 optimizer grounding", () => {
 
   it("validates structured output", () => {
     const result = validateOptimizationResult(validJson);
-    expect(result.optimization.seoTitle.length).toBeLessThanOrEqual(70);
+    expect(result.optimization.seoTitle.length).toBeLessThanOrEqual(60);
     expect(result.optimization.metaDescription.length).toBeLessThanOrEqual(160);
     expect(result.analysis.warnings.some((warning) => /Water resistance/i.test(warning))).toBe(true);
     expect(() =>

@@ -221,8 +221,9 @@ describe("Phase 8 hardening", () => {
     const home = readFileSync("app/page.tsx", "utf8");
     expect(home).not.toMatch(/window\.location\.replace\(admin/);
     expect(home).toMatch(/assignTopLevel/);
-    expect(home).toMatch(/listing-scores/);
-    expect(home).toMatch(/conversion-highlight/);
+    expect(home).toMatch(/save-dock/);
+    expect(home).toMatch(/SEO_TITLE_MAX/);
+    expect(home).toMatch(/META_DESCRIPTION_MAX/);
     expect(readFileSync("app/shopify-app-bridge.tsx", "utf8")).toMatch(/copyEmbedQuery/);
     expect(readFileSync("app/shopify-embed.ts", "utf8")).toMatch(/window\.open\(url, "_top"\)/);
   });
