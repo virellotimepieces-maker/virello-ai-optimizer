@@ -41,6 +41,7 @@ export default function ConnectPage() {
     apiSecret?: boolean;
     previous?: boolean;
   } | null>(null);
+  const [stripeMode, setStripeMode] = useState<"live" | "test" | null>(null);
 
   async function saveLocales(nextUi: AppLocale, nextOutput: AppLocale) {
     setUi(nextUi);
@@ -85,6 +86,7 @@ export default function ConnectPage() {
         setBillingShop(nextBillingShop);
         setPendingShop(nextPending);
         setBilledShop(nextBilled);
+        setStripeMode(billing?.stripeMode === "live" || billing?.stripeMode === "test" ? billing.stripeMode : null);
         if (!shopFromUrl) {
           const display = resolveStoreBindingDisplay({
             shopInstalled: installed,
@@ -329,7 +331,12 @@ export default function ConnectPage() {
     <main className="app-shell">
       <header className="topbar">
         <div>
-          <div className="brand-small">{copy.brandSmall}</div>
+          <div className="brand-small">
+            {copy.brandSmall}
+            <span className="live-badge" data-testid="live-badge">
+              {copy.liveBadge}
+            </span>
+          </div>
           <div className="brand-name">{copy.brand}</div>
         </div>
         <div className="topbar-actions">
@@ -361,6 +368,11 @@ export default function ConnectPage() {
       </header>
 
       {error && <div className="error-bar">{error}</div>}
+      {stripeMode === "test" && (
+        <div className="error-bar error-shopify" data-testid="test-mode-banner">
+          {copy.testModeBanner}
+        </div>
+      )}
       {error &&
         /credentials are not configured|SHOPIFY_API_SECRET is missing/i.test(error) && (
           <div className="error-bar error-shopify">{copy.secretStatusMissing}</div>

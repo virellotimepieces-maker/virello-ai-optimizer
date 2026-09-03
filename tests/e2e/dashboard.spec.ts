@@ -5,7 +5,7 @@ test.describe("Virello dashboard", () => {
     await page.goto("/");
     await expect(page.getByRole("button", { name: /Subscribe|Mag-subscribe|Checking/i })).toBeVisible();
     await expect(page.getByRole("button", { name: "FIL" }).first()).toBeVisible();
-    await expect(page.getByRole("button", { name: /Connect Shopify|Ikonekta/i })).toBeVisible();
+    await expect(page.getByTestId("live-badge")).toHaveText("Live");
     await expect(page.getByTestId("store-binding-status")).toContainText(
       /Not connected yet|Hindi pa nakakonekta/
     );

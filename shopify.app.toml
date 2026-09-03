@@ -1,4 +1,5 @@
 name = "virello-ai-optimizer"
+# Live production app. Application URL is Vercel Production.
 
 client_id = "99a9fda60d48cb24828f243360fffc40"
 

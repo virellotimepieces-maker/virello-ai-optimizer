@@ -20,6 +20,15 @@ describe("recovered Shopify baseline", () => {
     expect(normalizeShop("")).toBe("");
   });
 
+  it("exposes a public live health check", async () => {
+    const { GET } = await import("../app/api/health/route");
+    const response = await GET();
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as { ok?: boolean; live?: boolean };
+    expect(body.ok).toBe(true);
+    expect(body.live).toBe(true);
+  });
+
   it("uses a monthly AI allowance of 1000 by default", () => {
     delete process.env.AI_SUBSCRIBER_USAGE_LIMIT;
     expect(getUsageLimit()).toBe(1000);

@@ -119,7 +119,9 @@ export type CopyKey =
   | "gradeGood"
   | "gradeNeedsWork"
   | "conversionHighlight"
-  | "outOf100";
+  | "outOf100"
+  | "liveBadge"
+  | "testModeBanner";
 
 export const COPY: Record<AppLocale, Record<CopyKey, string>> = {
   en: {
@@ -224,7 +226,7 @@ export const COPY: Record<AppLocale, Record<CopyKey, string>> = {
     oauthCancelled:
       "Shopify authorization was cancelled or did not complete. The store is still disconnected.",
     oauthUnauthorizedHelp:
-      "Shopify rejected the install (Unauthorized Access). In Shopify Dev Dashboard → Apps → this Virello app → Versions → Create a version, set Use legacy install flow to True. App URL: https://virello-ai-optimizer.vercel.app. Allowed redirection URL(s): https://virello-ai-optimizer.vercel.app/api/auth/shopify/callback. Then click Release. Install while logged into gfd1cp-1y.myshopify.com as staff who can install apps.",
+      "Shopify rejected the install (Unauthorized Access). In Shopify Dev Dashboard → Apps → this Virello app → Versions → Create a version, set Use legacy install flow to True. App URL: https://virello-ai-optimizer.vercel.app. Allowed redirection URL(s): https://virello-ai-optimizer.vercel.app/api/auth/shopify/callback. Then click Release. Install while logged into the store as staff who can install apps.",
     oauthHmacHelp:
       "Shopify sent a complete callback and the stored SHOPIFY_API_SECRET did not match that signature. In Vercel → Settings → Environment Variables → Production, SHOPIFY_API_SECRET must be the Client secret from Dev Dashboard → virello-ai-optimizer → Settings for Client ID 99a9fda60d48cb24828f243360fffc40 — not the Client ID. After saving, Redeploy Production without using an existing build cache. Or tap Open in Shopify Admin to finish connecting from the installed app.",
     openInShopifyAdmin: "Open in Shopify Admin",
@@ -241,10 +243,10 @@ export const COPY: Record<AppLocale, Record<CopyKey, string>> = {
     alreadyBilledHelp:
       "This store already has your $29.99 subscription. Tap Connect Shopify again after this update. Your billing stays. Use Change Store only if you meant a different shop.",
     differentCustomerHelp:
-      "Your $29.99 is on another .myshopify.com domain (often gfd1cp-1v). Keep gfd1cp-1y in the field, tap Use this store, then Connect Shopify. Leftover billing on the other domain is moved. Do not let the field jump back to 1v.",
+      "Your $29.99 is on another .myshopify.com domain. Keep the store you meant in the field, tap Use this store, then Connect Shopify. Leftover billing on the other domain is moved.",
     billedStore: "Your $29.99 subscription is on {shop}.",
     domainHint:
-      "Use the exact .myshopify.com domain from Shopify Admin → Settings → Domains. A one-letter difference is a different store (gfd1cp-1y vs gfd1cp-1v). Do not use a custom domain.",
+      "Use the exact .myshopify.com domain from Shopify Admin → Settings → Domains. A one-letter difference is a different store. Do not use a custom domain.",
     domainMismatch:
       "Your $29.99 is still on {shop}. Tap Use this store to move billing to the domain in the field, then Connect Shopify.",
     useThisStore: "Use this store",
@@ -263,6 +265,9 @@ export const COPY: Record<AppLocale, Record<CopyKey, string>> = {
     gradeNeedsWork: "Needs stronger copy",
     conversionHighlight: "High-conversion copy",
     outOf100: "/ 100",
+    liveBadge: "Live",
+    testModeBanner:
+      "Stripe is in test mode. Real cards are not charged until Vercel Production uses a live secret and live $29.99 Price.",
   },
   fil: {
     brandSmall: "VIRELLO AI",
@@ -366,7 +371,7 @@ export const COPY: Record<AppLocale, Record<CopyKey, string>> = {
     oauthCancelled:
       "Nakansela o hindi natapos ang Shopify authorization. Hindi pa nakakonekta ang store.",
     oauthUnauthorizedHelp:
-      "Tinanggihan ng Shopify ang install (Unauthorized Access). Sa Shopify Dev Dashboard → Apps → Virello app → Versions → Create a version, i-set ang Use legacy install flow sa True. App URL: https://virello-ai-optimizer.vercel.app. Allowed redirection URL(s): https://virello-ai-optimizer.vercel.app/api/auth/shopify/callback. I-click ang Release. Mag-install habang naka-login sa gfd1cp-1y.myshopify.com bilang staff na pwedeng mag-install ng app.",
+      "Tinanggihan ng Shopify ang install (Unauthorized Access). Sa Shopify Dev Dashboard → Apps → Virello app → Versions → Create a version, i-set ang Use legacy install flow sa True. App URL: https://virello-ai-optimizer.vercel.app. Allowed redirection URL(s): https://virello-ai-optimizer.vercel.app/api/auth/shopify/callback. I-click ang Release. Mag-install habang naka-login sa store bilang staff na pwedeng mag-install ng app.",
     oauthHmacHelp:
       "Kumpleto ang callback ng Shopify pero hindi tumugma ang SHOPIFY_API_SECRET. Sa Vercel → Settings → Environment Variables → Production, dapat Client secret ang SHOPIFY_API_SECRET mula sa Dev Dashboard → virello-ai-optimizer → Settings para sa Client ID 99a9fda60d48cb24828f243360fffc40 — hindi ang Client ID. Pagkatapos i-save, i-Redeploy ang Production nang hindi ginagamit ang existing build cache. O i-tap ang Buksan sa Shopify Admin para tapusin ang koneksyon.",
     openInShopifyAdmin: "Buksan sa Shopify Admin",
@@ -383,10 +388,10 @@ export const COPY: Record<AppLocale, Record<CopyKey, string>> = {
     alreadyBilledHelp:
       "Naka-subscribe na ang store na ito ($29.99). I-tap ulit ang Connect Shopify. Mananatili ang billing. Gamitin ang Palitan ang store kung ibang shop ang gusto mo.",
     differentCustomerHelp:
-      "Nasa ibang .myshopify.com ang $29.99 mo (madalas gfd1cp-1v). Panatilihin ang gfd1cp-1y sa field, i-tap ang Gamitin ang store na ito, tapos Connect Shopify. Ililipat ang leftover billing. Huwag hayaang bumalik sa 1v.",
+      "Nasa ibang .myshopify.com ang $29.99 mo. Panatilihin sa field ang store na gusto mo, i-tap ang Gamitin ang store na ito, tapos Connect Shopify. Ililipat ang leftover billing.",
     billedStore: "Naka-bill ang $29.99 subscription mo sa {shop}.",
     domainHint:
-      "Gamitin ang exact .myshopify.com mula sa Shopify Admin → Settings → Domains. Isang letra lang ang pagkakaiba, ibang store na iyon (gfd1cp-1y vs gfd1cp-1v). Huwag custom domain.",
+      "Gamitin ang exact .myshopify.com mula sa Shopify Admin → Settings → Domains. Isang letra lang ang pagkakaiba, ibang store na iyon. Huwag custom domain.",
     domainMismatch:
       "Nasa {shop} pa ang $29.99. I-tap ang Gamitin ang store na ito para ilipat ang billing sa domain sa field, tapos Connect Shopify.",
     useThisStore: "Gamitin ang store na ito",
@@ -405,6 +410,9 @@ export const COPY: Record<AppLocale, Record<CopyKey, string>> = {
     gradeNeedsWork: "Kailangan pa ng mas malakas na copy",
     conversionHighlight: "High-conversion copy",
     outOf100: "/ 100",
+    liveBadge: "Live",
+    testModeBanner:
+      "Test mode ang Stripe. Hindi totoo ang charge hanggang live secret at live $29.99 Price sa Vercel Production.",
   },
 };
 

@@ -82,6 +82,19 @@ textarea {
   font-size: 9px;
   font-weight: 900;
   letter-spacing: 0.18em;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.live-badge {
+  letter-spacing: 0.08em;
+  font-size: 9px;
+  font-weight: 800;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: #166534;
+  color: #ecfdf3;
 }
 
 .brand-name {

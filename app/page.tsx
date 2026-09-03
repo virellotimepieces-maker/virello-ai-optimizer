@@ -104,6 +104,7 @@ export default function Home() {
   const [missing, setMissing] = useState<string[]>([]);
   const [approved, setApproved] = useState(false);
   const [adminIframe, setAdminIframe] = useState(false);
+  const [stripeMode, setStripeMode] = useState<"live" | "test" | null>(null);
 
   const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [portalLoading, setPortalLoading] = useState(false);
@@ -177,6 +178,7 @@ export default function Home() {
         if (pref?.ui) setUi(pref.ui === "fil" ? "fil" : "en");
         if (pref?.output) setOutput(pref.output === "fil" ? "fil" : "en");
         setCanManage(Boolean(status?.canManage));
+        setStripeMode(status?.stripeMode === "live" || status?.stripeMode === "test" ? status.stripeMode : null);
         setProductAccess(Boolean(status?.active));
         setShopInstalled(Boolean(status?.shopInstalled));
         setPendingShop(typeof status?.pendingShop === "string" ? status.pendingShop : "");
@@ -506,7 +508,12 @@ export default function Home() {
     <main className={optimization ? "app-shell has-save-dock" : "app-shell"}>
       <header className="topbar">
         <div>
-          <div className="brand-small">{copy.brandSmall}</div>
+          <div className="brand-small">
+            {copy.brandSmall}
+            <span className="live-badge" data-testid="live-badge">
+              {copy.liveBadge}
+            </span>
+          </div>
           <div className="brand-name">{copy.brand}</div>
         </div>
         <div className="topbar-actions">
@@ -545,6 +552,11 @@ export default function Home() {
       )}
       {error && /unauthorized access/i.test(error) && (
         <div className="error-bar error-shopify">{copy.oauthUnauthorizedHelp}</div>
+      )}
+      {stripeMode === "test" && (
+        <div className="error-bar error-shopify" data-testid="test-mode-banner">
+          {copy.testModeBanner}
+        </div>
       )}
       {canonicalUrl && (
         <div className="error-bar">

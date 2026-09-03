@@ -101,6 +101,34 @@ AI, product import, and save-to-Shopify all use this gate.
 
 Subscribe → Manage Subscription after payment (survives refresh via `virello_sid`) → Connect Shopify (embedded Admin or standalone) → Import → Optimize → Review → Save to Shopify.
 
+## Live production
+
+**https://virello-ai-optimizer.vercel.app is the live app.** `main` deploys to Vercel Production.
+
+Subscriber path: Subscribe ($29.99/month) → Connect Shopify → Import → Optimize → Review → Save to Shopify.
+
+### Stripe (real charges)
+
+Vercel Production must use:
+
+- `STRIPE_SECRET_KEY` starting with `sk_live_`
+- `STRIPE_PRICE_ID` for a **live** $29.99/month USD Price
+- `STRIPE_WEBHOOK_SECRET` for the live endpoint `https://virello-ai-optimizer.vercel.app/api/stripe/webhook`
+
+Events: `checkout.session.completed`, `customer.subscription.created`, `customer.subscription.updated`, `customer.subscription.deleted`, `invoice.paid`, `invoice.payment_failed`.
+
+If Production still has `sk_test_`, the dashboard shows a test-mode banner and real cards are not charged.
+
+### Shopify (any paying store)
+
+A Vercel deploy does **not** update Shopify. In [Dev Dashboard](https://dev.shopify.com) → this app (Client ID `99a9fda60d48cb24828f243360fffc40`):
+
+1. Released version: App URL `https://virello-ai-optimizer.vercel.app`, callback `https://virello-ai-optimizer.vercel.app/api/auth/shopify/callback`, scopes `read_products,write_products`, **Use legacy install flow = True**.
+2. **Distribution:** development-store-only limits installs to listed shops. To take other paying subscribers, switch to **Unlisted** (install link) or **Public** (App Store). Add each extra development store until then.
+3. Production `SHOPIFY_API_SECRET` is one Production-only Client secret row.
+
+Health check: `GET https://virello-ai-optimizer.vercel.app/api/health` → `{ "ok": true, "live": true }`.
+
 ## Shopify OAuth (production)
 
 Standalone Connect uses Shopify’s authorization-code grant:
@@ -119,18 +147,13 @@ If Shopify shows **Unauthorized Access**, enable legacy install on the live app 
 6. Scopes: `read_products`, `write_products`.
 7. Click **Release**.
 8. Confirm **Settings → Client secret** is the **only** Vercel Production `SHOPIFY_API_SECRET` (Production-only row). If a second `SHOPIFY_API_SECRET` is also scoped to Production (for example Production and Preview), delete or rescope that overlapping row, then Redeploy Production without build cache. Do not paste secrets into git or chat.
-9. **Distribution** / **Test on development store** must include `gfd1cp-1y.myshopify.com`. Install while logged into that store as staff who can install apps.
+9. **Distribution** must allow the subscriber’s store. Development-store-only installs work only for shops you list. Unlisted or Public distribution is required for other paying merchants. Install while logged into that store as staff who can install apps.
 
 ## Deploy
 
-Next.js on Vercel (`vercel.json` framework only; no `outputDirectory`).
+Next.js on Vercel (`vercel.json` framework only; no `outputDirectory`). Push to `main` promotes Production at `https://virello-ai-optimizer.vercel.app`.
 
-1. Confirm `shopify-rebuild` is green locally (commands above).
-2. Create a Vercel Preview from `shopify-rebuild` (not `main`).
-3. Point Stripe **test** webhook to `https://<preview>/api/stripe/webhook` for `checkout.session.completed`, `customer.subscription.created`, `customer.subscription.updated`, `customer.subscription.deleted`, `invoice.paid`, `invoice.payment_failed`.
-4. Point Shopify development-store webhooks to `https://<preview>/api/webhooks` and set the OAuth callback to `https://<preview>/api/auth/shopify/callback`. Required scopes: `read_products`, `write_products`.
-5. Walk the Preview: $29.99 checkout, webhook, Manage Subscription, Connect Shopify, import, AI optimize, 1000-use enforcement, review, save, FIL/EN, mobile and desktop.
-6. Only after that walkthrough, merge `shopify-rebuild` into `main` with a **normal merge commit** (no force-push) and promote Production.
+Do not put `sk_test_` or a test Price on Production. Preview may use Stripe test mode.
 
 ## Monitoring
 
@@ -144,6 +167,6 @@ Next.js on Vercel (`vercel.json` framework only; no `outputDirectory`).
 
 1. In Vercel, Instant Rollback to the previous Production deployment.
 2. If schema must move back: restore Neon PITR to before the bad migration, or run the `.down.sql` files newest-first.
-3. Git rollback target after a merge is the `main` commit immediately before the merge. Until merge, keep serving whatever is currently on `main` and leave `shopify-rebuild` as the working branch.
+3. Git rollback target is the `main` commit immediately before the bad Production deploy.
 
-Do not deploy this branch until Phase 8 preview acceptance is complete.
+The live app is Production on `main`.
