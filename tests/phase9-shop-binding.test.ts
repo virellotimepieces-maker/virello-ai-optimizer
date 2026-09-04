@@ -342,9 +342,9 @@ describe("Phase 9 shop-binding lifecycle", () => {
     );
     expect(response.status).toBe(401);
     const reauth = response.headers.get("X-Shopify-API-Request-Failure-Reauthorize-Url") || "";
-    expect(reauth).toContain(`${SHOP_NEXT}/admin/oauth/authorize`);
+    expect(reauth).toContain("https://admin.shopify.com/store/");
+    expect(reauth).toContain("/apps/virello-ai-optimizer");
     expect(reauth).not.toContain("accounts.shopify.com");
-    expect(reauth).not.toContain("admin.shopify.com/store/");
   });
 
   it("does not persist an installation when token exchange fails", async () => {

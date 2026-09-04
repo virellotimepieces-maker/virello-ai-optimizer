@@ -9,9 +9,8 @@ embedded = true
 
 [access_scopes]
 scopes = "read_products,write_products"
-# Standalone Connect uses authorization-code grant. Managed install rejects
-# {shop}.myshopify.com/admin/oauth/authorize with Unauthorized Access.
-use_legacy_install_flow = true
+# Managed install is required to deploy app-specific compliance webhooks.
+# Standalone Connect opens the Admin app URL instead of oauth/authorize.
 
 [auth]
 

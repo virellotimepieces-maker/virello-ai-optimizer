@@ -1,9 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { isShopifyAdminAuthorizeUrl, normalizeShop } from "../../_lib/shop-domain";
-import {
-  buildShopifyAuthorizeUrl,
-  shopifyAdminAppUrl,
-} from "../../_lib/shopify-oauth";
+import { normalizeShop } from "../../_lib/shop-domain";
+import { shopifyAdminAppUrl } from "../../_lib/shopify-oauth";
 import { getShopifyClientId, getShopifyClientSecret } from "../../_lib/shopify-config";
 import { getSessionBinding, retargetUninstalledShop, setPendingShop, ShopBindingError } from "../../_lib/shop-binding";
 import { assertRateLimit, RateLimitError, tenantRateKey } from "../../_lib/rate-limit";
@@ -85,47 +82,6 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const embedded =
-      request.nextUrl.searchParams.get("embedded") === "1" ||
-      Boolean(request.nextUrl.searchParams.get("host"));
-    const flowParam = request.nextUrl.searchParams.get("flow");
-    const flow =
-      flowParam === "standalone"
-        ? "standalone"
-        : flowParam === "embedded" || embedded
-          ? "embedded"
-          : "standalone";
-
-    if (flow === "embedded") {
-      return oauthStartResponse(
-        request,
-        {
-          success: true,
-          url: shopifyAdminAppUrl(shop).toString(),
-          shop,
-        },
-        307
-      );
-    }
-
-    const authorize = buildShopifyAuthorizeUrl({
-      shop,
-      flow: "standalone",
-    });
-    if (
-      !isShopifyAdminAuthorizeUrl(authorize.url) ||
-      authorize.url.includes("admin.shopify.com/store/")
-    ) {
-      return oauthStartResponse(
-        request,
-        {
-          success: false,
-          error:
-            "Shopify authorization must start at {shop}.myshopify.com/admin/oauth/authorize.",
-        },
-        500
-      );
-    }
     if (binding && !binding.installedShop) {
       await retargetUninstalledShop(
         binding.sessionShop,
@@ -138,7 +94,11 @@ export async function GET(request: NextRequest) {
     }
     return oauthStartResponse(
       request,
-      { success: true, url: authorize.url, shop },
+      {
+        success: true,
+        url: shopifyAdminAppUrl(shop).toString(),
+        shop,
+      },
       307
     );
   } catch (error) {

@@ -387,20 +387,13 @@ describe("Phase 5 OAuth start for development shops", () => {
     expect(body.success).toBe(true);
     expect(body.shop).toBe("gfd1cp-1v.myshopify.com");
     const url = new URL(body.url || "");
-    expect(url.origin).toBe("https://gfd1cp-1v.myshopify.com");
-    expect(url.pathname).toBe("/admin/oauth/authorize");
-    expect(url.searchParams.get("client_id")).toBe("shopify-client-id");
-    expect(url.searchParams.get("scope")).toContain("write_products");
-    expect(url.searchParams.get("state")).toBeTruthy();
-    expect(url.searchParams.get("redirect_uri")).toBe(
-      "https://app.virello.example/api/auth/shopify/callback"
-    );
-    expect(isShopifyAdminAuthorizeUrl(body.url || "")).toBe(true);
-    expect(body.url).not.toContain("admin.shopify.com/store/");
+    expect(url.origin).toBe("https://admin.shopify.com");
+    expect(url.pathname).toBe("/store/gfd1cp-1v/apps/virello-ai-optimizer");
+    expect(url.searchParams.get("shop")).toBe("gfd1cp-1v.myshopify.com");
   });
 
   it.each(["gfd1cp-1v.myshopify.com", "bcya1v-xp.myshopify.com"])(
-    "sets Location to %s/admin/oauth/authorize, never admin.shopify.com/store",
+    "sets Location to admin.shopify.com/store/%s/apps/virello-ai-optimizer",
     async (shop) => {
       const { GET } = await import("../app/api/auth/shopify/route");
       const request = new NextRequest(
@@ -411,16 +404,10 @@ describe("Phase 5 OAuth start for development shops", () => {
       expect(response.status).toBe(307);
       const location = response.headers.get("location") || "";
       const url = new URL(location);
-      expect(url.origin).toBe(`https://${shop}`);
-      expect(url.pathname).toBe("/admin/oauth/authorize");
-      expect(url.searchParams.get("client_id")).toBe("shopify-client-id");
-      expect(url.searchParams.get("scope")).toBe("read_products,write_products");
-      expect(url.searchParams.get("state")).toBeTruthy();
-      expect(url.searchParams.get("redirect_uri")).toBe(
-        "https://app.virello.example/api/auth/shopify/callback"
-      );
-      expect(location).toContain(`https://${shop}/admin/oauth/authorize`);
-      expect(location).not.toContain("admin.shopify.com/store/");
+      const handle = shop.replace(/\.myshopify\.com$/i, "");
+      expect(url.origin).toBe("https://admin.shopify.com");
+      expect(url.pathname).toBe(`/store/${handle}/apps/virello-ai-optimizer`);
+      expect(url.searchParams.get("shop")).toBe(shop);
     }
   );
 
@@ -434,9 +421,9 @@ describe("Phase 5 OAuth start for development shops", () => {
     const body = (await response.json()) as { shop?: string; url?: string };
     expect(response.status).toBe(200);
     expect(body.shop).toBe("gfd1cp-1v.myshopify.com");
-    expect(body.url).toContain("https://gfd1cp-1v.myshopify.com/admin/oauth/authorize");
-    expect(body.url).not.toContain("admin.shopify.com/store/");
-    expect(isShopifyAdminAuthorizeUrl(body.url || "")).toBe(true);
+    expect(body.url).toContain(
+      "https://admin.shopify.com/store/gfd1cp-1v/apps/virello-ai-optimizer"
+    );
   });
 
   it("returns a visible JSON error for an invalid shop", async () => {
@@ -464,21 +451,17 @@ describe("Phase 5 OAuth start for development shops", () => {
     expect(body.success).toBe(true);
     expect(body.shop).toBe("gfd1cp-1y.myshopify.com");
     const url = new URL(body.url || "");
-    expect(url.origin).toBe("https://gfd1cp-1y.myshopify.com");
-    expect(url.pathname).toBe("/admin/oauth/authorize");
-    expect(url.searchParams.get("redirect_uri")).toBe(
-      "https://app.virello.example/api/auth/shopify/callback"
-    );
-    expect(body.url).not.toContain("admin.shopify.com/store/");
+    expect(url.origin).toBe("https://admin.shopify.com");
+    expect(url.pathname).toBe("/store/gfd1cp-1y/apps/virello-ai-optimizer");
+    expect(url.searchParams.get("shop")).toBe("gfd1cp-1y.myshopify.com");
   });
 
-  it("declares legacy install flow so standalone authorization-code grant is allowed", () => {
+  it("declares managed install so app-specific compliance webhooks can deploy", () => {
     const toml = readFileSync("shopify.app.toml", "utf8");
-    expect(toml).toMatch(/\[access_scopes\][\s\S]*use_legacy_install_flow\s*=\s*true/);
+    expect(toml).not.toMatch(/use_legacy_install_flow\s*=\s*true/);
     expect(toml).toMatch(
       /https:\/\/virello-ai-optimizer\.vercel\.app\/api\/auth\/shopify\/callback/
     );
-    expect(toml).not.toMatch(/use_legacy_install_flow\s*=\s*false/);
     expect(toml).toMatch(/topics\s*=\s*\[[^\]]*app\/uninstalled/);
     expect(toml).toMatch(/compliance_topics\s*=\s*\[[^\]]*customers\/data_request/);
     expect(toml).toMatch(/compliance_topics\s*=\s*\[[^\]]*customers\/redact/);
