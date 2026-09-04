@@ -83,6 +83,9 @@ export async function revokeShopifyInstallation(
     `UPDATE shopify_sessions
      SET revoked_at = NOW(),
          encrypted_access_token = '',
+         encrypted_refresh_token = '',
+         access_token_expires_at = NULL,
+         refresh_token_expires_at = NULL,
          updated_at = NOW()
      WHERE shop = $1`,
     [normalized]

@@ -13,6 +13,7 @@ import {
   classifyShopifyTokenError,
   exchangeShopifyAuthorizationCode,
   saveShopifySession,
+  type ShopifyCodeExchangeResult,
 } from "../../../_lib/shopify-auth";
 import { billingForShop } from "../../../_lib/stripe-billing";
 import {
@@ -131,9 +132,7 @@ export async function GET(request: NextRequest) {
     let verifiedSecret = secrets.find((secret) =>
       verifyShopifyCallbackHmac(request, secret)
     );
-    let exchanged:
-      | { accessToken: string; scope: string }
-      | null = null;
+    let exchanged: Extract<ShopifyCodeExchangeResult, { ok: true }> | null = null;
     let tokenDiag = "none";
 
     if (!verifiedSecret) {
@@ -151,7 +150,7 @@ export async function GET(request: NextRequest) {
               officialKeys: shopifyCallbackHmacDiagnostics(request).officialKeys,
             });
             verifiedSecret = app.secret;
-            exchanged = { accessToken: result.accessToken, scope: result.scope };
+            exchanged = result;
             tokenDiag = "ok";
             break;
           }
@@ -213,7 +212,7 @@ export async function GET(request: NextRequest) {
           code,
         });
         if (result.ok) {
-          exchanged = { accessToken: result.accessToken, scope: result.scope };
+          exchanged = result;
           break;
         }
         lastError = result.error || lastError;
@@ -237,7 +236,11 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    await saveShopifySession(shop, exchanged.accessToken, exchanged.scope);
+    await saveShopifySession(shop, exchanged.accessToken, exchanged.scope, {
+      refreshToken: exchanged.refreshToken,
+      expiresIn: exchanged.expiresIn,
+      refreshExpiresIn: exchanged.refreshExpiresIn,
+    });
     const billing = await billingForShop(shop);
     const sessionId = await issueAppSession({
       shop,

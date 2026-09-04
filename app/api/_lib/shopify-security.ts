@@ -66,12 +66,14 @@ export function verifyShopifySessionToken(
   }
 
   const received = Buffer.from(parts[2], "base64url");
-  const credentialSecret = apiSecrets.find((secret) => {
-    const expected = createHmac("sha256", secret)
-      .update(`${parts[0]}.${parts[1]}`)
-      .digest();
-    return hmacEqual(received, expected);
-  });
+  const credentialSecret = apiSecrets.find((secret) =>
+    hmacKeyMaterials(secret).some((key) => {
+      const expected = createHmac("sha256", key)
+        .update(`${parts[0]}.${parts[1]}`)
+        .digest();
+      return hmacEqual(received, expected);
+    })
+  );
   if (!credentialSecret) {
     throw new ShopifySecurityError("Invalid Shopify session signature.");
   }

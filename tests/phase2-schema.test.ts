@@ -92,6 +92,7 @@ describe("Phase 2 database behavior", () => {
       "006_phase6_locales",
       "007_rate_limits",
       "008_shop_binding",
+      "009_expiring_offline_tokens",
     ]);
   });
 

@@ -41,6 +41,17 @@ import { clearTestDatabase, usePglite } from "./helpers/pglite";
 const SHOP = "store-alpha.myshopify.com";
 const SECRET = "shopify-client-secret-value";
 
+function signJwt(payload: Record<string, unknown>, secret: string) {
+  const header = Buffer.from(
+    JSON.stringify({ alg: "HS256", typ: "JWT" })
+  ).toString("base64url");
+  const body = Buffer.from(JSON.stringify(payload)).toString("base64url");
+  const signature = createHmac("sha256", secret)
+    .update(`${header}.${body}`)
+    .digest("base64url");
+  return `${header}.${body}.${signature}`;
+}
+
 function jsonResponse(body: unknown, status = 200, headers: Record<string, string> = {}) {
   return {
     ok: status >= 200 && status < 300,
@@ -179,6 +190,36 @@ describe("Phase 5 shop domains and OAuth", () => {
     expect(url.origin).toBe("https://gfd1cp-1v.myshopify.com");
     expect(url.pathname).toBe("/admin/oauth/authorize");
     expect(built.url).not.toContain("admin.shopify.com/store/");
+  });
+
+  it("requests expiring offline tokens during authorization code exchange", async () => {
+    let body = "";
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      body = String(init?.body || "");
+      return jsonResponse({
+        access_token: "shpat_code",
+        refresh_token: "shprt_code",
+        scope: "read_products,write_products",
+        expires_in: 3600,
+      });
+    }) as typeof fetch;
+    try {
+      const { exchangeShopifyAuthorizationCode } = await import(
+        "../app/api/_lib/shopify-auth"
+      );
+      const result = await exchangeShopifyAuthorizationCode({
+        shop: SHOP,
+        apiKey: "shopify-client-id",
+        secret: SECRET,
+        code: "auth-code",
+      });
+      expect(result.ok).toBe(true);
+      expect(body).toContain("expiring=1");
+      expect(body).toContain("code=auth-code");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 
   it("builds a standalone authorize URL with APP_URL callback and signed state", () => {
@@ -367,6 +408,122 @@ describe("Phase 5 import, save, and access", () => {
     const access = await requirePaidProductAccess(request);
     expect(access.shop).toBe(SHOP);
     expect(access.access.productAccess).toBe(true);
+  });
+
+  it("exchanges a listing-app session token for an expiring offline token", async () => {
+    process.env.SHOPIFY_API_KEY = "99a9fda60d48cb24828f243360fffc40";
+    process.env.SHOPIFY_API_SECRET = "shpss_live-app-secret-value-xxxx";
+    process.env.SHOPIFY_API_SECRET_PREVIOUS = "shpss_listing-app-secret-xx";
+    const now = Math.floor(Date.now() / 1000);
+    const token = signJwt(
+      {
+        aud: SHOPIFY_LISTING_CLIENT_ID,
+        dest: `https://${SHOP}`,
+        iss: `https://${SHOP}/admin`,
+        sub: "user-1",
+        exp: now + 60,
+        nbf: now - 10,
+      },
+      "shpss_listing-app-secret-xx"
+    );
+    const bodies: string[] = [];
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes("/admin/oauth/access_token")) {
+        bodies.push(String(init?.body || ""));
+        return jsonResponse({
+          access_token: "shpat_expiring_offline",
+          refresh_token: "shprt_refresh",
+          scope: "read_products,write_products",
+          expires_in: 3600,
+          refresh_token_expires_in: 7_776_000,
+        });
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    }) as typeof fetch;
+    try {
+      const { authenticateShopifyRequest } = await import("../app/api/_lib/shopify-auth");
+      const result = await authenticateShopifyRequest(
+        new NextRequest("https://app.virello.example/api/shopify/products", {
+          headers: { authorization: `Bearer ${token}` },
+        }),
+        true
+      );
+      expect(result.shop).toBe(SHOP);
+      expect(result.accessToken).toBe("shpat_expiring_offline");
+      expect(bodies[0]).toContain("expiring=1");
+      expect(bodies[0]).toContain(`client_id=${SHOPIFY_LISTING_CLIENT_ID}`);
+      expect(bodies[0]).not.toContain("client_id=99a9fda60d48cb24828f243360fffc40");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("retries product import after Admin API 401 with a freshly exchanged token", async () => {
+    const now = Math.floor(Date.now() / 1000);
+    const token = signJwt(
+      {
+        aud: "shopify-client-id",
+        dest: `https://${SHOP}`,
+        iss: `https://${SHOP}/admin`,
+        sub: "user-1",
+        exp: now + 60,
+        nbf: now - 10,
+      },
+      SECRET
+    );
+    let graphqlCalls = 0;
+    setShopifyAdminFetchForTests(async () => {
+      graphqlCalls += 1;
+      if (graphqlCalls === 1) {
+        return jsonResponse({ errors: [{ message: "Unauthorized" }] }, 401);
+      }
+      return jsonResponse({
+        data: {
+          products: {
+            pageInfo: { hasNextPage: false, endCursor: null },
+            nodes: [],
+          },
+        },
+      });
+    });
+    const originalFetch = globalThis.fetch;
+    let exchanges = 0;
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes("/admin/oauth/access_token")) {
+        exchanges += 1;
+        expect(String(init?.body || "")).toContain("expiring=1");
+        return jsonResponse({
+          access_token: exchanges === 1 ? "token-stale" : "token-fresh",
+          refresh_token: "shprt_refresh",
+          scope: "read_products,write_products",
+          expires_in: 3600,
+        });
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    }) as typeof fetch;
+    try {
+      const cookieRequest = await paidInstalledShop();
+      const { GET } = await import("../app/api/shopify/products/route");
+      const response = await GET(
+        new NextRequest("https://app.virello.example/api/shopify/products", {
+          headers: {
+            authorization: `Bearer ${token}`,
+            cookie: cookieRequest.headers.get("cookie") || "",
+          },
+        })
+      );
+      const body = (await response.json()) as { success?: boolean; count?: number };
+      expect(response.status).toBe(200);
+      expect(body.success).toBe(true);
+      expect(body.count).toBe(0);
+      expect(graphqlCalls).toBe(2);
+      expect(exchanges).toBe(2);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 
   it("does not treat GraphQL throttle as success", async () => {

@@ -49,9 +49,31 @@ export async function shopifyFetch(
     console.error("SHOPIFY_ID_TOKEN_ERROR", error);
   }
 
-  return fetch(input, {
+  const response = await fetch(input, {
     ...init,
     headers,
     credentials: "include",
   });
+
+  if (
+    response.status === 401 &&
+    response.headers.get("X-Shopify-Retry-Invalid-Session-Request") === "1"
+  ) {
+    try {
+      const previous = headers.get("Authorization")?.replace(/^Bearer\s+/i, "") || "";
+      const fresh = (await window.shopify?.idToken?.()) || "";
+      if (fresh && fresh !== previous) {
+        headers.set("Authorization", `Bearer ${fresh}`);
+        return fetch(input, {
+          ...init,
+          headers,
+          credentials: "include",
+        });
+      }
+    } catch (error) {
+      console.error("SHOPIFY_ID_TOKEN_RETRY_ERROR", error);
+    }
+  }
+
+  return response;
 }

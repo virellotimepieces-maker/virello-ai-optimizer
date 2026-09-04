@@ -12,9 +12,12 @@ import {
 } from "../../../_lib/shop-binding";
 import {
   authenticateShopifyRequest,
+  SHOPIFY_REAUTHORIZE_HEADER,
+  SHOPIFY_RETRY_SESSION_HEADER,
   ShopifyAuthError,
+  shopifyAuthErrorHeaders,
 } from "../../../_lib/shopify-auth";
-import { shopifyAdminAppUrl } from "../../../_lib/shopify-oauth";
+import { buildShopifyAuthorizeUrl } from "../../../_lib/shopify-oauth";
 import {
   getShopifyIdToken,
   verifyShopifySessionToken,
@@ -29,8 +32,12 @@ function reauthorizeUrlFromRequest(request: NextRequest): string {
   try {
     const token = getShopifyIdToken(request);
     if (!token) return "";
-    const { shop } = verifyShopifySessionToken(token);
-    return shopifyAdminAppUrl(shop).toString();
+    const { shop, clientId } = verifyShopifySessionToken(token);
+    return buildShopifyAuthorizeUrl({
+      shop,
+      flow: "embedded",
+      clientId,
+    }).url;
   } catch {
     return "";
   }
@@ -97,12 +104,14 @@ export async function POST(request: NextRequest) {
       { status, headers: { "Cache-Control": "no-store" } }
     );
     if (error instanceof ShopifyAuthError) {
-      const reauthorize = reauthorizeUrlFromRequest(request);
+      const headers = shopifyAuthErrorHeaders(reauthorizeUrlFromRequest(request));
+      response.headers.set(
+        SHOPIFY_RETRY_SESSION_HEADER,
+        headers[SHOPIFY_RETRY_SESSION_HEADER] || "1"
+      );
+      const reauthorize = headers[SHOPIFY_REAUTHORIZE_HEADER];
       if (reauthorize) {
-        response.headers.set(
-          "X-Shopify-API-Request-Failure-Reauthorize-Url",
-          reauthorize
-        );
+        response.headers.set(SHOPIFY_REAUTHORIZE_HEADER, reauthorize);
       }
     }
     return response;

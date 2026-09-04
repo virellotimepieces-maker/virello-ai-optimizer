@@ -341,9 +341,11 @@ describe("Phase 9 shop-binding lifecycle", () => {
       })
     );
     expect(response.status).toBe(401);
+    expect(response.headers.get("X-Shopify-Retry-Invalid-Session-Request")).toBe("1");
     const reauth = response.headers.get("X-Shopify-API-Request-Failure-Reauthorize-Url") || "";
-    expect(reauth).toContain("https://admin.shopify.com/store/");
-    expect(reauth).toContain("/apps/virello-ai-optimizer");
+    expect(reauth).toContain(`https://${SHOP_NEXT}/admin/oauth/authorize`);
+    expect(reauth).toContain("client_id=shopify-client-id");
+    expect(reauth).not.toContain("admin.shopify.com/store/");
     expect(reauth).not.toContain("accounts.shopify.com");
   });
 
