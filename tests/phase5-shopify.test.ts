@@ -381,15 +381,15 @@ describe("Phase 5 import, save, and access", () => {
   });
 
   it("removed localStorage shop authentication from the app", () => {
-    const page = readFileSync("app/page.tsx", "utf8");
+    const page = readFileSync("app/home-client.tsx", "utf8");
     const connect = readFileSync("app/connect/page.tsx", "utf8");
     expect(page).not.toMatch(/localStorage/);
     expect(connect).not.toMatch(/localStorage/);
     expect(page).not.toMatch(/virello_shopify_shop/);
     expect(existsSync("app/api/shopify/save-product/route.ts")).toBe(false);
     expect(existsSync("app/api/stores/products/route.ts")).toBe(false);
-    expect(readFileSync("app/page.tsx", "utf8")).toMatch(/\/api\/shopify\/products/);
-    expect(readFileSync("app/page.tsx", "utf8")).not.toMatch(/save-product/);
+    expect(readFileSync("app/home-client.tsx", "utf8")).toMatch(/\/api\/shopify\/products/);
+    expect(readFileSync("app/home-client.tsx", "utf8")).not.toMatch(/save-product/);
     expect(page).toMatch(/Accept:\s*"application\/json"/);
     expect(connect).toMatch(/Accept:\s*"application\/json"/);
     expect(page).toMatch(/isAllowedShopifyConnectUrl/);
@@ -488,6 +488,23 @@ describe("Phase 5 OAuth start for development shops", () => {
     expect(url.origin).toBe("https://admin.shopify.com");
     expect(url.pathname).toBe("/store/gfd1cp-1y/apps/virello-ai-optimizer");
     expect(url.searchParams.get("shop")).toBe("gfd1cp-1y.myshopify.com");
+  });
+
+  it("starts embedded OAuth at myshopify.com/admin/oauth/authorize", async () => {
+    const { GET } = await import("../app/api/auth/shopify/route");
+    const request = new NextRequest(
+      "https://app.virello.example/api/auth/shopify?shop=virello-dev.myshopify.com&flow=embedded",
+      { headers: { accept: "application/json" } }
+    );
+    const response = await GET(request);
+    const body = (await response.json()) as { success: boolean; url?: string; shop?: string };
+    expect(response.status).toBe(200);
+    expect(body.success).toBe(true);
+    expect(body.shop).toBe("virello-dev.myshopify.com");
+    const url = new URL(body.url || "");
+    expect(url.origin).toBe("https://virello-dev.myshopify.com");
+    expect(url.pathname).toBe("/admin/oauth/authorize");
+    expect(url.searchParams.get("client_id")).toBeTruthy();
   });
 
   it("declares managed install so app-specific compliance webhooks can deploy", () => {

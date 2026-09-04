@@ -238,7 +238,7 @@ describe("Phase 8 hardening", () => {
     expect(layout).not.toMatch(/next\/script/);
     expect(layout).not.toMatch(/beforeInteractive/);
     expect(connect).toMatch(/openInShopifyAdmin/);
-    const home = readFileSync("app/page.tsx", "utf8");
+    const home = readFileSync("app/home-client.tsx", "utf8");
     expect(home).toMatch(/use-this-store/);
     expect(home).toMatch(/\/api\/shopify\/retarget/);
     expect(home).not.toMatch(/window\.location\.replace\(admin/);

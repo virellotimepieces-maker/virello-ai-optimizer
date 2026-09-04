@@ -16,9 +16,10 @@ import {
 } from "../../../_lib/shopify-auth";
 import { billingForShop } from "../../../_lib/stripe-billing";
 import {
-  classifyShopifySecretKind,
+  getShopifyAppCredentials,
   getShopifyClientId,
   getShopifyClientSecrets,
+  classifyShopifySecretKind,
   shopifySecretLooksLikeClientId,
 } from "../../../_lib/shopify-config";
 import { normalizeShop } from "../../../_lib/shop-domain";
@@ -110,6 +111,7 @@ export async function GET(request: NextRequest) {
 
     const apiKey = getShopifyClientId();
     const secrets = getShopifyClientSecrets();
+    const apps = getShopifyAppCredentials();
     if (!apiKey || secrets.length === 0) {
       return fail("Shopify credentials are not configured.");
     }
@@ -136,11 +138,11 @@ export async function GET(request: NextRequest) {
 
     if (!verifiedSecret) {
       if (code && shop) {
-        for (const secret of secrets) {
+        for (const app of apps.length ? apps : secrets.map((secret) => ({ clientId: apiKey, secret }))) {
           const result = await exchangeShopifyAuthorizationCode({
             shop,
-            apiKey,
-            secret,
+            apiKey: app.clientId,
+            secret: app.secret,
             code,
           });
           if (result.ok) {
@@ -148,7 +150,7 @@ export async function GET(request: NextRequest) {
               shop,
               officialKeys: shopifyCallbackHmacDiagnostics(request).officialKeys,
             });
-            verifiedSecret = secret;
+            verifiedSecret = app.secret;
             exchanged = { accessToken: result.accessToken, scope: result.scope };
             tokenDiag = "ok";
             break;
@@ -201,16 +203,24 @@ export async function GET(request: NextRequest) {
     }
 
     if (!exchanged) {
-      const result = await exchangeShopifyAuthorizationCode({
-        shop,
-        apiKey,
-        secret: verifiedSecret,
-        code,
-      });
-      if (!result.ok) {
-        return fail(result.error || "Shopify authorization failed.");
+      const pairs = apps.length ? apps : [{ clientId: apiKey, secret: verifiedSecret }];
+      let lastError = "Shopify authorization failed.";
+      for (const app of pairs) {
+        const result = await exchangeShopifyAuthorizationCode({
+          shop,
+          apiKey: app.clientId,
+          secret: verifiedSecret || app.secret,
+          code,
+        });
+        if (result.ok) {
+          exchanged = { accessToken: result.accessToken, scope: result.scope };
+          break;
+        }
+        lastError = result.error || lastError;
       }
-      exchanged = { accessToken: result.accessToken, scope: result.scope };
+      if (!exchanged) {
+        return fail(lastError);
+      }
     }
 
     if (!hasRequiredShopifyScopes(exchanged.scope)) {

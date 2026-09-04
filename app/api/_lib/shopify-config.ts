@@ -82,7 +82,9 @@ export function resolveShopifyAppBridgeApiKey(search = ""): string {
   const primary = getShopifyClientId();
   const allowed = getShopifyClientIds();
   const params = new URLSearchParams(search.replace(/^\?/, ""));
-  const audience = sessionTokenAudience(params.get("id_token") || "");
+  const audience =
+    sessionTokenAudience(params.get("id_token") || "") ||
+    (params.get("aud") || "").trim();
   if (audience && allowed.includes(audience)) return audience;
 
   const shop =
@@ -115,6 +117,38 @@ export function getShopifyClientSecret(): string {
     getShopifyClientSecrets()[0] ||
     ""
   );
+}
+
+export function getShopifySecretForClientId(clientId: string): string {
+  const wanted = cleanShopifyCredential(clientId);
+  const primaryId = getShopifyClientId();
+  const primarySecret = getShopifyClientSecret();
+  const previous = cleanShopifyCredential(readEnv("SHOPIFY_API_SECRET_PREVIOUS"));
+  if (wanted && wanted === SHOPIFY_LISTING_CLIENT_ID && previous) {
+    return previous;
+  }
+  if (wanted && wanted === primaryId) return primarySecret;
+  return primarySecret;
+}
+
+export function getShopifyAppCredentials(): Array<{ clientId: string; secret: string }> {
+  const pairs: Array<{ clientId: string; secret: string }> = [];
+  const seen = new Set<string>();
+  const add = (clientId: string, secret: string) => {
+    if (!clientId || !secret) return;
+    const key = `${clientId}:${secret}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    pairs.push({ clientId, secret });
+  };
+  add(getShopifyClientId(), getShopifyClientSecret());
+  add(
+    cleanShopifyCredential(
+      readEnv("SHOPIFY_API_KEY_PREVIOUS") || readEnv("SHOPIFY_CLIENT_ID_PREVIOUS")
+    ) || SHOPIFY_LISTING_CLIENT_ID,
+    cleanShopifyCredential(readEnv("SHOPIFY_API_SECRET_PREVIOUS"))
+  );
+  return pairs;
 }
 
 export function getShopifyClientSecrets(): string[] {

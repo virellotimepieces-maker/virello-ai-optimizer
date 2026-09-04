@@ -4,7 +4,7 @@ import {
   normalizeShop,
   shopifyAdminAppHref,
 } from "./shop-domain";
-import { getShopifyClientId, getShopifyClientSecret } from "./shopify-config";
+import { getShopifyClientId, getShopifyClientSecret, getShopifySecretForClientId } from "./shopify-config";
 import {
   createSignedOAuthState,
   type ShopifyOAuthFlow,
@@ -30,13 +30,15 @@ export function buildShopifyAuthorizeUrl(input: {
   shop: string;
   flow?: ShopifyOAuthFlow;
   fallbackOrigin?: string;
+  clientId?: string;
+  secret?: string;
 }): { url: string; shop: string; state: string } {
   const shop = normalizeShop(input.shop);
   if (!shop) {
     throw new Error("Invalid Shopify store domain.");
   }
-  const apiKey = getShopifyClientId();
-  const secret = getShopifyClientSecret();
+  const apiKey = input.clientId || getShopifyClientId();
+  const secret = input.secret || getShopifySecretForClientId(apiKey) || getShopifyClientSecret();
   if (!apiKey || !secret) {
     throw new Error("Shopify credentials are not configured.");
   }
