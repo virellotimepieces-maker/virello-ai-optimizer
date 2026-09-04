@@ -483,7 +483,9 @@ describe("Phase 5 OAuth start for development shops", () => {
     expect(toml).toMatch(/compliance_topics\s*=\s*\[[^\]]*customers\/data_request/);
     expect(toml).toMatch(/compliance_topics\s*=\s*\[[^\]]*customers\/redact/);
     expect(toml).toMatch(/compliance_topics\s*=\s*\[[^\]]*shop\/redact/);
-    expect(toml).toMatch(/uri\s*=\s*"\/api\/webhooks"/);
+    expect(toml).toMatch(/\/api\/webhooks\/customers\/data_request/);
+    expect(toml).toMatch(/\/api\/webhooks\/customers\/redact/);
+    expect(toml).toMatch(/\/api\/webhooks\/shop\/redact/);
   });
 });
 

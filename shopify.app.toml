@@ -22,9 +22,20 @@ redirect_urls = [
 [webhooks]
 api_version = "2026-07"
 
-# App Store automated checks look for compliance_topics on a released
-# version from `shopify app deploy`, not the legacy GDPR URL fields.
+# App Store automated checks require compliance_topics on a CLI-released
+# version. Use one HTTPS path per topic so the checker can probe each URL.
 [[webhooks.subscriptions]]
 topics = ["app/uninstalled"]
-compliance_topics = ["customers/data_request", "customers/redact", "shop/redact"]
 uri = "/api/webhooks"
+
+[[webhooks.subscriptions]]
+compliance_topics = ["customers/data_request"]
+uri = "/api/webhooks/customers/data_request"
+
+[[webhooks.subscriptions]]
+compliance_topics = ["customers/redact"]
+uri = "/api/webhooks/customers/redact"
+
+[[webhooks.subscriptions]]
+compliance_topics = ["shop/redact"]
+uri = "/api/webhooks/shop/redact"
