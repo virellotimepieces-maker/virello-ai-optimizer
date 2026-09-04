@@ -1,5 +1,7 @@
 "use client";
 
+import { isShopifyAdminIframe } from "./shopify-embed";
+
 declare global {
   interface Window {
     shopify?: {
@@ -8,7 +10,30 @@ declare global {
   }
 }
 
-/** Adds a fresh Shopify ID token when the app is running in Shopify Admin. */
+function likelyShopifyAdmin(): boolean {
+  const params = new URLSearchParams(window.location.search);
+  return (
+    params.get("embedded") === "1" ||
+    Boolean(params.get("host")) ||
+    Boolean(params.get("id_token")) ||
+    isShopifyAdminIframe()
+  );
+}
+
+async function waitForShopifyIdToken(ms = 2500): Promise<string> {
+  if (window.shopify?.idToken) {
+    return (await window.shopify.idToken()) || "";
+  }
+  if (!likelyShopifyAdmin()) return "";
+
+  const deadline = Date.now() + ms;
+  while (!window.shopify?.idToken && Date.now() < deadline) {
+    await new Promise((resolve) => window.setTimeout(resolve, 50));
+  }
+  return (await window.shopify?.idToken?.()) || "";
+}
+
+/** Adds a fresh Shopify ID token when App Bridge is present. */
 export async function shopifyFetch(
   input: RequestInfo | URL,
   init: RequestInit = {}
@@ -16,38 +41,12 @@ export async function shopifyFetch(
   const headers = new Headers(init.headers);
 
   try {
-    const params = new URLSearchParams(window.location.search);
-    const embedded =
-      params.get("embedded") === "1" ||
-      Boolean(params.get("host"));
-
-    if (embedded && !window.shopify?.idToken) {
-      const deadline = Date.now() + 2500;
-
-      while (
-        !window.shopify?.idToken &&
-        Date.now() < deadline
-      ) {
-        await new Promise((resolve) =>
-          window.setTimeout(resolve, 50)
-        );
-      }
-    }
-
-    const token =
-      await window.shopify?.idToken?.();
-
+    const token = await waitForShopifyIdToken();
     if (token) {
-      headers.set(
-        "Authorization",
-        `Bearer ${token}`
-      );
+      headers.set("Authorization", `Bearer ${token}`);
     }
   } catch (error) {
-    console.error(
-      "SHOPIFY_ID_TOKEN_ERROR",
-      error
-    );
+    console.error("SHOPIFY_ID_TOKEN_ERROR", error);
   }
 
   return fetch(input, {

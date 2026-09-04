@@ -1,21 +1,13 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { copyEmbedQuery, isShopifyAdminIframe } from "./shopify-embed";
-
-function isEmbeddedBrowser(): boolean {
-  const params = new URLSearchParams(window.location.search);
-  if (params.get("embedded") === "1" || Boolean(params.get("host"))) {
-    return true;
-  }
-  return isShopifyAdminIframe();
-}
+import { copyEmbedQuery } from "./shopify-embed";
 
 export default function ShopifyAppBridge() {
   const started = useRef(false);
 
   useEffect(() => {
-    if (started.current || !isEmbeddedBrowser()) return;
+    if (started.current) return;
     started.current = true;
 
     let cancelled = false;

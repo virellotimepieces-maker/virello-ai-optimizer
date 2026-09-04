@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { shopifyFetch } from "./shopify-fetch";
 import { COPY } from "./i18n";
-import { normalizeShop, isShopifyAdminAuthorizeUrl, resolveStoreBindingDisplay } from "./api/_lib/shop-domain";
+import { normalizeShop, isAllowedShopifyConnectUrl, resolveStoreBindingDisplay } from "./api/_lib/shop-domain";
 import { assignTopLevel, isShopifyAdminIframe } from "./shopify-embed";
 import { buildShopifyDescriptionHtml, stripHtml } from "./api/_lib/listing-html";
 import { scoreListing, META_DESCRIPTION_MAX, SEO_TITLE_MAX, type ListingGrade } from "./api/_lib/listing-score";
@@ -284,7 +284,7 @@ export default function Home() {
         showError("shopify", data?.error || copy.shopifyError);
         return;
       }
-      if (!isShopifyAdminAuthorizeUrl(data.url)) {
+      if (!isAllowedShopifyConnectUrl(data.url)) {
         showError("shopify", data?.error || copy.invalidAuthorizeUrl);
         return;
       }

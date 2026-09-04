@@ -82,6 +82,41 @@ export function isShopifyAdminAuthorizeUrl(value: string): boolean {
   }
 }
 
+/** Standalone Connect opens the Admin app URL, not oauth/authorize. */
+export function isShopifyAdminAppUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "https:") return false;
+    if (url.username || url.password) return false;
+    if (url.hostname !== "admin.shopify.com") return false;
+    const path = url.pathname.replace(/\/+$/, "") || "/";
+    return /^\/store\/[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\/apps\/[a-z0-9-]+$/i.test(path);
+  } catch {
+    return false;
+  }
+}
+
+export function isAllowedShopifyConnectUrl(value: string): boolean {
+  return isShopifyAdminAuthorizeUrl(value) || isShopifyAdminAppUrl(value);
+}
+
+export function shopFromShopifyHostParam(host: string): string {
+  const raw = host.trim();
+  if (!raw) return "";
+  try {
+    const padded = raw.replace(/-/g, "+").replace(/_/g, "/");
+    const decoded =
+      typeof Buffer !== "undefined"
+        ? Buffer.from(padded, "base64").toString("utf8")
+        : atob(padded);
+    const text = decoded.trim();
+    if (!text) return "";
+    return normalizeShop(text.includes("://") ? text : `https://${text}`);
+  } catch {
+    return "";
+  }
+}
+
 export type StoreBindingKind = "connected" | "pending" | "none";
 
 export function resolveStoreBindingDisplay(input: {

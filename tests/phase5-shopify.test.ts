@@ -7,7 +7,7 @@ import {
   ProductAccessError,
   requirePaidProductAccess,
 } from "../app/api/_lib/product-access";
-import { isShopifyAdminAuthorizeUrl, normalizeShop, shopifyAdminAppHref } from "../app/api/_lib/shop-domain";
+import { isShopifyAdminAuthorizeUrl, isAllowedShopifyConnectUrl, normalizeShop, shopFromShopifyHostParam, shopifyAdminAppHref } from "../app/api/_lib/shop-domain";
 import {
   resolveShopifyAppBridgeApiKey,
   SHOPIFY_LISTING_CLIENT_ID,
@@ -101,6 +101,19 @@ describe("Phase 5 shop domains and OAuth", () => {
     expect(resolveShopifyAppBridgeApiKey(`id_token=${header}.${body}.sig`)).toBe(
       SHOPIFY_LISTING_CLIENT_ID
     );
+    const host = Buffer.from("admin.shopify.com/store/virello-dev").toString("base64");
+    expect(shopFromShopifyHostParam(host)).toBe("virello-dev.myshopify.com");
+    expect(resolveShopifyAppBridgeApiKey(`embedded=1&host=${host}`)).toBe(
+      SHOPIFY_LISTING_CLIENT_ID
+    );
+    expect(
+      isAllowedShopifyConnectUrl(
+        "https://admin.shopify.com/store/virello-dev/apps/virello-ai-optimizer?shop=virello-dev.myshopify.com"
+      )
+    ).toBe(true);
+    expect(
+      isAllowedShopifyConnectUrl("https://virello-dev.myshopify.com/")
+    ).toBe(false);
   });
 
   it("reports Shopify secret kind and length without exposing the secret", async () => {
@@ -379,8 +392,8 @@ describe("Phase 5 import, save, and access", () => {
     expect(readFileSync("app/page.tsx", "utf8")).not.toMatch(/save-product/);
     expect(page).toMatch(/Accept:\s*"application\/json"/);
     expect(connect).toMatch(/Accept:\s*"application\/json"/);
-    expect(page).toMatch(/isShopifyAdminAuthorizeUrl/);
-    expect(connect).toMatch(/isShopifyAdminAuthorizeUrl/);
+    expect(page).toMatch(/isAllowedShopifyConnectUrl/);
+    expect(connect).toMatch(/isAllowedShopifyConnectUrl/);
   });
 });
 

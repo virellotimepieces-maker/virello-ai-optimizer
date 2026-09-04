@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { shopifyFetch } from "../shopify-fetch";
 import { COPY } from "../i18n";
-import { normalizeShop, isShopifyAdminAuthorizeUrl, resolveStoreBindingDisplay, shopifyAdminAppHref } from "../api/_lib/shop-domain";
+import { normalizeShop, isAllowedShopifyConnectUrl, resolveStoreBindingDisplay, shopifyAdminAppHref } from "../api/_lib/shop-domain";
 import { assignTopLevel, copyEmbedQuery, isShopifyAdminIframe } from "../shopify-embed";
 import { isStripeWrongModeObjectError } from "../api/_lib/stripe-mode";
 
@@ -249,7 +249,7 @@ export default function ConnectPage() {
         setConnecting(false);
         return;
       }
-      if (!isShopifyAdminAuthorizeUrl(data.url)) {
+      if (!isAllowedShopifyConnectUrl(data.url)) {
         setError(data?.error || copy.invalidAuthorizeUrl);
         setConnecting(false);
         return;

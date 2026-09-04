@@ -1,3 +1,5 @@
+import { normalizeShop, shopFromShopifyHostParam } from "./shop-domain";
+
 const QUOTE_CHARS = `"'` + "\u201C\u201D\u2018\u2019";
 
 function readEnv(name: string): string | undefined {
@@ -67,6 +69,14 @@ function sessionTokenAudience(token: string): string {
   }
 }
 
+function isListingDevShop(shop: string): boolean {
+  const normalized = normalizeShop(shop) || shop.trim().toLowerCase();
+  return (
+    normalized === "virello-dev.myshopify.com" ||
+    normalized === "virello-dev"
+  );
+}
+
 /** App Bridge meta key for this request: listing app vs live app. */
 export function resolveShopifyAppBridgeApiKey(search = ""): string {
   const primary = getShopifyClientId();
@@ -75,11 +85,10 @@ export function resolveShopifyAppBridgeApiKey(search = ""): string {
   const audience = sessionTokenAudience(params.get("id_token") || "");
   if (audience && allowed.includes(audience)) return audience;
 
-  const shop = (params.get("shop") || "").trim().toLowerCase();
-  if (
-    (shop === "virello-dev.myshopify.com" || shop === "virello-dev") &&
-    allowed.includes(SHOPIFY_LISTING_CLIENT_ID)
-  ) {
+  const shop =
+    normalizeShop(params.get("shop") || "") ||
+    shopFromShopifyHostParam(params.get("host") || "");
+  if (isListingDevShop(shop) && allowed.includes(SHOPIFY_LISTING_CLIENT_ID)) {
     return SHOPIFY_LISTING_CLIENT_ID;
   }
 
