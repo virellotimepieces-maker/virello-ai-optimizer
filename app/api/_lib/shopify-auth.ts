@@ -200,18 +200,19 @@ export async function authenticateShopifyRequest(
       const identity = verifyShopifySessionToken(idToken);
       if (!requireAccessToken) return { ...identity, accessToken: "" };
 
-      const saved = await storedAccessToken(identity.shop);
-      return {
-        ...identity,
-        accessToken:
-          saved ||
-          await exchangeOfflineToken(
-            identity.shop,
-            idToken,
-            identity.credentialSecret,
-            identity.clientId
-          ),
-      };
+      try {
+        const accessToken = await exchangeOfflineToken(
+          identity.shop,
+          idToken,
+          identity.credentialSecret,
+          identity.clientId
+        );
+        return { ...identity, accessToken };
+      } catch (exchangeError) {
+        const saved = await storedAccessToken(identity.shop);
+        if (saved) return { ...identity, accessToken: saved };
+        throw exchangeError;
+      }
     } catch (error) {
       idTokenError = error;
     }
