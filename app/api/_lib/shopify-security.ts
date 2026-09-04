@@ -3,6 +3,7 @@ import { NextRequest } from "next/server";
 import { normalizeShop } from "./shop-domain";
 import {
   getShopifyClientId,
+  getShopifyClientIds,
   getShopifyClientSecret,
   getShopifyClientSecrets,
 } from "./shopify-config";
@@ -40,6 +41,7 @@ export function getShopifyIdToken(request: NextRequest): string {
 export type VerifiedShopifyIdentity = {
   shop: string;
   userId: string;
+  clientId: string;
   credentialSecret: string;
 };
 
@@ -74,9 +76,12 @@ export function verifyShopifySessionToken(
     throw new ShopifySecurityError("Invalid Shopify session signature.");
   }
 
+  const audience = typeof payload.aud === "string" ? payload.aud.trim() : "";
+  const allowedAudiences = getShopifyClientIds();
   const now = Math.floor(Date.now() / 1000);
   if (
-    payload.aud !== apiKey ||
+    !audience ||
+    !allowedAudiences.includes(audience) ||
     typeof payload.exp !== "number" ||
     payload.exp <= now ||
     (typeof payload.nbf === "number" && payload.nbf > now + 60) ||
@@ -100,6 +105,7 @@ export function verifyShopifySessionToken(
   return {
     shop: destShop,
     userId: typeof payload.sub === "string" ? payload.sub : "",
+    clientId: audience,
     credentialSecret,
   };
 }

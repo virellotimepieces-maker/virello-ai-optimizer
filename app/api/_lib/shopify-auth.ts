@@ -148,9 +148,10 @@ export async function exchangeShopifyAuthorizationCode(input: {
 async function exchangeOfflineToken(
   shop: string,
   idToken: string,
-  credentialSecret = getShopifyClientSecret()
+  credentialSecret = getShopifyClientSecret(),
+  clientId = getShopifyClientId()
 ): Promise<string> {
-  const apiKey = getShopifyClientId();
+  const apiKey = clientId || getShopifyClientId();
   if (!apiKey || !credentialSecret) {
     throw new ShopifyAuthError("Shopify credentials are not configured.", 500);
   }
@@ -207,7 +208,8 @@ export async function authenticateShopifyRequest(
           await exchangeOfflineToken(
             identity.shop,
             idToken,
-            identity.credentialSecret
+            identity.credentialSecret,
+            identity.clientId
           ),
       };
     } catch (error) {

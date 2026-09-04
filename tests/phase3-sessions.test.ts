@@ -27,6 +27,7 @@ import {
 import {
   classifyShopifySecretKind,
   getShopifyClientSecrets,
+  SHOPIFY_LISTING_CLIENT_ID,
   shopifySecretLooksLikeClientId,
 } from "../app/api/_lib/shopify-config";
 import {
@@ -62,6 +63,7 @@ describe("Phase 3 Shopify security module", () => {
   beforeEach(() => {
     process.env.SHOPIFY_API_KEY = "shopify-client-id";
     process.env.SHOPIFY_API_SECRET = "shopify-client-secret-value";
+    delete process.env.SHOPIFY_API_SECRET_PREVIOUS;
     process.env.APP_URL = "https://app.virello.example";
   });
 
@@ -85,6 +87,25 @@ describe("Phase 3 Shopify security module", () => {
     expect(() =>
       verifyShopifySessionToken(`${header}.${payload}.${forgedSig}`)
     ).toThrow(/signature/i);
+  });
+
+  it("accepts a session JWT for the App Store listing Client ID", () => {
+    process.env.SHOPIFY_API_SECRET_PREVIOUS = "listing-app-secret-value";
+    const now = Math.floor(Date.now() / 1000);
+    const token = signJwt(
+      {
+        aud: SHOPIFY_LISTING_CLIENT_ID,
+        dest: `https://${SHOP_A}`,
+        iss: `https://${SHOP_A}/admin`,
+        sub: "user-1",
+        exp: now + 60,
+        nbf: now - 10,
+      },
+      "listing-app-secret-value"
+    );
+    const identity = verifyShopifySessionToken(token);
+    expect(identity.shop).toBe(SHOP_A);
+    expect(identity.clientId).toBe(SHOPIFY_LISTING_CLIENT_ID);
   });
 
   it("verifies Shopify webhook HMAC and callback HMAC", () => {

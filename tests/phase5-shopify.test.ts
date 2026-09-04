@@ -8,6 +8,10 @@ import {
   requirePaidProductAccess,
 } from "../app/api/_lib/product-access";
 import { isShopifyAdminAuthorizeUrl, normalizeShop, shopifyAdminAppHref } from "../app/api/_lib/shop-domain";
+import {
+  resolveShopifyAppBridgeApiKey,
+  SHOPIFY_LISTING_CLIENT_ID,
+} from "../app/api/_lib/shopify-config";
 import { copyEmbedQuery } from "../app/shopify-embed";
 import { saveShopifySession } from "../app/api/_lib/shopify-auth";
 import {
@@ -80,6 +84,23 @@ describe("Phase 5 shop domains and OAuth", () => {
     expect(kept.searchParams.get("host")).toBe("abc");
     expect(kept.searchParams.get("shop")).toBe("gfd1cp-1y.myshopify.com");
     expect(kept.searchParams.get("embedded")).toBe("1");
+  });
+
+  it("picks the listing App Bridge API key for virello-dev and id_token audience", () => {
+    process.env.SHOPIFY_API_KEY = "99a9fda60d48cb24828f243360fffc40";
+    expect(resolveShopifyAppBridgeApiKey("")).toBe("99a9fda60d48cb24828f243360fffc40");
+    expect(
+      resolveShopifyAppBridgeApiKey("shop=virello-dev.myshopify.com&embedded=1")
+    ).toBe(SHOPIFY_LISTING_CLIENT_ID);
+    const header = Buffer.from(JSON.stringify({ alg: "HS256", typ: "JWT" })).toString(
+      "base64url"
+    );
+    const body = Buffer.from(
+      JSON.stringify({ aud: SHOPIFY_LISTING_CLIENT_ID })
+    ).toString("base64url");
+    expect(resolveShopifyAppBridgeApiKey(`id_token=${header}.${body}.sig`)).toBe(
+      SHOPIFY_LISTING_CLIENT_ID
+    );
   });
 
   it("reports Shopify secret kind and length without exposing the secret", async () => {

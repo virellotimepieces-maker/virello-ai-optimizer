@@ -35,10 +35,55 @@ function cleanShopifyCredential(value?: string): string {
   return cleanEnvironmentValue(value).replace(/[^\x21-\x7E]/g, "");
 }
 
+/** Public Client ID of the App Store listing app (org Virello AI Optimizer). */
+export const SHOPIFY_LISTING_CLIENT_ID = "059b113acaba78d855be9bc9500e421a";
+
 export function getShopifyClientId(): string {
   return cleanShopifyCredential(
     readEnv("SHOPIFY_API_KEY") || readEnv("SHOPIFY_CLIENT_ID")
   );
+}
+
+export function getShopifyClientIds(): string[] {
+  return [
+    getShopifyClientId(),
+    cleanShopifyCredential(
+      readEnv("SHOPIFY_API_KEY_PREVIOUS") || readEnv("SHOPIFY_CLIENT_ID_PREVIOUS")
+    ),
+    SHOPIFY_LISTING_CLIENT_ID,
+  ].filter((value, index, values) => Boolean(value) && values.indexOf(value) === index);
+}
+
+function sessionTokenAudience(token: string): string {
+  const parts = token.split(".");
+  if (parts.length < 2) return "";
+  try {
+    const payload = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8")) as {
+      aud?: unknown;
+    };
+    return typeof payload.aud === "string" ? payload.aud.trim() : "";
+  } catch {
+    return "";
+  }
+}
+
+/** App Bridge meta key for this request: listing app vs live app. */
+export function resolveShopifyAppBridgeApiKey(search = ""): string {
+  const primary = getShopifyClientId();
+  const allowed = getShopifyClientIds();
+  const params = new URLSearchParams(search.replace(/^\?/, ""));
+  const audience = sessionTokenAudience(params.get("id_token") || "");
+  if (audience && allowed.includes(audience)) return audience;
+
+  const shop = (params.get("shop") || "").trim().toLowerCase();
+  if (
+    (shop === "virello-dev.myshopify.com" || shop === "virello-dev") &&
+    allowed.includes(SHOPIFY_LISTING_CLIENT_ID)
+  ) {
+    return SHOPIFY_LISTING_CLIENT_ID;
+  }
+
+  return primary;
 }
 
 export function shopifyCredentialPresence(): {
