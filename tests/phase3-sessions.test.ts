@@ -95,6 +95,13 @@ describe("Phase 3 Shopify security module", () => {
     expect(verifyShopifyWebhookHmac(body, hmac)).toBe(true);
     expect(verifyShopifyWebhookHmac(body, "aaaa")).toBe(false);
 
+    process.env.SHOPIFY_API_SECRET = "shpss_shopify-client-secret-value";
+    const prefixedHmac = createHmac("sha256", "shopify-client-secret-value")
+      .update(body, "utf8")
+      .digest("base64");
+    expect(verifyShopifyWebhookHmac(body, prefixedHmac)).toBe(true);
+    process.env.SHOPIFY_API_SECRET = "shopify-client-secret-value";
+
     const params = new URLSearchParams({
       shop: SHOP_A,
       timestamp: "1700000000",

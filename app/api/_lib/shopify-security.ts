@@ -118,10 +118,12 @@ export function verifyShopifyWebhookHmac(
     return false;
   }
 
-  return secrets.some((secret) => {
-    const expected = createHmac("sha256", secret).update(body, "utf8").digest();
-    return hmacEqual(received, expected);
-  });
+  return secrets.some((secret) =>
+    hmacKeyMaterials(secret).some((key) => {
+      const expected = createHmac("sha256", key).update(body, "utf8").digest();
+      return hmacEqual(received, expected);
+    })
+  );
 }
 
 function shopifyHmacEscapeAll(value: string): string {
