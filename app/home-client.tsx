@@ -293,8 +293,9 @@ export default function Home({
         setPendingShop(cleaned);
         setShop(cleaned);
       }
+      const oauthFlow = embeddedInstall || adminIframe ? "embedded" : "standalone";
       const response = await shopifyFetch(
-        `/api/auth/shopify?shop=${encodeURIComponent(cleaned)}&flow=standalone`,
+        `/api/auth/shopify?shop=${encodeURIComponent(cleaned)}&flow=${oauthFlow}`,
         { headers: { Accept: "application/json" }, cache: "no-store" }
       );
       const data = await response.json().catch(() => null);
