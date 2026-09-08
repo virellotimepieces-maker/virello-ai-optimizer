@@ -23,15 +23,17 @@ export default async function RootLayout({
   children: ReactNode;
 }) {
   const headerStore = await headers();
+  const search = headerStore.get("x-virello-search") || "";
+  const params = new URLSearchParams(search.replace(/^\?/, ""));
+  const loadAppBridge = Boolean(params.get("host") || params.get("id_token"));
   const apiKey =
-    resolveShopifyAppBridgeApiKey(headerStore.get("x-virello-search") || "") ||
-    getShopifyClientId();
+    resolveShopifyAppBridgeApiKey(search) || getShopifyClientId();
 
   return (
     <html lang="en">
       <head>
         <meta name="shopify-api-key" content={apiKey} />
-        <script src={APP_BRIDGE_CDN}></script>
+        {loadAppBridge ? <script src={APP_BRIDGE_CDN}></script> : null}
       </head>
       <body>
         <ShopifyAppBridge />

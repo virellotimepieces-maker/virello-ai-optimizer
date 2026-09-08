@@ -456,7 +456,7 @@ describe("Phase 5 import, save, and access", () => {
       if (url.includes("/admin/oauth/access_token")) {
         bodies.push(String(init?.body || ""));
         return jsonResponse({
-          access_token: "shpat_expiring_offline",
+          access_token: "offline-expiring-token",
           refresh_token: "shprt_refresh",
           scope: "read_products,write_products",
           expires_in: 3600,
@@ -482,7 +482,7 @@ describe("Phase 5 import, save, and access", () => {
         true
       );
       expect(result.shop).toBe(SHOP);
-      expect(result.accessToken).toBe("shpat_expiring_offline");
+      expect(result.accessToken).toBe("offline-expiring-token");
       expect(bodies[0]).toContain("expiring=1");
       expect(bodies[0]).toContain(`client_id=${SHOPIFY_PRODUCTION_CLIENT_ID}`);
       expect(bodies[0]).not.toContain("client_id=99a9fda60d48cb24828f243360fffc40");
@@ -576,7 +576,7 @@ describe("Phase 5 import, save, and access", () => {
       if (url.includes("/admin/oauth/access_token")) {
         bodies.push(String(init?.body || ""));
         return jsonResponse({
-          access_token: "shpat_refreshed",
+          access_token: "offline-refreshed-token",
           refresh_token: "shprt_rotated",
           scope: "read_products,write_products",
           expires_in: 3600,
@@ -593,7 +593,7 @@ describe("Phase 5 import, save, and access", () => {
         }),
         true
       );
-      expect(result.accessToken).toBe("shpat_refreshed");
+      expect(result.accessToken).toBe("offline-refreshed-token");
       expect(bodies[0]).toContain("grant_type=refresh_token");
       expect(bodies[0]).toContain("refresh_token=shprt_stored");
     } finally {
@@ -834,6 +834,7 @@ describe("Phase 5 OAuth start for development shops", () => {
     expect(bridge).not.toMatch(/assignTopLevel/);
     expect(bridge).not.toMatch(/oauth\/authorize/);
     expect(layout).not.toMatch(/SHOPIFY_LISTING_CLIENT_ID/);
+    expect(layout).toMatch(/params\.get\("host"\) \|\| params\.get\("id_token"\)/);
     expect(connect).toMatch(/window\.location\.replace\(next\.toString\(\)\)/);
     expect(readme).not.toMatch(/Use legacy install flow/);
     expect(readme).toMatch(/managed install/i);
