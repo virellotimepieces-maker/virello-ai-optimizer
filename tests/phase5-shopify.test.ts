@@ -10,10 +10,13 @@ import {
 import { isShopifyAdminAuthorizeUrl, isAllowedShopifyConnectUrl, normalizeShop, shopFromShopifyHostParam, shopifyAdminAppHref } from "../app/api/_lib/shop-domain";
 import {
   resolveShopifyAppBridgeApiKey,
-  SHOPIFY_LISTING_CLIENT_ID,
+  RETIRED_LIVE_SHOPIFY_CLIENT_ID,
+  SHOPIFY_PRODUCTION_CLIENT_ID,
+  getShopifyClientId,
 } from "../app/api/_lib/shopify-config";
 import { copyEmbedQuery } from "../app/shopify-embed";
 import { saveShopifySession } from "../app/api/_lib/shopify-auth";
+import { dbQuery } from "../app/api/_lib/database";
 import {
   setShopifyAdminFetchForTests,
   setShopifyAdminWaitForTests,
@@ -97,25 +100,30 @@ describe("Phase 5 shop domains and OAuth", () => {
     expect(kept.searchParams.get("embedded")).toBe("1");
   });
 
-  it("picks the listing App Bridge API key for virello-dev and id_token audience", () => {
-    process.env.SHOPIFY_API_KEY = "99a9fda60d48cb24828f243360fffc40";
-    expect(resolveShopifyAppBridgeApiKey("")).toBe("99a9fda60d48cb24828f243360fffc40");
+  it("uses one App Bridge API key for this deployment", () => {
+    process.env.SHOPIFY_API_KEY = SHOPIFY_PRODUCTION_CLIENT_ID;
+    expect(resolveShopifyAppBridgeApiKey("")).toBe(SHOPIFY_PRODUCTION_CLIENT_ID);
     expect(
       resolveShopifyAppBridgeApiKey("shop=virello-dev.myshopify.com&embedded=1")
-    ).toBe(SHOPIFY_LISTING_CLIENT_ID);
+    ).toBe(SHOPIFY_PRODUCTION_CLIENT_ID);
     const header = Buffer.from(JSON.stringify({ alg: "HS256", typ: "JWT" })).toString(
       "base64url"
     );
     const body = Buffer.from(
-      JSON.stringify({ aud: SHOPIFY_LISTING_CLIENT_ID })
+      JSON.stringify({ aud: "99a9fda60d48cb24828f243360fffc40" })
     ).toString("base64url");
     expect(resolveShopifyAppBridgeApiKey(`id_token=${header}.${body}.sig`)).toBe(
-      SHOPIFY_LISTING_CLIENT_ID
+      SHOPIFY_PRODUCTION_CLIENT_ID
     );
     const host = Buffer.from("admin.shopify.com/store/virello-dev").toString("base64");
     expect(shopFromShopifyHostParam(host)).toBe("virello-dev.myshopify.com");
     expect(resolveShopifyAppBridgeApiKey(`embedded=1&host=${host}`)).toBe(
-      SHOPIFY_LISTING_CLIENT_ID
+      SHOPIFY_PRODUCTION_CLIENT_ID
+    );
+    process.env.SHOPIFY_API_KEY = RETIRED_LIVE_SHOPIFY_CLIENT_ID;
+    expect(getShopifyClientId()).toBe(SHOPIFY_PRODUCTION_CLIENT_ID);
+    expect(resolveShopifyAppBridgeApiKey("embedded=1")).toBe(
+      SHOPIFY_PRODUCTION_CLIENT_ID
     );
     expect(
       isAllowedShopifyConnectUrl(
@@ -128,7 +136,7 @@ describe("Phase 5 shop domains and OAuth", () => {
   });
 
   it("reports Shopify secret kind and length without exposing the secret", async () => {
-    process.env.SHOPIFY_API_KEY = "99a9fda60d48cb24828f243360fffc40";
+    process.env.SHOPIFY_API_KEY = SHOPIFY_PRODUCTION_CLIENT_ID;
     process.env.SHOPIFY_API_SECRET = "shpss_xxxx-secret-value";
     const { GET } = await import("../app/api/auth/shopify/secret-status/route");
     const response = await GET();
@@ -138,6 +146,8 @@ describe("Phase 5 shop domains and OAuth", () => {
       secretLength?: number;
       looksLikeClientId?: boolean;
       clientId?: string;
+      listingClientId?: string;
+      matchesListingApp?: boolean;
       apiSecret?: boolean;
     };
     expect(body.success).toBe(true);
@@ -145,14 +155,16 @@ describe("Phase 5 shop domains and OAuth", () => {
     expect(body.secretLength).toBe("shpss_xxxx-secret-value".length);
     expect(body.looksLikeClientId).toBe(false);
     expect(body.apiSecret).toBe(true);
-    expect(body.clientId).toBe("99a9fda60d48cb24828f243360fffc40");
+    expect(body.clientId).toBe(SHOPIFY_PRODUCTION_CLIENT_ID);
+    expect(body.listingClientId).toBe(SHOPIFY_PRODUCTION_CLIENT_ID);
+    expect(body.matchesListingApp).toBe(true);
     const text = JSON.stringify(body);
     expect(text).not.toMatch(/xxxx-secret-value/);
     expect(text).not.toMatch(/shpss_/);
   });
 
   it("flags Production as unconfigured when only SHOPIFY_API_SECRET_PREVIOUS remains", async () => {
-    process.env.SHOPIFY_API_KEY = "99a9fda60d48cb24828f243360fffc40";
+    process.env.SHOPIFY_API_KEY = SHOPIFY_PRODUCTION_CLIENT_ID;
     process.env.SHOPIFY_API_SECRET = "";
     process.env.SHOPIFY_CLIENT_SECRET = "";
     process.env.SHOPIFY_API_SECRET_PREVIOUS = "shpss_xxxx-previous-value";
@@ -410,14 +422,25 @@ describe("Phase 5 import, save, and access", () => {
     expect(access.access.productAccess).toBe(true);
   });
 
-  it("exchanges a listing-app session token for an expiring offline token", async () => {
-    process.env.SHOPIFY_API_KEY = "99a9fda60d48cb24828f243360fffc40";
-    process.env.SHOPIFY_API_SECRET = "shpss_live-app-secret-value-xxxx";
-    process.env.SHOPIFY_API_SECRET_PREVIOUS = "shpss_listing-app-secret-xx";
+  it("exchanges a session token for an expiring offline token of this app only", async () => {
+    process.env.SHOPIFY_API_KEY = SHOPIFY_PRODUCTION_CLIENT_ID;
+    process.env.SHOPIFY_API_SECRET = "shpss_listing-app-secret-xx";
+    delete process.env.SHOPIFY_API_SECRET_PREVIOUS;
     const now = Math.floor(Date.now() / 1000);
     const token = signJwt(
       {
-        aud: SHOPIFY_LISTING_CLIENT_ID,
+        aud: SHOPIFY_PRODUCTION_CLIENT_ID,
+        dest: `https://${SHOP}`,
+        iss: `https://${SHOP}/admin`,
+        sub: "user-1",
+        exp: now + 60,
+        nbf: now - 10,
+      },
+      "shpss_listing-app-secret-xx"
+    );
+    const otherAppToken = signJwt(
+      {
+        aud: "99a9fda60d48cb24828f243360fffc40",
         dest: `https://${SHOP}`,
         iss: `https://${SHOP}/admin`,
         sub: "user-1",
@@ -444,6 +467,14 @@ describe("Phase 5 import, save, and access", () => {
     }) as typeof fetch;
     try {
       const { authenticateShopifyRequest } = await import("../app/api/_lib/shopify-auth");
+      await expect(
+        authenticateShopifyRequest(
+          new NextRequest("https://app.virello.example/api/shopify/products", {
+            headers: { authorization: `Bearer ${otherAppToken}` },
+          }),
+          true
+        )
+      ).rejects.toThrow(/session/i);
       const result = await authenticateShopifyRequest(
         new NextRequest("https://app.virello.example/api/shopify/products", {
           headers: { authorization: `Bearer ${token}` },
@@ -453,8 +484,118 @@ describe("Phase 5 import, save, and access", () => {
       expect(result.shop).toBe(SHOP);
       expect(result.accessToken).toBe("shpat_expiring_offline");
       expect(bodies[0]).toContain("expiring=1");
-      expect(bodies[0]).toContain(`client_id=${SHOPIFY_LISTING_CLIENT_ID}`);
+      expect(bodies[0]).toContain(`client_id=${SHOPIFY_PRODUCTION_CLIENT_ID}`);
       expect(bodies[0]).not.toContain("client_id=99a9fda60d48cb24828f243360fffc40");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("cycles a stored non-expiring offline token before Admin API use", async () => {
+    await saveShopifySession(SHOP, "offline-token-legacy", "read_products,write_products");
+    const sessionId = await issueAppSession({ shop: SHOP });
+    const bodies: string[] = [];
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes("/admin/oauth/access_token")) {
+        bodies.push(String(init?.body || ""));
+        return jsonResponse({
+          access_token: "shpat_cycled",
+          refresh_token: "shprt_cycled",
+          scope: "read_products,write_products",
+          expires_in: 3600,
+          refresh_token_expires_in: 7_776_000,
+        });
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    }) as typeof fetch;
+    try {
+      const { authenticateShopifyRequest } = await import("../app/api/_lib/shopify-auth");
+      const result = await authenticateShopifyRequest(
+        new NextRequest("https://app.virello.example/api/shopify/products", {
+          headers: { cookie: `virello_sid=${sessionId}` },
+        }),
+        true
+      );
+      expect(result.accessToken).toBe("shpat_cycled");
+      expect(bodies[0]).toContain("expiring=1");
+      expect(bodies[0]).toContain("offline-access-token");
+      expect(bodies[0]).toContain("offline-token-legacy");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("keeps a stored non-expiring token when cycle does not return an expiring grant", async () => {
+    await saveShopifySession(SHOP, "offline-token-keep", "read_products,write_products");
+    const sessionId = await issueAppSession({ shop: SHOP });
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/admin/oauth/access_token")) {
+        return jsonResponse({
+          access_token: "offline-token-value",
+          scope: "read_products,write_products",
+        });
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    }) as typeof fetch;
+    try {
+      const { authenticateShopifyRequest } = await import("../app/api/_lib/shopify-auth");
+      const result = await authenticateShopifyRequest(
+        new NextRequest("https://app.virello.example/api/shopify/products", {
+          headers: { cookie: `virello_sid=${sessionId}` },
+        }),
+        true
+      );
+      expect(result.accessToken).toBe("offline-token-keep");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("stores refresh tokens encrypted and refreshes expired offline access", async () => {
+    await saveShopifySession(SHOP, "offline-token-expired", "read_products,write_products", {
+      refreshToken: "shprt_stored",
+      expiresIn: 1,
+      refreshExpiresIn: 7_776_000,
+    });
+    const stored = await dbQuery<{ encrypted_refresh_token: string }>(
+      `SELECT encrypted_refresh_token FROM shopify_sessions WHERE shop = $1`,
+      [SHOP]
+    );
+    expect(stored[0]?.encrypted_refresh_token).toMatch(/^v1\./);
+    expect(stored[0]?.encrypted_refresh_token).not.toContain("shprt_stored");
+
+    const sessionId = await issueAppSession({ shop: SHOP });
+    const bodies: string[] = [];
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes("/admin/oauth/access_token")) {
+        bodies.push(String(init?.body || ""));
+        return jsonResponse({
+          access_token: "shpat_refreshed",
+          refresh_token: "shprt_rotated",
+          scope: "read_products,write_products",
+          expires_in: 3600,
+          refresh_token_expires_in: 7_776_000,
+        });
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    }) as typeof fetch;
+    try {
+      const { authenticateShopifyRequest } = await import("../app/api/_lib/shopify-auth");
+      const result = await authenticateShopifyRequest(
+        new NextRequest("https://app.virello.example/api/shopify/products", {
+          headers: { cookie: `virello_sid=${sessionId}` },
+        }),
+        true
+      );
+      expect(result.accessToken).toBe("shpat_refreshed");
+      expect(bodies[0]).toContain("grant_type=refresh_token");
+      expect(bodies[0]).toContain("refresh_token=shprt_stored");
     } finally {
       globalThis.fetch = originalFetch;
     }
@@ -647,7 +788,7 @@ describe("Phase 5 OAuth start for development shops", () => {
     expect(url.searchParams.get("shop")).toBe("gfd1cp-1y.myshopify.com");
   });
 
-  it("starts embedded OAuth at myshopify.com/admin/oauth/authorize", async () => {
+  it("starts managed install from the Shopify Admin app URL", async () => {
     const { GET } = await import("../app/api/auth/shopify/route");
     const request = new NextRequest(
       "https://app.virello.example/api/auth/shopify?shop=virello-dev.myshopify.com&flow=embedded",
@@ -659,14 +800,16 @@ describe("Phase 5 OAuth start for development shops", () => {
     expect(body.success).toBe(true);
     expect(body.shop).toBe("virello-dev.myshopify.com");
     const url = new URL(body.url || "");
-    expect(url.origin).toBe("https://virello-dev.myshopify.com");
-    expect(url.pathname).toBe("/admin/oauth/authorize");
-    expect(url.searchParams.get("client_id")).toBeTruthy();
+    expect(url.origin).toBe("https://admin.shopify.com");
+    expect(url.pathname).toBe("/store/virello-dev/apps/virello-ai-optimizer");
+    expect(url.searchParams.get("shop")).toBe("virello-dev.myshopify.com");
+    expect(url.pathname).not.toContain("/oauth/authorize");
   });
 
   it("declares managed install so app-specific compliance webhooks can deploy", () => {
     const toml = readFileSync("shopify.app.toml", "utf8");
-    expect(toml).not.toMatch(/use_legacy_install_flow\s*=\s*true/);
+    expect(toml).not.toMatch(/use_legacy_install_flow\s*=/);
+    expect(toml).toMatch(/client_id = "059b113acaba78d855be9bc9500e421a"/);
     expect(toml).toMatch(
       /https:\/\/virello-ai-optimizer\.vercel\.app\/api\/auth\/shopify\/callback/
     );
@@ -677,6 +820,23 @@ describe("Phase 5 OAuth start for development shops", () => {
     expect(toml).toMatch(/\/api\/webhooks\/customers\/data_request/);
     expect(toml).toMatch(/\/api\/webhooks\/customers\/redact/);
     expect(toml).toMatch(/\/api\/webhooks\/shop\/redact/);
+  });
+
+  it("keeps embedded Admin launch free of Connect UI and legacy OAuth", () => {
+    const page = readFileSync("app/home-client.tsx", "utf8");
+    const bridge = readFileSync("app/shopify-app-bridge.tsx", "utf8");
+    const layout = readFileSync("app/layout.tsx", "utf8");
+    const readme = readFileSync("README.md", "utf8");
+    const connect = readFileSync("app/connect/page.tsx", "utf8");
+    expect(page).toMatch(/embedded-authenticating/);
+    expect(page).toMatch(/embeddedInstall && !embeddedSessionReady/);
+    expect(page).toMatch(/!embeddedInstall &&/);
+    expect(bridge).not.toMatch(/assignTopLevel/);
+    expect(bridge).not.toMatch(/oauth\/authorize/);
+    expect(layout).not.toMatch(/SHOPIFY_LISTING_CLIENT_ID/);
+    expect(connect).toMatch(/window\.location\.replace\(next\.toString\(\)\)/);
+    expect(readme).not.toMatch(/Use legacy install flow/);
+    expect(readme).toMatch(/managed install/i);
   });
 });
 
@@ -740,8 +900,8 @@ describe("Phase 5 OAuth callback errors", () => {
   });
 
   it("tells the merchant when SHOPIFY_API_SECRET is the Client ID", async () => {
-    process.env.SHOPIFY_API_KEY = "99a9fda60d48cb24828f243360fffc40";
-    process.env.SHOPIFY_API_SECRET = "99a9fda60d48cb24828f243360fffc40";
+    process.env.SHOPIFY_API_KEY = SHOPIFY_PRODUCTION_CLIENT_ID;
+    process.env.SHOPIFY_API_SECRET = SHOPIFY_PRODUCTION_CLIENT_ID;
     const params = new URLSearchParams({
       code: "0907a61c0c8d55e99db179b68161bc00",
       hmac: "0".repeat(64),

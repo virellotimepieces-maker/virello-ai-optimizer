@@ -198,7 +198,7 @@ export const COPY: Record<AppLocale, Record<CopyKey, string>> = {
     checkoutNeedShop: "Enter your Shopify .myshopify.com domain before subscribing.",
     wrongHost: "Open Virello on the canonical app URL:",
     invalidAuthorizeUrl:
-      "Shopify authorization must open {shop}.myshopify.com/admin/oauth/authorize, not the public storefront. Try Connect Shopify again.",
+      "Shopify authorization must open Shopify Admin for this app, not the public storefront. Open Virello from Shopify Admin.",
     changeStore: "Change Store",
     changeStoreConfirm:
       "Disconnect the installed Shopify store? Stripe billing is kept. You will need to authorize the new store.",
@@ -227,14 +227,14 @@ export const COPY: Record<AppLocale, Record<CopyKey, string>> = {
     oauthCancelled:
       "Shopify authorization was cancelled or did not complete. The store is still disconnected.",
     oauthUnauthorizedHelp:
-      "Shopify rejected the install (Unauthorized Access). In Shopify Dev Dashboard → Apps → this Virello app → Versions → Create a version, set Use legacy install flow to True. App URL: https://virello-ai-optimizer.vercel.app. Allowed redirection URL(s): https://virello-ai-optimizer.vercel.app/api/auth/shopify/callback. Then click Release. Install while logged into the store as staff who can install apps.",
+      "Shopify rejected the install. In Shopify Dev Dashboard → Apps → Virello AI Optimizer (Client ID 059b113acaba78d855be9bc9500e421a) → Versions, keep managed installation on. App URL: https://virello-ai-optimizer.vercel.app. Then Release and open the app from Shopify Admin.",
     oauthHmacHelp:
-      "Shopify sent a complete callback and the stored SHOPIFY_API_SECRET did not match that signature. In Vercel → Settings → Environment Variables → Production, SHOPIFY_API_SECRET must be the Client secret from Dev Dashboard → virello-ai-optimizer → Settings for Client ID 99a9fda60d48cb24828f243360fffc40 — not the Client ID. After saving, Redeploy Production without using an existing build cache. Or tap Open in Shopify Admin to finish connecting from the installed app.",
+      "Shopify sent a complete callback and the stored SHOPIFY_API_SECRET did not match that signature. In Vercel → Settings → Environment Variables → Production, SHOPIFY_API_KEY and SHOPIFY_API_SECRET must belong to the App Store listing app (Client ID 059b113acaba78d855be9bc9500e421a). After saving, Redeploy Production without using an existing build cache.",
     openInShopifyAdmin: "Open in Shopify Admin",
     openInShopifyAdminHelp:
       "The app is already listed on this store. Open it from Shopify Admin to finish connecting if Connect Shopify fails the signature check.",
     hmacRetryNow:
-      "This morning's signature error is from the old build. Tap Connect Shopify again now. If it still fails, tap Open in Shopify Admin, or replace Vercel Production SHOPIFY_API_SECRET with the current Client secret and Redeploy.",
+      "Open Virello from Shopify Admin so managed installation can finish. If it still fails, replace Vercel Production SHOPIFY_API_KEY and SHOPIFY_API_SECRET with the listing app credentials and Redeploy.",
     secretStatusReady:
       "Shopify credentials are loaded (Client ID {id}, secret {kind} {length} chars).",
     secretStatusWrong:
@@ -345,7 +345,7 @@ export const COPY: Record<AppLocale, Record<CopyKey, string>> = {
     checkoutNeedShop: "Ilagay muna ang .myshopify.com domain bago mag-subscribe.",
     wrongHost: "Buksan ang Virello sa tamang app URL:",
     invalidAuthorizeUrl:
-      "Dapat sa {shop}.myshopify.com/admin/oauth/authorize magbukas, hindi sa public storefront. Subukan ulit ang Connect Shopify.",
+      "Dapat sa Shopify Admin magbukas, hindi sa public storefront. Buksan ang Virello mula sa Shopify Admin.",
     changeStore: "Palitan ang store",
     changeStoreConfirm:
       "I-disconnect ang naka-install na Shopify store? Mananatili ang Stripe billing. Kailangan i-authorize ulit ang bagong store.",
@@ -374,14 +374,14 @@ export const COPY: Record<AppLocale, Record<CopyKey, string>> = {
     oauthCancelled:
       "Nakansela o hindi natapos ang Shopify authorization. Hindi pa nakakonekta ang store.",
     oauthUnauthorizedHelp:
-      "Tinanggihan ng Shopify ang install (Unauthorized Access). Sa Shopify Dev Dashboard → Apps → Virello app → Versions → Create a version, i-set ang Use legacy install flow sa True. App URL: https://virello-ai-optimizer.vercel.app. Allowed redirection URL(s): https://virello-ai-optimizer.vercel.app/api/auth/shopify/callback. I-click ang Release. Mag-install habang naka-login sa store bilang staff na pwedeng mag-install ng app.",
+      "Tinanggihan ng Shopify ang install. Sa Shopify Dev Dashboard → Apps → Virello AI Optimizer (Client ID 059b113acaba78d855be9bc9500e421a) → Versions, panatilihing naka-on ang managed installation. App URL: https://virello-ai-optimizer.vercel.app. I-Release, tapos buksan ang app mula sa Shopify Admin.",
     oauthHmacHelp:
-      "Kumpleto ang callback ng Shopify pero hindi tumugma ang SHOPIFY_API_SECRET. Sa Vercel → Settings → Environment Variables → Production, dapat Client secret ang SHOPIFY_API_SECRET mula sa Dev Dashboard → virello-ai-optimizer → Settings para sa Client ID 99a9fda60d48cb24828f243360fffc40 — hindi ang Client ID. Pagkatapos i-save, i-Redeploy ang Production nang hindi ginagamit ang existing build cache. O i-tap ang Buksan sa Shopify Admin para tapusin ang koneksyon.",
+      "Kumpleto ang callback ng Shopify pero hindi tumugma ang SHOPIFY_API_SECRET. Sa Vercel → Settings → Environment Variables → Production, ang SHOPIFY_API_KEY at SHOPIFY_API_SECRET ay para sa App Store listing app (Client ID 059b113acaba78d855be9bc9500e421a). Pagkatapos i-save, i-Redeploy ang Production nang hindi ginagamit ang existing build cache.",
     openInShopifyAdmin: "Buksan sa Shopify Admin",
     openInShopifyAdminHelp:
       "Naka-lista na ang app sa store na ito. Buksan ito mula sa Shopify Admin kung may invalid signature pagkatapos mag-Connect.",
     hmacRetryNow:
-      "Ang invalid signature kaninang umaga ay sa lumang build. I-tap ulit ang Connect Shopify ngayon. Kung hindi pa rin, i-tap ang Buksan sa Shopify Admin, o palitan ang Vercel Production SHOPIFY_API_SECRET ng kasalukuyang Client secret tapos i-Redeploy.",
+      "Buksan ang Virello mula sa Shopify Admin para matapos ang managed installation. Kung hindi pa rin, palitan ang Vercel Production SHOPIFY_API_KEY at SHOPIFY_API_SECRET ng listing app credentials tapos i-Redeploy.",
     secretStatusReady:
       "Naka-load ang Shopify credentials (Client ID {id}, secret {kind} {length} chars).",
     secretStatusWrong:

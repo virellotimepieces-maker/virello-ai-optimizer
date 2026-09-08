@@ -1,7 +1,7 @@
 name = "virello-ai-optimizer"
-# Live production app. Application URL is Vercel Production.
+# App Store listing app. One Shopify app per this production URL.
 
-client_id = "99a9fda60d48cb24828f243360fffc40"
+client_id = "059b113acaba78d855be9bc9500e421a"
 
 application_url = "https://virello-ai-optimizer.vercel.app"
 
@@ -9,8 +9,7 @@ embedded = true
 
 [access_scopes]
 scopes = "read_products,write_products"
-# Managed install is required to deploy app-specific compliance webhooks.
-# Standalone Connect opens the Admin app URL instead of oauth/authorize.
+# Managed installation is required. Do not set use_legacy_install_flow.
 
 [auth]
 

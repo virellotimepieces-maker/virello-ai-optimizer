@@ -43,6 +43,16 @@ export default function ConnectPage() {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
+    const embedded =
+      params.get("embedded") === "1" ||
+      Boolean(params.get("host")) ||
+      Boolean(params.get("id_token")) ||
+      isShopifyAdminIframe();
+    if (embedded) {
+      const next = copyEmbedQuery(params, new URL("/", window.location.origin));
+      window.location.replace(next.toString());
+      return;
+    }
     const shopFromUrl = params.get("shop");
     const oauthError = params.get("error_description");
     const diag = params.get("oauth_diag");

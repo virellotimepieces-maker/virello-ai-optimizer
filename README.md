@@ -8,7 +8,7 @@ This is not a prompt clinic or Custom GPT rewriter.
 
 ## What this branch includes
 
-**Phase 5.** Shopify OAuth for **standalone** (authorization-code + signed state, HMAC, `APP_URL` callback) and **embedded** (Admin launch + App Bridge token exchange). Opening the app from Shopify Admin never sends the Admin iframe to `accounts.shopify.com`; OAuth and Stripe leave the iframe through the top window. Offline tokens stay encrypted in Neon. Import is paginated with 429/throttle retries. Save is a single implementation (`POST /api/shopify/products`) and requires `confirmed: true` after review. Import/AI/save require an active install, `read_products`/`write_products`, and an eligible Stripe subscription. Shop identity is not stored in `localStorage`.
+**Phase 5.** Shopify **managed installation**. Opening the app from Shopify Admin authenticates with App Bridge session tokens and token exchange before any merchant controls. Standalone Connect opens the Admin app URL. This deployment is one Shopify app (the App Store listing app). Offline tokens are expiring, encrypted in Neon, and refreshed automatically. Import is paginated with 429/throttle retries. Save is a single implementation (`POST /api/shopify/products`) and requires `confirmed: true` after review. Import/AI/save require an active install, `read_products`/`write_products`, and an eligible Stripe subscription. Shop identity is not stored in `localStorage`.
 
 **Phase 6.** Server-side OpenAI optimizer (key never sent to the browser) writes title, description, SEO, tags, and conversion copy without inventing facts. Failed AI calls do not consume the 1000 monthly uses. The dashboard is English, with Connect, Subscribe/Manage, Import, Optimize, Review, and Save states.
 
@@ -55,8 +55,10 @@ SQL files live in `migrations/`, applied in filename order by `app/api/_lib/migr
 | `007_rate_limits.down.sql` | Phase 8 rate-limit rollback |
 | `008_shop_binding.sql` | Expiring `pending_shop` on `app_sessions`; recover uninstalled session shops so OAuth can be retried or replaced |
 | `008_shop_binding.down.sql` | Phase 9 pending-shop rollback (does not delete Stripe billing rows) |
+| `009_expiring_offline_tokens.sql` | Encrypted refresh tokens and expiry columns for Shopify offline sessions |
+| `009_expiring_offline_tokens.down.sql` | Drops expiring-token columns |
 
-Rollback order in a maintenance window (Neon PITR first): `008` → `007` → `006` → `005` → `004` → `003`. Down files for `005`/`003` do not delete `shop_subscriptions` billing rows.
+Rollback order in a maintenance window (Neon PITR first): `009` → `008` → `007` → `006` → `005` → `004` → `003`. Down files for `005`/`003` do not delete `shop_subscriptions` billing rows.
 
 ## Environment-variable names
 
@@ -71,9 +73,9 @@ Set these in `.env.local` and in Vercel Preview/Production. Never commit values.
 - `STRIPE_WEBHOOK_SECRET` (same mode)
 - `SUBSCRIBER_COOKIE_SECRET`
 - `AI_SUBSCRIBER_USAGE_LIMIT` (paid allowance; default 1000)
-- `SHOPIFY_API_KEY` / `SHOPIFY_CLIENT_ID`
-- `SHOPIFY_API_SECRET` / `SHOPIFY_CLIENT_SECRET`
-- `SHOPIFY_API_SECRET_PREVIOUS`
+- `SHOPIFY_API_KEY` / `SHOPIFY_CLIENT_ID` (must match `shopify.app.toml` `client_id` `059b113acaba78d855be9bc9500e421a`)
+- `SHOPIFY_API_SECRET` / `SHOPIFY_CLIENT_SECRET` (that app’s Client secret only)
+- `SHOPIFY_API_SECRET_PREVIOUS` (same app, previous secret during rotation — not a second Shopify app)
 - `SHOPIFY_APP_HANDLE`
 - `SHOPIFY_TOKEN_ENCRYPTION_KEY`
 
@@ -119,35 +121,24 @@ Events: `checkout.session.completed`, `customer.subscription.created`, `customer
 
 If Production still has `sk_test_`, the dashboard shows a test-mode banner and real cards are not charged.
 
-### Shopify (any paying store)
+### Shopify (App Store listing app)
 
-A Vercel deploy does **not** update Shopify. In [Dev Dashboard](https://dev.shopify.com) → this app (Client ID `99a9fda60d48cb24828f243360fffc40`):
+This production URL is **one Shopify app**: Client ID `059b113acaba78d855be9bc9500e421a`. Do not point a second Shopify app at this URL or mix that app’s secret into Vercel Production.
 
-1. Released version: App URL `https://virello-ai-optimizer.vercel.app`, callback `https://virello-ai-optimizer.vercel.app/api/auth/shopify/callback`, scopes `read_products,write_products`, **Use legacy install flow = True**.
-2. **Distribution:** development-store-only limits installs to listed shops. To take other paying subscribers, switch to **Unlisted** (install link) or **Public** (App Store). Add each extra development store until then.
-3. Production `SHOPIFY_API_SECRET` is one Production-only Client secret row.
+A Vercel deploy does **not** update Shopify. In [Dev Dashboard](https://dev.shopify.com) → the listing app (Client ID `059b113acaba78d855be9bc9500e421a`):
+
+1. Released version: App URL `https://virello-ai-optimizer.vercel.app`, callback `https://virello-ai-optimizer.vercel.app/api/auth/shopify/callback`, scopes `read_products,write_products`, **managed installation** (do not enable legacy install).
+2. Vercel Production `SHOPIFY_API_KEY` must be `059b113acaba78d855be9bc9500e421a`. `SHOPIFY_API_SECRET` is one Production-only Client secret for that same app.
+3. **Distribution:** development-store-only limits installs to listed shops. To take other paying subscribers, switch to **Unlisted** (install link) or **Public** (App Store).
+4. Resubmit from **Distribution → Manage submission**.
 
 Health check: `GET https://virello-ai-optimizer.vercel.app/api/health` → `{ "ok": true, "live": true }`.
 
 ## Shopify OAuth (production)
 
-Standalone Connect uses Shopify’s authorization-code grant:
+Embedded Admin uses App Bridge session tokens and token exchange (`expiring=1`). Standalone Connect opens the Admin app URL so managed installation can finish. Merchants do not enter a shop domain inside Shopify Admin.
 
-`https://{shop}.myshopify.com/admin/oauth/authorize`
-
-Vercel Production already has `SHOPIFY_API_KEY` matching Client ID `99a9fda60d48cb24828f243360fffc40`. A Vercel deploy does **not** update Shopify.
-
-If Shopify shows **Unauthorized Access**, enable legacy install on the live app version:
-
-1. Open [https://dev.shopify.com](https://dev.shopify.com) → **Apps** → the Virello app whose **Client ID** is `99a9fda60d48cb24828f243360fffc40`.
-2. **Versions** → **Create a version**.
-3. Set **Use legacy install flow** to **True**.
-4. **App URL:** `https://virello-ai-optimizer.vercel.app`
-5. **Allowed redirection URL(s):** `https://virello-ai-optimizer.vercel.app/api/auth/shopify/callback`
-6. Scopes: `read_products`, `write_products`.
-7. Click **Release**.
-8. Confirm **Settings → Client secret** is the **only** Vercel Production `SHOPIFY_API_SECRET` (Production-only row). If a second `SHOPIFY_API_SECRET` is also scoped to Production (for example Production and Preview), delete or rescope that overlapping row, then Redeploy Production without build cache. Do not paste secrets into git or chat.
-9. **Distribution** must allow the subscriber’s store. Development-store-only installs work only for shops you list. Unlisted or Public distribution is required for other paying merchants. Install while logged into that store as staff who can install apps.
+A Vercel deploy does **not** update Shopify. After a code change, release a version from Dev Dashboard (or `shopify app deploy`) for Client ID `059b113acaba78d855be9bc9500e421a`, then resubmit from **Distribution → Manage submission**.
 
 ## Deploy
 

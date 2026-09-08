@@ -1,5 +1,3 @@
-import { normalizeShop, shopFromShopifyHostParam } from "./shop-domain";
-
 const QUOTE_CHARS = `"'` + "\u201C\u201D\u2018\u2019";
 
 function readEnv(name: string): string | undefined {
@@ -37,64 +35,31 @@ function cleanShopifyCredential(value?: string): string {
   return cleanEnvironmentValue(value).replace(/[^\x21-\x7E]/g, "");
 }
 
-/** Public Client ID of the App Store listing app (org Virello AI Optimizer). */
-export const SHOPIFY_LISTING_CLIENT_ID = "059b113acaba78d855be9bc9500e421a";
+/** App Store listing / production app. One Shopify app per deployment. */
+export const SHOPIFY_PRODUCTION_CLIENT_ID = "059b113acaba78d855be9bc9500e421a";
+
+/** Retired live-app Client ID that must not share this production URL. */
+export const RETIRED_LIVE_SHOPIFY_CLIENT_ID = "99a9fda60d48cb24828f243360fffc40";
 
 export function getShopifyClientId(): string {
-  return cleanShopifyCredential(
+  const fromEnv = cleanShopifyCredential(
     readEnv("SHOPIFY_API_KEY") || readEnv("SHOPIFY_CLIENT_ID")
   );
+  if (fromEnv === RETIRED_LIVE_SHOPIFY_CLIENT_ID) {
+    return SHOPIFY_PRODUCTION_CLIENT_ID;
+  }
+  return fromEnv;
 }
 
 export function getShopifyClientIds(): string[] {
-  return [
-    getShopifyClientId(),
-    cleanShopifyCredential(
-      readEnv("SHOPIFY_API_KEY_PREVIOUS") || readEnv("SHOPIFY_CLIENT_ID_PREVIOUS")
-    ),
-    SHOPIFY_LISTING_CLIENT_ID,
-  ].filter((value, index, values) => Boolean(value) && values.indexOf(value) === index);
-}
-
-function sessionTokenAudience(token: string): string {
-  const parts = token.split(".");
-  if (parts.length < 2) return "";
-  try {
-    const payload = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8")) as {
-      aud?: unknown;
-    };
-    return typeof payload.aud === "string" ? payload.aud.trim() : "";
-  } catch {
-    return "";
-  }
-}
-
-function isListingDevShop(shop: string): boolean {
-  const normalized = normalizeShop(shop) || shop.trim().toLowerCase();
-  return (
-    normalized === "virello-dev.myshopify.com" ||
-    normalized === "virello-dev"
-  );
-}
-
-/** App Bridge meta key for this request: listing app vs live app. */
-export function resolveShopifyAppBridgeApiKey(search = ""): string {
   const primary = getShopifyClientId();
-  const allowed = getShopifyClientIds();
-  const params = new URLSearchParams(search.replace(/^\?/, ""));
-  const audience =
-    sessionTokenAudience(params.get("id_token") || "") ||
-    (params.get("aud") || "").trim();
-  if (audience && allowed.includes(audience)) return audience;
+  return primary ? [primary] : [];
+}
 
-  const shop =
-    normalizeShop(params.get("shop") || "") ||
-    shopFromShopifyHostParam(params.get("host") || "");
-  if (isListingDevShop(shop) && allowed.includes(SHOPIFY_LISTING_CLIENT_ID)) {
-    return SHOPIFY_LISTING_CLIENT_ID;
-  }
-
-  return primary;
+/** App Bridge meta key: only the app this deployment is configured for. */
+export function resolveShopifyAppBridgeApiKey(_search = ""): string {
+  void _search;
+  return getShopifyClientId();
 }
 
 export function shopifyCredentialPresence(): {
@@ -122,32 +87,23 @@ export function getShopifyClientSecret(): string {
 export function getShopifySecretForClientId(clientId: string): string {
   const wanted = cleanShopifyCredential(clientId);
   const primaryId = getShopifyClientId();
-  const primarySecret = getShopifyClientSecret();
-  const previous = cleanShopifyCredential(readEnv("SHOPIFY_API_SECRET_PREVIOUS"));
-  if (wanted && wanted === SHOPIFY_LISTING_CLIENT_ID && previous) {
-    return previous;
-  }
-  if (wanted && wanted === primaryId) return primarySecret;
-  return primarySecret;
+  if (wanted && primaryId && wanted !== primaryId) return "";
+  return getShopifyClientSecret();
 }
 
 export function getShopifyAppCredentials(): Array<{ clientId: string; secret: string }> {
   const pairs: Array<{ clientId: string; secret: string }> = [];
   const seen = new Set<string>();
-  const add = (clientId: string, secret: string) => {
+  const clientId = getShopifyClientId();
+  const add = (secret: string) => {
     if (!clientId || !secret) return;
     const key = `${clientId}:${secret}`;
     if (seen.has(key)) return;
     seen.add(key);
     pairs.push({ clientId, secret });
   };
-  add(getShopifyClientId(), getShopifyClientSecret());
-  add(
-    cleanShopifyCredential(
-      readEnv("SHOPIFY_API_KEY_PREVIOUS") || readEnv("SHOPIFY_CLIENT_ID_PREVIOUS")
-    ) || SHOPIFY_LISTING_CLIENT_ID,
-    cleanShopifyCredential(readEnv("SHOPIFY_API_SECRET_PREVIOUS"))
-  );
+  add(getShopifyClientSecret());
+  add(cleanShopifyCredential(readEnv("SHOPIFY_API_SECRET_PREVIOUS")));
   return pairs;
 }
 

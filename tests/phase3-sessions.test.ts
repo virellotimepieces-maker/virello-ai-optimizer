@@ -27,7 +27,7 @@ import {
 import {
   classifyShopifySecretKind,
   getShopifyClientSecrets,
-  SHOPIFY_LISTING_CLIENT_ID,
+  SHOPIFY_PRODUCTION_CLIENT_ID,
   shopifySecretLooksLikeClientId,
 } from "../app/api/_lib/shopify-config";
 import {
@@ -89,12 +89,13 @@ describe("Phase 3 Shopify security module", () => {
     ).toThrow(/signature/i);
   });
 
-  it("accepts a session JWT for the App Store listing Client ID", () => {
-    process.env.SHOPIFY_API_SECRET_PREVIOUS = "listing-app-secret-value";
+  it("accepts a session JWT only for this deployment's Client ID", () => {
+    process.env.SHOPIFY_API_KEY = SHOPIFY_PRODUCTION_CLIENT_ID;
+    process.env.SHOPIFY_API_SECRET = "listing-app-secret-value";
     const now = Math.floor(Date.now() / 1000);
     const token = signJwt(
       {
-        aud: SHOPIFY_LISTING_CLIENT_ID,
+        aud: SHOPIFY_PRODUCTION_CLIENT_ID,
         dest: `https://${SHOP_A}`,
         iss: `https://${SHOP_A}/admin`,
         sub: "user-1",
@@ -105,7 +106,19 @@ describe("Phase 3 Shopify security module", () => {
     );
     const identity = verifyShopifySessionToken(token);
     expect(identity.shop).toBe(SHOP_A);
-    expect(identity.clientId).toBe(SHOPIFY_LISTING_CLIENT_ID);
+    expect(identity.clientId).toBe(SHOPIFY_PRODUCTION_CLIENT_ID);
+    const other = signJwt(
+      {
+        aud: "99a9fda60d48cb24828f243360fffc40",
+        dest: `https://${SHOP_A}`,
+        iss: `https://${SHOP_A}/admin`,
+        sub: "user-1",
+        exp: now + 60,
+        nbf: now - 10,
+      },
+      "listing-app-secret-value"
+    );
+    expect(() => verifyShopifySessionToken(other)).toThrow(/session/i);
   });
 
   it("verifies Shopify webhook HMAC and callback HMAC", () => {
@@ -177,6 +190,55 @@ describe("Phase 3 Shopify security module", () => {
       })
     );
     expect(forged.status).toBe(401);
+  });
+
+  it("acks dedicated GDPR webhook URLs and answers probes", async () => {
+    const { POST, GET } = await import("../app/api/webhooks/customers/data_request/route");
+    const body = '{"shop_id":1,"shop_domain":"store-alpha.myshopify.com"}';
+    const hmac = createHmac("sha256", "shopify-client-secret-value")
+      .update(body, "utf8")
+      .digest("base64");
+    const valid = await POST(
+      new Request("https://app.virello.example/api/webhooks/customers/data_request", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-shopify-hmac-sha256": hmac,
+          "x-shopify-topic": "customers/data_request",
+          "x-shopify-shop-domain": SHOP_A,
+        },
+        body,
+      })
+    );
+    expect(valid.status).toBe(200);
+    const probe = await GET();
+    expect(probe.status).toBe(200);
+    expect(await probe.json()).toEqual({ success: true });
+    const { POST: redactShop, GET: redactProbe } = await import(
+      "../app/api/webhooks/shop/redact/route"
+    );
+    const shopRedact = await redactShop(
+      new Request("https://app.virello.example/api/webhooks/shop/redact", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-shopify-hmac-sha256": hmac,
+          "x-shopify-topic": "shop/redact",
+          "x-shopify-shop-domain": SHOP_A,
+        },
+        body,
+      })
+    );
+    expect(shopRedact.status).toBe(200);
+    const redactProbeResponse = await redactProbe();
+    expect(redactProbeResponse.status).toBe(200);
+    expect(await redactProbeResponse.json()).toEqual({ success: true });
+    const { GET: customerRedactProbe } = await import(
+      "../app/api/webhooks/customers/redact/route"
+    );
+    const customerProbe = await customerRedactProbe();
+    expect(customerProbe.status).toBe(200);
+    expect(await customerProbe.json()).toEqual({ success: true });
   });
 
   it("verifies callback HMAC when host padding is percent-encoded", () => {

@@ -108,6 +108,7 @@ export default function Home({
   const [approved, setApproved] = useState(false);
   const [adminIframe, setAdminIframe] = useState(false);
   const [stripeMode, setStripeMode] = useState<"live" | "test" | null>(null);
+  const [embeddedSessionReady, setEmbeddedSessionReady] = useState(!embeddedInstall);
 
   const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [portalLoading, setPortalLoading] = useState(false);
@@ -154,17 +155,27 @@ export default function Home({
 
   useEffect(() => {
     function onSession(event: Event) {
-      const detail = (event as CustomEvent<{ connected?: boolean; shop?: string }>).detail;
-      if (!detail?.connected) return;
-      setShopInstalled(true);
-      if (detail.shop) {
+      const detail = (event as CustomEvent<{
+        connected?: boolean;
+        shop?: string;
+        authenticating?: boolean;
+      }>).detail;
+      if (detail?.shop) {
         setShop(detail.shop);
         setShopInput(detail.shop);
+      }
+      if (detail?.connected) {
+        setShopInstalled(true);
+        setEmbeddedSessionReady(true);
+        return;
+      }
+      if (embeddedInstall && !detail?.authenticating) {
+        setEmbeddedSessionReady(true);
       }
     }
     window.addEventListener("virello-shopify-session", onSession);
     return () => window.removeEventListener("virello-shopify-session", onSession);
-  }, []);
+  }, [embeddedInstall]);
 
   useEffect(() => {
     setAdminIframe(isShopifyAdminIframe());
@@ -216,7 +227,7 @@ export default function Home({
     if (checkoutLoading || canManage) return;
     const cleaned = normalizeShopInput(shopInput || shop);
     if (!cleaned) {
-      showError("shopify", copy.checkoutNeedShop);
+      showError("shopify", embeddedInstall ? copy.shopifyError : copy.checkoutNeedShop);
       return;
     }
     setCheckoutLoading(true);
@@ -568,7 +579,7 @@ export default function Home({
 
   return (
     <main className={optimization ? "app-shell has-save-dock" : "app-shell"}>
-      {embeddedInstall && !shopInstalled ? (
+      {embeddedInstall && !embeddedSessionReady ? (
         <>
           <header className="topbar">
             <div>
@@ -581,7 +592,7 @@ export default function Home({
               <div className="brand-name">{copy.brand}</div>
             </div>
           </header>
-          <section className="hero">
+          <section className="hero" data-testid="embedded-authenticating">
             <div className="hero-inner">
               <div className="eyebrow">{copy.eyebrow}</div>
               <h1>{copy.checkingShopify}</h1>
@@ -661,9 +672,9 @@ export default function Home({
             {Boolean(billedShop) && (
               <p data-testid="billed-store">{copy.billedStore.replace("{shop}", billedShop)}</p>
             )}
-            {storeBinding.kind === "connected" ? (
+            {storeBinding.kind === "connected" || embeddedInstall ? (
               <p className="shop-pill connected-shop" data-testid="connected-shop">
-                {storeBinding.domain}
+                {storeBinding.domain || shop || copy.notConnected}
               </p>
             ) : (
               <input
@@ -691,9 +702,11 @@ export default function Home({
                   </button>
                 </div>
               )}
+            {!embeddedInstall && (
             <button type="button" className="subscribe-button" onClick={connectShopify} disabled={connecting || changingStore}>
               {connecting ? copy.connecting : shopInstalled ? copy.reconnect : copy.connectShopify}
             </button>
+            )}
             {showChangeStore && (
               <button
                 type="button"

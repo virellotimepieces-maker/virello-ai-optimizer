@@ -234,12 +234,23 @@ async function postShopifyAccessToken(
   shop: string,
   body: URLSearchParams
 ): Promise<ShopifyCodeExchangeResult> {
-  const response = await fetch(`https://${shop}/admin/oauth/access_token`, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: body.toString(),
-    cache: "no-store",
-  });
+  let response: Response;
+  try {
+    response = await fetch(`https://${shop}/admin/oauth/access_token`, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: body.toString(),
+      cache: "no-store",
+    });
+  } catch (error) {
+    return {
+      ok: false,
+      error:
+        error instanceof Error ? error.message : "Shopify authorization failed.",
+      errorCode: "",
+      status: 502,
+    };
+  }
   const data = (await response.json().catch(() => null)) as {
     access_token?: string;
     refresh_token?: string;
@@ -263,6 +274,12 @@ async function postShopifyAccessToken(
     };
   }
   return parsed;
+}
+
+function isExpiringOfflineGrant(
+  result: ShopifyCodeExchangeResult
+): result is Extract<ShopifyCodeExchangeResult, { ok: true }> {
+  return Boolean(result.ok && result.expiresIn > 0 && result.refreshToken);
 }
 
 async function persistExchangedSession(
@@ -294,23 +311,26 @@ export async function exchangeShopifyAuthorizationCode(input: {
   );
 }
 
-function tokenExchangePairs(identity: VerifiedShopifyIdentity): Array<{
+function tokenExchangePairs(identity?: VerifiedShopifyIdentity): Array<{
   clientId: string;
   secret: string;
 }> {
   const pairs: Array<{ clientId: string; secret: string }> = [];
   const seen = new Set<string>();
+  const primaryId = getShopifyClientId();
   const add = (clientId: string, secret: string) => {
-    if (!clientId || !secret) return;
+    if (!clientId || !secret || clientId !== primaryId) return;
     const key = `${clientId}:${secret}`;
     if (seen.has(key)) return;
     seen.add(key);
     pairs.push({ clientId, secret });
   };
-  add(identity.clientId, getShopifySecretForClientId(identity.clientId));
-  add(identity.clientId, identity.credentialSecret);
+  if (identity) {
+    add(identity.clientId, getShopifySecretForClientId(identity.clientId));
+    add(identity.clientId, identity.credentialSecret);
+  }
   for (const app of getShopifyAppCredentials()) add(app.clientId, app.secret);
-  add(getShopifyClientId(), getShopifyClientSecret());
+  add(primaryId, getShopifyClientSecret());
   return pairs;
 }
 
@@ -361,9 +381,7 @@ async function refreshStoredOfflineToken(
   if (!stored?.refreshToken) return "";
   if (stored.refreshExpiresAt && isExpired(stored.refreshExpiresAt, 0)) return "";
 
-  const pairs = preferred
-    ? tokenExchangePairs(preferred)
-    : getShopifyAppCredentials();
+  const pairs = tokenExchangePairs(preferred);
   for (const pair of pairs) {
     const result = await postShopifyAccessToken(
       shop,
@@ -379,16 +397,53 @@ async function refreshStoredOfflineToken(
   return "";
 }
 
-async function usableStoredAccessToken(
+async function cycleNonExpiringOfflineToken(
   shop: string,
-  options: { allowUnexpiring?: boolean } = {}
+  preferred?: VerifiedShopifyIdentity
+): Promise<string> {
+  const stored = await storedShopifySession(shop);
+  if (!stored?.accessToken || stored.accessExpiresAt) return "";
+
+  const pairs = tokenExchangePairs(preferred);
+  for (const pair of pairs) {
+    const result = await postShopifyAccessToken(
+      shop,
+      new URLSearchParams({
+        grant_type: "urn:ietf:params:oauth:grant-type:token-exchange",
+        client_id: pair.clientId,
+        client_secret: pair.secret,
+        subject_token: stored.accessToken,
+        subject_token_type: "urn:shopify:params:oauth:token-type:offline-access-token",
+        requested_token_type: "urn:shopify:params:oauth:token-type:offline-access-token",
+        expiring: "1",
+      })
+    );
+    if (isExpiringOfflineGrant(result)) return persistExchangedSession(shop, result);
+  }
+  return "";
+}
+
+async function resolvedStoredAccessToken(
+  shop: string,
+  preferred?: VerifiedShopifyIdentity
 ): Promise<string> {
   const stored = await storedShopifySession(shop);
   if (!stored?.accessToken) return "";
-  if (stored.accessExpiresAt) {
-    return isExpired(stored.accessExpiresAt) ? "" : stored.accessToken;
+  if (stored.accessExpiresAt && !isExpired(stored.accessExpiresAt)) {
+    return stored.accessToken;
   }
-  return options.allowUnexpiring ? stored.accessToken : "";
+  const refreshed = await refreshStoredOfflineToken(shop, preferred);
+  if (refreshed) return refreshed;
+  if (!stored.accessExpiresAt) {
+    try {
+      const cycled = await cycleNonExpiringOfflineToken(shop, preferred);
+      if (cycled) return cycled;
+    } catch {
+      // Shopify unreachable: keep the stored non-expiring token until the next request.
+    }
+    return stored.accessToken;
+  }
+  return "";
 }
 
 export async function mintShopifyAccessToken(
@@ -404,14 +459,14 @@ export async function mintShopifyAccessToken(
     try {
       return await exchangeOfflineToken(identity.shop, idToken, identity);
     } catch (error) {
-      const refreshed = await refreshStoredOfflineToken(identity.shop, identity);
-      if (refreshed) return refreshed;
+      const stored = await resolvedStoredAccessToken(identity.shop, identity);
+      if (stored) return stored;
       throw error;
     }
   }
 
-  const refreshed = await refreshStoredOfflineToken(shop);
-  if (refreshed) return refreshed;
+  const stored = await resolvedStoredAccessToken(shop);
+  if (stored) return stored;
   throw new ShopifyAuthError("Shopify access expired. Reconnect the store.");
 }
 
@@ -431,9 +486,7 @@ export async function authenticateShopifyRequest(
         const accessToken = await exchangeOfflineToken(identity.shop, idToken, identity);
         return { ...identity, accessToken };
       } catch (exchangeError) {
-        const refreshed = await refreshStoredOfflineToken(identity.shop, identity);
-        if (refreshed) return { ...identity, accessToken: refreshed };
-        const saved = await usableStoredAccessToken(identity.shop);
+        const saved = await resolvedStoredAccessToken(identity.shop, identity);
         if (saved) return { ...identity, accessToken: saved };
         throw exchangeError;
       }
@@ -447,8 +500,7 @@ export async function authenticateShopifyRequest(
     if (!requireAccessToken) {
       return { shop: sessionShop, accessToken: "", userId: "" };
     }
-    const refreshed = await refreshStoredOfflineToken(sessionShop);
-    const accessToken = refreshed || (await usableStoredAccessToken(sessionShop, { allowUnexpiring: true }));
+    const accessToken = await resolvedStoredAccessToken(sessionShop);
     if (accessToken) {
       if (!(await isShopifyInstallationActive(sessionShop))) {
         throw new ShopifyAuthError(

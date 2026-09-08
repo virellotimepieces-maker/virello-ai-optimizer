@@ -18,10 +18,12 @@ test.describe("Virello dashboard", () => {
     await expect(page.getByRole("heading", { name: /Connect your Shopify store/i })).toBeVisible();
   });
 
-  test("embedded shop query still renders the optimizer instead of bouncing to Admin", async ({ page }) => {
+  test("embedded shop query authenticates before merchant controls", async ({ page }) => {
     await page.goto("/?embedded=1&shop=gfd1cp-1y.myshopify.com");
     await expect(page).not.toHaveURL(/admin\.shopify\.com|accounts\.shopify\.com/);
-    await expect(page.locator(".brand-name")).toContainText("Virello AI Optimizer");
-    await expect(page.getByRole("button", { name: /Import Products/i })).toBeVisible();
+    await expect(page.getByTestId("embedded-authenticating")).toBeVisible();
+    await expect(page.getByRole("button", { name: /Connect Shopify/i })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /Import Products/i })).toHaveCount(0);
+    await expect(page.locator(".shop-input")).toHaveCount(0);
   });
 });

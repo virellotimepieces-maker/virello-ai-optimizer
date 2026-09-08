@@ -3,6 +3,7 @@ import {
   classifyShopifySecretKind,
   getShopifyClientId,
   getShopifyClientSecrets,
+  SHOPIFY_PRODUCTION_CLIENT_ID,
   shopifyCredentialPresence,
   shopifySecretLooksLikeClientId,
 } from "../../../_lib/shopify-config";
@@ -20,6 +21,8 @@ export async function GET() {
       success: true,
       configured: Boolean(clientId && (present.apiSecret || present.clientSecret)),
       clientId: clientId || "",
+      listingClientId: SHOPIFY_PRODUCTION_CLIENT_ID,
+      matchesListingApp: clientId === SHOPIFY_PRODUCTION_CLIENT_ID,
       secretCount: secrets.length,
       secretKind: primary ? classifyShopifySecretKind(primary, clientId) : "missing",
       secretLength: primary.length,

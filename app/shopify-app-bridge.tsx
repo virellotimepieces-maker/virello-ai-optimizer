@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { copyEmbedQuery, assignTopLevel, isShopifyAdminIframe } from "./shopify-embed";
+import { copyEmbedQuery, isShopifyAdminIframe } from "./shopify-embed";
 import { normalizeShop, shopFromShopifyHostParam } from "./api/_lib/shop-domain";
 
 function decodeJwtPayload(token: string): { aud?: string; dest?: string } {
@@ -15,25 +15,14 @@ function decodeJwtPayload(token: string): { aud?: string; dest?: string } {
   }
 }
 
-function embeddedShop(token = ""): { shop: string; aud: string } {
+function embeddedShop(token = ""): string {
   const params = new URLSearchParams(window.location.search);
   const fromToken = decodeJwtPayload(token);
-  const shop =
+  return (
     normalizeShop(params.get("shop") || "") ||
     shopFromShopifyHostParam(params.get("host") || "") ||
-    normalizeShop(fromToken.dest || "");
-  const aud = (fromToken.aud || params.get("aud") || "").trim();
-  return { shop, aud };
-}
-
-function startEmbeddedOauth(token = "") {
-  const { shop, aud } = embeddedShop(token);
-  if (!shop) return;
-  const next = new URL("/api/auth/shopify", window.location.origin);
-  next.searchParams.set("shop", shop);
-  next.searchParams.set("flow", "embedded");
-  if (aud) next.searchParams.set("aud", aud);
-  assignTopLevel(next.toString());
+    normalizeShop(fromToken.dest || "")
+  );
 }
 
 export default function ShopifyAppBridge() {
@@ -60,52 +49,67 @@ export default function ShopifyAppBridge() {
       if (cancelled) return;
 
       if (!window.shopify?.idToken) {
-        if (embedded) startEmbeddedOauth();
+        if (embedded) {
+          window.dispatchEvent(
+            new CustomEvent("virello-shopify-session", {
+              detail: { connected: false, authenticating: true },
+            })
+          );
+        }
         return;
       }
 
-      const token = await window.shopify.idToken();
-      if (!token) {
-        if (embedded) startEmbeddedOauth();
-        return;
+      let lastShop = embeddedShop();
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        if (cancelled) return;
+        const token = await window.shopify.idToken();
+        if (!token) continue;
+        lastShop = embeddedShop(token) || lastShop;
+
+        const response = await fetch("/api/auth/shopify/session", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            Accept: "application/json",
+            "Content-Type": "application/json",
+          },
+          credentials: "include",
+        });
+        const data = (await response.json().catch(() => null)) as {
+          success?: boolean;
+          connected?: boolean;
+          shop?: string;
+        } | null;
+
+        if (response.ok && data?.success && data.connected) {
+          window.dispatchEvent(
+            new CustomEvent("virello-shopify-session", {
+              detail: { connected: true, shop: data.shop || lastShop },
+            })
+          );
+
+          const path = window.location.pathname;
+          if (path === "/connect" || path.startsWith("/connect/")) {
+            const next = copyEmbedQuery(
+              new URLSearchParams(window.location.search),
+              new URL("/", window.location.origin)
+            );
+            next.searchParams.set("connected", "1");
+            if (data.shop) next.searchParams.set("shop", data.shop);
+            window.location.replace(next.toString());
+          }
+          return;
+        }
+
+        await new Promise((resolve) => window.setTimeout(resolve, 400));
       }
 
-      const response = await fetch("/api/auth/shopify/session", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Accept: "application/json",
-          "Content-Type": "application/json",
-        },
-        credentials: "include",
-      });
-      const data = (await response.json().catch(() => null)) as {
-        success?: boolean;
-        connected?: boolean;
-        shop?: string;
-      } | null;
-      if (cancelled) return;
-
-      if (!response.ok || !data?.success || !data.connected) {
-        if (embedded) startEmbeddedOauth(token);
-        return;
-      }
-
-      window.dispatchEvent(
-        new CustomEvent("virello-shopify-session", {
-          detail: { connected: true, shop: data.shop },
-        })
-      );
-
-      const path = window.location.pathname;
-      if (path === "/connect" || path.startsWith("/connect/")) {
-        const next = copyEmbedQuery(
-          new URLSearchParams(window.location.search),
-          new URL("/", window.location.origin)
+      if (embedded) {
+        window.dispatchEvent(
+          new CustomEvent("virello-shopify-session", {
+            detail: { connected: false, authenticating: true, shop: lastShop },
+          })
         );
-        next.searchParams.set("connected", "1");
-        if (data.shop) next.searchParams.set("shop", data.shop);
-        window.location.replace(next.toString());
       }
     }
 

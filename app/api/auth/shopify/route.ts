@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { normalizeShop } from "../../_lib/shop-domain";
-import { shopifyAdminAppUrl, buildShopifyAuthorizeUrl } from "../../_lib/shopify-oauth";
+import { shopifyAdminAppUrl } from "../../_lib/shopify-oauth";
 import {
   getShopifyClientId,
   getShopifyClientSecret,
-  getShopifySecretForClientId,
   resolveShopifyAppBridgeApiKey,
 } from "../../_lib/shopify-config";
 import { getSessionBinding, retargetUninstalledShop, setPendingShop, ShopBindingError } from "../../_lib/shop-binding";
@@ -98,17 +97,7 @@ export async function GET(request: NextRequest) {
     if (binding?.sessionId) {
       await setPendingShop(binding.sessionId, shop);
     }
-    const flow =
-      request.nextUrl.searchParams.get("flow") === "embedded" ? "embedded" : "standalone";
-    const url =
-      flow === "embedded"
-        ? buildShopifyAuthorizeUrl({
-            shop,
-            flow: "embedded",
-            clientId: apiKey,
-            secret: getShopifySecretForClientId(apiKey),
-          }).url
-        : shopifyAdminAppUrl(shop).toString();
+    const url = shopifyAdminAppUrl(shop).toString();
     return oauthStartResponse(
       request,
       {

@@ -17,7 +17,7 @@ import {
   ShopifyAuthError,
   shopifyAuthErrorHeaders,
 } from "../../../_lib/shopify-auth";
-import { buildShopifyAuthorizeUrl } from "../../../_lib/shopify-oauth";
+import { shopifyAdminAppUrl } from "../../../_lib/shopify-oauth";
 import {
   getShopifyIdToken,
   verifyShopifySessionToken,
@@ -32,12 +32,8 @@ function reauthorizeUrlFromRequest(request: NextRequest): string {
   try {
     const token = getShopifyIdToken(request);
     if (!token) return "";
-    const { shop, clientId } = verifyShopifySessionToken(token);
-    return buildShopifyAuthorizeUrl({
-      shop,
-      flow: "embedded",
-      clientId,
-    }).url;
+    const { shop } = verifyShopifySessionToken(token);
+    return shopifyAdminAppUrl(shop).toString();
   } catch {
     return "";
   }
