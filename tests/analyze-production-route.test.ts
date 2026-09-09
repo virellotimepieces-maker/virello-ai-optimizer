@@ -213,6 +213,14 @@ describe("Production Optimize request path", () => {
     ].join(" ");
     expect(result.optimization.conversionCopy).toMatch(/from Virello/i);
     expect(result.optimization.description).toMatch(/Virello/i);
+    expect(result.optimization.seoTitle.length).toBeLessThanOrEqual(60);
+    expect(result.optimization.metaDescription.length).toBeLessThanOrEqual(160);
+    expect(result.optimization.seoTitle).toMatch(/Sample Watch/i);
+    expect(result.optimization.seoTitle).not.toMatch(/\bcas$/i);
+    expect(result.optimization.seoTitle).not.toMatch(/\bmple /i);
+    expect(result.optimization.metaDescription).toMatch(/[.!?]$/);
+    expect(result.optimization.metaDescription).not.toMatch(/\bcas$/i);
+    expect(result.optimization.metaDescription).not.toMatch(/\b(with|and|for|the|a|an|of|from)\s*$/i);
     expect(gaps).not.toMatch(/vendor name is not provided/i);
     expect(scoreLimitExplanation(result.analysis.missingInformation).filter((item) => /vendor/i.test(item))).toEqual(
       []

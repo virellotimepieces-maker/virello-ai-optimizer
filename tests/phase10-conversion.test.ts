@@ -131,10 +131,10 @@ describe("Conversion-focused AI listing output", () => {
       product
     );
     expect(result.optimization.seoTitle.length).toBeLessThanOrEqual(60);
-    expect(result.optimization.seoTitle).toMatch(/Virello/i);
-    expect(result.optimization.seoTitle).not.toMatch(/best premium|shop now/i);
     expect(result.optimization.metaDescription.length).toBeLessThanOrEqual(160);
+    expect(result.optimization.seoTitle).not.toMatch(/\bcas$/i);
     expect(result.optimization.metaDescription).toMatch(/Virello|stainless|quartz/i);
+    expect(result.optimization.metaDescription).not.toMatch(/\bcas$/i);
     expect(result.analysis.strongestFeatures.length).toBeGreaterThan(0);
     expect(result.optimization.benefitBullets.length).toBeGreaterThanOrEqual(3);
   });

@@ -3,6 +3,23 @@ import { copyHasBrokenGrammar } from "./copy-quality";
 export const SEO_TITLE_MAX = 60;
 export const META_DESCRIPTION_MAX = 160;
 
+const DANGLING_SEO_TAIL = /\b(with|and|for|the|a|an|of|from|to|in|on)\s*$/i;
+
+export function clipAtWordLimit(value: string, max: number): string {
+  const text = value.replace(/\s+/g, " ").trim();
+  if (!text) return "";
+  if (text.length <= max) {
+    return text.replace(DANGLING_SEO_TAIL, "").replace(/[,:;]+$/g, "").trim();
+  }
+  let sliced = text.slice(0, max).trim();
+  const space = sliced.lastIndexOf(" ");
+  const minKeep = Math.max(12, Math.min(24, Math.floor(max * 0.45)));
+  if (space >= minKeep) {
+    sliced = sliced.slice(0, space).trim();
+  }
+  return sliced.replace(DANGLING_SEO_TAIL, "").replace(/[,:;.-]+$/g, "").trim();
+}
+
 export type ListingGrade = "needs_work" | "good" | "strong" | "excellent";
 
 export type ListingScores = {
