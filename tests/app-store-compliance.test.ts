@@ -6,6 +6,13 @@ function read(path: string) {
 }
 
 describe("Shopify App Store billing compliance", () => {
+  it("hosts a public privacy policy", () => {
+    expect(existsSync("app/privacy/page.tsx")).toBe(true);
+    expect(read("app/privacy/page.tsx")).toMatch(/Privacy Policy/);
+    expect(read("app/privacy/page.tsx")).toMatch(/shop\/redact/);
+    expect(read("app/home-client.tsx")).toMatch(/\/privacy/);
+  });
+
   it("has no Stripe checkout, portal, or webhook routes", () => {
     expect(existsSync("app/api/stripe/checkout/route.ts")).toBe(false);
     expect(existsSync("app/api/stripe/portal/route.ts")).toBe(false);

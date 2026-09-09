@@ -9,7 +9,7 @@ import {
   isPaidSubscriptionStatus,
   type ShopifySubscriptionStatus,
 } from "./billing-access";
-import { accessStateForShop, syncShopifyBillingFromAdmin } from "./shopify-billing";
+import { accessStateForShop, syncShopifyBillingFromAdmin, usagePeriodStart } from "./shopify-billing";
 import { requirePaidProductAccess } from "./product-access";
 
 class ApiError extends Error {
@@ -57,11 +57,8 @@ export async function authorizeSubscriberForAI(
   usage: SubscriberUsage;
 }> {
   const { shop, billing } = await requirePaidProductAccess(request);
-  const usage = await peekAiUsage(
-    shop,
-    billing.subscriptionId,
-    billing.currentPeriodStart
-  );
+  const periodStart = usagePeriodStart(billing);
+  const usage = await peekAiUsage(shop, billing.subscriptionId, periodStart);
   if (usage.remaining <= 0) {
     throw new ApiError(
       "You have reached your AI usage limit for the current billing period.",
@@ -73,7 +70,7 @@ export async function authorizeSubscriberForAI(
     subscription: {
       subscriptionId: billing.subscriptionId,
       status: billing.status,
-      currentPeriodStart: billing.currentPeriodStart,
+      currentPeriodStart: periodStart,
       currentPeriodEnd: billing.currentPeriodEnd,
       test: billing.test,
     },
@@ -122,7 +119,11 @@ export async function storedSubscriberStatus(
   const { access, billing } = await accessStateForShop(shop, shopInstalled);
   let usage = null;
   if (billing) {
-    usage = await peekAiUsage(shop, billing.subscriptionId, billing.currentPeriodStart);
+    usage = await peekAiUsage(
+      shop,
+      billing.subscriptionId,
+      usagePeriodStart(billing)
+    );
   }
   return {
     active: access.productAccess,

@@ -39,10 +39,7 @@ export function isAllowedAppOrigin(
   if (allowed.has(origin)) return true;
 
   const host = hostnameOf(candidate);
-  return (
-    host === "admin.shopify.com" ||
-    (host.endsWith(".myshopify.com") && host !== ".myshopify.com")
-  );
+  return host === "admin.shopify.com";
 }
 
 export function isAllowedRedirectUrl(

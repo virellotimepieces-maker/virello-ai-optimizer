@@ -5,7 +5,6 @@ import {
 } from "../../_lib/app-session";
 import { getAppUrl } from "../../_lib/app-url";
 import { getActiveSubscriberStatus } from "../../_lib/subscriber";
-import { shopifyBillingIsTest } from "../../_lib/shopify-billing";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -19,10 +18,7 @@ export async function GET(request: NextRequest) {
     } catch {
       appUrl = "";
     }
-    const billingTest =
-      typeof subscriber.billingTest === "boolean"
-        ? subscriber.billingTest
-        : shopifyBillingIsTest();
+    const billingTest = subscriber.billingTest === true;
     const response = NextResponse.json(
       {
         success: true,
@@ -69,8 +65,8 @@ export async function GET(request: NextRequest) {
         canReplaceShop: true,
         subscriptionId: null,
         status: null,
-        billingTest: true,
-        live: false,
+        billingTest: false,
+        live: true,
       },
       { status: 500, headers: { "Cache-Control": "no-store" } }
     );

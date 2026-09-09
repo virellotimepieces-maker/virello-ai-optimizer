@@ -70,7 +70,7 @@ export async function GET(request: NextRequest) {
         request,
         {
           success: false,
-          error: "SHOPIFY_API_KEY is not configured.",
+          error: "Shopify credentials are not configured.",
         },
         500
       );
@@ -80,8 +80,7 @@ export async function GET(request: NextRequest) {
         request,
         {
           success: false,
-          error:
-            "SHOPIFY_API_SECRET is missing. In Vercel add it as Production only, then Redeploy Production without build cache.",
+          error: "Shopify credentials are not configured.",
         },
         500
       );

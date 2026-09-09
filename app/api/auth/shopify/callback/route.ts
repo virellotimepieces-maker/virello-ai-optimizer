@@ -72,24 +72,6 @@ function redirectError(
   url.searchParams.set("error_description", message);
   const attempted = normalizeShop(shop);
   if (attempted) url.searchParams.set("shop", attempted);
-  if (diag) {
-    url.searchParams.set(
-      "oauth_diag",
-      [
-        `keys=${diag.paramKeys.join(",")}`,
-        `inmsg=${(diag.officialKeys || []).join(",") || "none"}`,
-        `hmac=${diag.hmacLength}${diag.hmacHex ? "hex" : ""}`,
-        `secrets=${(diag.secretLengths || []).join(".")}`,
-        `secret=${diag.secretKind || "n"}`,
-        `host=${diag.hostKind}:${diag.hostLength}`,
-        `state=${diag.stateLength}`,
-        `code=${diag.codeLength}`,
-        `msgs=${diag.messageCount}`,
-        `invoke=${diag.hasInvokeQuery ? "1" : "0"}`,
-        `token=${diag.token || "none"}`,
-      ].join("|")
-    );
-  }
   return NextResponse.redirect(url);
 }
 
@@ -120,62 +102,66 @@ export async function GET(request: NextRequest) {
     if (!suppliedHmac) {
       return fail(
         "Shopify authorization was cancelled or did not complete. The store is still disconnected.",
-        {
-          ...shopifyCallbackHmacDiagnostics(request),
-          secretCount: secrets.length,
-          secretLengths: secrets.map((value) => value.length).sort((a, b) => a - b),
-        }
+        shopifyCallbackHmacDiagnostics(request)
       );
     }
 
     let verifiedSecret = secrets.find((secret) =>
       verifyShopifyCallbackHmac(request, secret)
     );
+    const hmacOk = Boolean(verifiedSecret);
     let exchanged: Extract<ShopifyCodeExchangeResult, { ok: true }> | null = null;
     let tokenDiag = "none";
 
-    if (!verifiedSecret) {
-      if (code && shop) {
-        for (const app of apps.length ? apps : secrets.map((secret) => ({ clientId: apiKey, secret }))) {
-          const result = await exchangeShopifyAuthorizationCode({
-            shop,
-            apiKey: app.clientId,
-            secret: app.secret,
-            code,
-          });
-          if (result.ok) {
-            console.error("SHOPIFY_OAUTH_HMAC_RECOVERED", {
-              shop,
-              officialKeys: shopifyCallbackHmacDiagnostics(request).officialKeys,
-            });
-            verifiedSecret = app.secret;
-            exchanged = result;
-            tokenDiag = "ok";
-            break;
-          }
-          tokenDiag = classifyShopifyTokenError(result.error, result.errorCode);
-        }
-      }
-
-      if (!verifiedSecret) {
-        const secretKind = classifyShopifySecretKind(secrets[0], apiKey);
-        const usedClientId = secrets.some((secret) =>
-          shopifySecretLooksLikeClientId(secret, apiKey)
-        );
-        const hmacError =
-          usedClientId
-            ? "SHOPIFY_API_SECRET is the Client ID, not the Client secret. Paste the Client secret from Shopify Dev Dashboard → this app → Settings."
-            : tokenDiag === "client"
-              ? "SHOPIFY_API_SECRET does not match this Shopify app. Paste the Client secret from Dev Dashboard → virello-ai-optimizer → Settings."
-              : "Shopify authorization signature is invalid.";
-        return fail(hmacError, {
-          ...shopifyCallbackHmacDiagnostics(request),
-          secretCount: secrets.length,
-          secretLengths: secrets.map((value) => value.length).sort((a, b) => a - b),
-          secretKind,
-          token: tokenDiag,
+    if (!verifiedSecret && code && shop) {
+      for (const app of apps.length ? apps : secrets.map((secret) => ({ clientId: apiKey, secret }))) {
+        const result = await exchangeShopifyAuthorizationCode({
+          shop,
+          apiKey: app.clientId,
+          secret: app.secret,
+          code,
         });
+        if (result.ok) {
+          exchanged = result;
+          tokenDiag = "ok";
+          break;
+        }
+        tokenDiag = classifyShopifyTokenError(result.error, result.errorCode);
       }
+    }
+
+    const signed = secrets
+      .map((secret) => parseSignedOAuthState(state, shop, secret))
+      .find(Boolean);
+    const binding = await getSessionBinding(request);
+    const pendingMatches = Boolean(shop && binding?.pendingShop === shop);
+    const canRecoverHmac = Boolean(exchanged && (signed || pendingMatches));
+
+    if (!hmacOk && !canRecoverHmac) {
+      const secretKind = classifyShopifySecretKind(secrets[0], apiKey);
+      const usedClientId = secrets.some((secret) =>
+        shopifySecretLooksLikeClientId(secret, apiKey)
+      );
+      const hmacError = usedClientId
+        ? "Shopify Client secret is not configured correctly."
+        : "Shopify authorization signature is invalid.";
+      return fail(hmacError, {
+        ...shopifyCallbackHmacDiagnostics(request),
+        secretCount: secrets.length,
+        secretLengths: secrets.map((value) => value.length).sort((a, b) => a - b),
+        secretKind,
+        token: tokenDiag,
+      });
+    }
+
+    if (!hmacOk && canRecoverHmac) {
+      console.error("SHOPIFY_OAUTH_HMAC_RECOVERED", {
+        shop,
+        pendingMatches,
+        signed: Boolean(signed),
+        officialKeys: shopifyCallbackHmacDiagnostics(request).officialKeys,
+      });
+      verifiedSecret = apps[0]?.secret || secrets[0];
     }
 
     if (oauthError && !exchanged) {
@@ -186,14 +172,6 @@ export async function GET(request: NextRequest) {
       return fail("Shopify authorization response is incomplete.");
     }
 
-    const signed = secrets
-      .map((secret) => parseSignedOAuthState(state, shop, secret))
-      .find(Boolean);
-    if (!signed && !exchanged) {
-      return fail("Invalid Shopify OAuth state. Please start the connection again.");
-    }
-
-    const binding = await getSessionBinding(request);
     if (binding?.installedShop && binding.installedShop !== shop) {
       return fail(
         "This Virello session is already linked to a different Shopify store. Use Change Store to disconnect it first."
@@ -201,7 +179,7 @@ export async function GET(request: NextRequest) {
     }
 
     if (!exchanged) {
-      const pairs = apps.length ? apps : [{ clientId: apiKey, secret: verifiedSecret }];
+      const pairs = apps.length ? apps : [{ clientId: apiKey, secret: verifiedSecret || secrets[0] }];
       let lastError = "Shopify authorization failed.";
       for (const app of pairs) {
         const result = await exchangeShopifyAuthorizationCode({
@@ -242,7 +220,12 @@ export async function GET(request: NextRequest) {
       revokeShopSessions: true,
     });
 
-    const flow = signed?.flow === "embedded" ? "embedded" : "standalone";
+    const flow =
+      signed?.flow === "embedded" ||
+      params.get("embedded") === "1" ||
+      Boolean(params.get("host"))
+        ? "embedded"
+        : "standalone";
     const redirectUrl =
       flow === "embedded"
         ? shopifyAdminAppUrl(shop, { connected: "1" })
@@ -269,8 +252,6 @@ export async function GET(request: NextRequest) {
     return response;
   } catch (error) {
     console.error("SHOPIFY_CALLBACK_ERROR:", error);
-    return fail(
-      error instanceof Error ? error.message : "Unable to complete Shopify connection."
-    );
+    return fail("Unable to complete Shopify connection.");
   }
 }

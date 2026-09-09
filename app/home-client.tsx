@@ -18,6 +18,7 @@ import {
   parseMerchantFacts,
   type MerchantFactField,
 } from "./api/_lib/merchant-facts";
+import { productAccessDeniedMessage } from "./api/_lib/billing-access";
 
 type Product = {
   id: string;
@@ -172,6 +173,7 @@ export default function Home({
 
   const [canManage, setCanManage] = useState(false);
   const [productAccess, setProductAccess] = useState(false);
+  const [accessReason, setAccessReason] = useState("");
   const [shopInstalled, setShopInstalled] = useState(false);
   const [pendingShop, setPendingShop] = useState("");
   const [billedShop, setBilledShop] = useState("");
@@ -292,6 +294,7 @@ export default function Home({
         setCanManage(Boolean(status?.canManage));
         setBillingTest(Boolean(status?.billingTest));
         setProductAccess(Boolean(status?.active));
+        setAccessReason(typeof status?.reason === "string" ? status.reason : "");
         setShopInstalled(Boolean(status?.shopInstalled));
         setPendingShop(typeof status?.pendingShop === "string" ? status.pendingShop : "");
         setBilledShop(typeof status?.billedShop === "string" ? status.billedShop : "");
@@ -363,6 +366,7 @@ export default function Home({
     } catch (err) {
       const message = err instanceof Error ? err.message : copy.portalError;
       showError("payment", message);
+    } finally {
       setPortalLoading(false);
     }
   }
@@ -475,6 +479,13 @@ export default function Home({
       setPendingShop("");
       setCanReplaceShop(true);
       setProductAccess(false);
+      setAccessReason("not_installed");
+      setProducts([]);
+      setSelectedId("");
+      setOptimization(null);
+      setAnalysis(null);
+      setApproved(false);
+      setUsage(null);
       setMessage(copy.disconnectSuccess);
     } catch (err) {
       showError("shopify", err instanceof Error ? err.message : copy.shopifyError);
@@ -694,7 +705,7 @@ export default function Home({
               <div className="brand-small">
                 {copy.brandSmall}
                 <span className="live-badge" data-testid="live-badge">
-                  {copy.liveBadge}
+                  {billingTest ? copy.testBadge : copy.liveBadge}
                 </span>
               </div>
               <div className="brand-name">{copy.brand}</div>
@@ -715,7 +726,7 @@ export default function Home({
           <div className="brand-small">
             {copy.brandSmall}
             <span className="live-badge" data-testid="live-badge">
-              {copy.liveBadge}
+              {billingTest ? copy.testBadge : copy.liveBadge}
             </span>
           </div>
           <div className="brand-name">{copy.brand}</div>
@@ -833,8 +844,17 @@ export default function Home({
           </article>
 
           <article className="content-card">
-            <h2>{copy.outputLanguage}</h2>
+            <h2>{copy.importAndUsage}</h2>
             <p>{copy.usage}: {usage ? `${usage.used} / ${usage.limit}` : "0 / 1000"}</p>
+            {!productAccess && (
+              <p className="empty-copy" data-testid="product-access-hint">
+                {accessReason
+                  ? productAccessDeniedMessage(
+                      accessReason as Parameters<typeof productAccessDeniedMessage>[0]
+                    )
+                  : copy.needSubscription}
+              </p>
+            )}
             <button type="button" className="subscribe-button" onClick={() => importProducts()} disabled={importing || !productAccess}>
               {importing ? copy.importing : copy.importProducts}
             </button>
@@ -1158,6 +1178,9 @@ export default function Home({
           )}
         </article>
       </section>
+      <footer className="app-footer">
+        <a href="/privacy">{copy.privacyPolicy}</a>
+      </footer>
         </>
       )}
     </main>

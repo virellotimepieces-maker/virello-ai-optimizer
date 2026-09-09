@@ -169,6 +169,13 @@ async function consumeIdempotentAiUsage(
     return asUsage(used, limit);
   }
   if (claimed && !incremented) {
+    await dbQuery(
+      `DELETE FROM subscriber_usage_events
+       WHERE subscription_id = $1
+         AND period_start = $2
+         AND idempotency_key = $3`,
+      [subscriptionId, periodStart, idempotencyKey]
+    );
     throw Object.assign(
       new Error(
         "You have reached your AI usage limit for the current billing period."

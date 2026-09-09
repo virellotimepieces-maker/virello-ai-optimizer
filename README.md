@@ -120,6 +120,15 @@ Subscriber path: Subscribe ($29.99/month via Shopify Billing) → Import → Opt
 
 Charges are created with GraphQL `appSubscriptionCreate`. Test charges are the default (`SHOPIFY_BILLING_TEST` unset or `true`, and always on partner development stores). Set `SHOPIFY_BILLING_TEST=false` on Production only when live Shopify charges should be created for non-development stores.
 
+There is no Stripe Checkout. Leftover `STRIPE_*` Vercel variables are unused. The former Stripe checks map as follows:
+
+| Former Stripe check | Shopify Billing equivalent |
+| --- | --- |
+| Test checkout | `SHOPIFY_BILLING_TEST` / partner development → `test: true` on `appSubscriptionCreate` |
+| Webhook signature | `x-shopify-hmac-sha256` on `/api/webhooks` |
+| Active subscription | Shopify status `ACTIVE` |
+| Subscribe → Manage | `canManage` for `ACTIVE`, `PENDING`, and `FROZEN` |
+
 Webhook: `app_subscriptions/update` → `https://virello-ai-optimizer.vercel.app/api/webhooks`.
 
 A Vercel deploy does **not** register that topic. Run `shopify app deploy` (or release from Dev Dashboard) for Client ID `059b113acaba78d855be9bc9500e421a` so the listing app serves `app_subscriptions/update`.
@@ -135,7 +144,9 @@ A Vercel deploy does **not** update Shopify. In [Dev Dashboard](https://dev.shop
 3. **Distribution:** development-store-only limits installs to listed shops. To take other paying subscribers, switch to **Unlisted** (install link) or **Public** (App Store).
 4. Do not resubmit until install → Subscribe → Shopify confirmation → `ACTIVE` has been tested in a development store.
 
-Health check: `GET https://virello-ai-optimizer.vercel.app/api/health` → `{ "ok": true, "live": true }`.
+Health check: `GET https://virello-ai-optimizer.vercel.app/api/health` → `{ "ok": true, "live": true, "ready": true|false, "env": { ...booleans } }`. The `env` object lists required variable **names** as present/absent. It never returns secret values.
+
+Privacy policy: `https://virello-ai-optimizer.vercel.app/privacy`. Set this URL on the App Store listing.
 
 ## Shopify OAuth (production)
 

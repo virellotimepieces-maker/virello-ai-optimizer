@@ -31,12 +31,7 @@ export default function ConnectPage() {
   const [oauthDiag, setOauthDiag] = useState("");
   const [secretStatus, setSecretStatus] = useState<{
     configured?: boolean;
-    clientId?: string;
-    secretKind?: string;
-    secretLength?: number;
     looksLikeClientId?: boolean;
-    apiSecret?: boolean;
-    previous?: boolean;
   } | null>(null);
   const [billingTest, setBillingTest] = useState(false);
 
@@ -328,7 +323,7 @@ export default function ConnectPage() {
           <div className="brand-small">
             {copy.brandSmall}
             <span className="live-badge" data-testid="live-badge">
-              {copy.liveBadge}
+              {billingTest ? copy.testBadge : copy.liveBadge}
             </span>
           </div>
           <div className="brand-name">{copy.brand}</div>
@@ -483,11 +478,8 @@ export default function ConnectPage() {
               <p data-testid="shopify-secret-status">
                 {secretStatus.looksLikeClientId
                   ? copy.secretStatusWrong
-                  : secretStatus.apiSecret
+                  : secretStatus.configured
                     ? copy.secretStatusReady
-                        .replace("{id}", secretStatus.clientId || "—")
-                        .replace("{kind}", secretStatus.secretKind || "missing")
-                        .replace("{length}", String(secretStatus.secretLength || 0))
                     : copy.secretStatusMissing}
               </p>
             )}
@@ -578,6 +570,9 @@ export default function ConnectPage() {
           </article>
         </section>
       )}
+      <footer className="app-footer">
+        <a href="/privacy">{copy.privacyPolicy}</a>
+      </footer>
     </main>
   );
 }

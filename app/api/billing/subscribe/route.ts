@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getAppUrl } from "../../_lib/app-url";
 import { OriginGuardError, assertSafeMutation } from "../../_lib/origin-guard";
 import { authenticateShopifyRequest, ShopifyAuthError } from "../../_lib/shopify-auth";
 import { isShopifyInstallationActive } from "../../_lib/shops";
@@ -25,7 +26,15 @@ export async function POST(request: NextRequest) {
         { status: 403, headers: { "Cache-Control": "no-store" } }
       );
     }
-    const created = await createShopifyAppSubscription({ shop, accessToken });
+    const body = (await request.json().catch(() => null)) as { flow?: string } | null;
+    const embedded =
+      body?.flow === "embedded" ||
+      request.nextUrl.searchParams.get("embedded") === "1" ||
+      Boolean(request.nextUrl.searchParams.get("host"));
+    const returnUrl = `${getAppUrl()}/api/billing/return?shop=${encodeURIComponent(shop)}${
+      embedded ? "&embedded=1" : ""
+    }`;
+    const created = await createShopifyAppSubscription({ shop, accessToken, returnUrl });
     return NextResponse.json(
       {
         success: true,

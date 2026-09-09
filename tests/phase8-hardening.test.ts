@@ -189,6 +189,7 @@ describe("Phase 8 hardening", () => {
     expect(COPY.en.domainHint).toMatch(/myshopify\.com/);
     expect(COPY.fil.domainHint).toMatch(/myshopify\.com/);
     expect(COPY.en.liveBadge).toBe("Live");
+    expect(COPY.en.testBadge).toBe("Test");
     expect(COPY.fil.liveBadge).toBe("Live");
     expect(COPY.en.sandboxBillingBanner).toMatch(/Approve the Shopify/);
     expect(COPY.fil.sandboxBillingBanner).toMatch(/Aprubahan/);

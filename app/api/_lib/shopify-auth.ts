@@ -2,7 +2,12 @@ import { NextRequest } from "next/server";
 import { shopFromSessionCookie } from "./app-session";
 import { dbQuery } from "./database";
 import { normalizeShop } from "./shop-domain";
-import { revokeShopifyInstallation, upsertShop, isShopifyInstallationActive } from "./shops";
+import {
+  redactShopifyShopData,
+  revokeShopifyInstallation,
+  upsertShop,
+  isShopifyInstallationActive,
+} from "./shops";
 import { decryptShopifyToken, encryptShopifyToken } from "./shopify-session";
 import {
   getShopifyIdToken,
@@ -482,14 +487,10 @@ export async function authenticateShopifyRequest(
       const identity = verifyShopifySessionToken(idToken);
       if (!requireAccessToken) return { ...identity, accessToken: "" };
 
-      try {
-        const accessToken = await exchangeOfflineToken(identity.shop, idToken, identity);
-        return { ...identity, accessToken };
-      } catch (exchangeError) {
-        const saved = await resolvedStoredAccessToken(identity.shop, identity);
-        if (saved) return { ...identity, accessToken: saved };
-        throw exchangeError;
-      }
+      const saved = await resolvedStoredAccessToken(identity.shop, identity);
+      if (saved) return { ...identity, accessToken: saved };
+      const accessToken = await exchangeOfflineToken(identity.shop, idToken, identity);
+      return { ...identity, accessToken };
     } catch (error) {
       idTokenError = error;
     }
@@ -521,4 +522,8 @@ export async function authenticateShopifyRequest(
 
 export async function deleteShopifyData(shop: string): Promise<void> {
   await revokeShopifyInstallation(shop);
+}
+
+export async function redactShopifyData(shop: string): Promise<void> {
+  await redactShopifyShopData(shop);
 }

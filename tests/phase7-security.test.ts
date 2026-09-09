@@ -47,6 +47,16 @@ describe("Phase 7 authorization and abuse controls", () => {
       headers: { origin: "https://alias.vercel.app" },
     });
     expect(() => assertSafeMutation(alias)).not.toThrow();
+    const storefront = new NextRequest("https://app.virello.example/api/ai/analyze", {
+      method: "POST",
+      headers: { origin: "https://attacker.myshopify.com" },
+    });
+    expect(() => assertSafeMutation(storefront)).toThrow(OriginGuardError);
+    const admin = new NextRequest("https://app.virello.example/api/ai/analyze", {
+      method: "POST",
+      headers: { origin: "https://admin.shopify.com" },
+    });
+    expect(() => assertSafeMutation(admin)).not.toThrow();
     delete process.env.ALLOWED_APP_ORIGINS;
   });
 

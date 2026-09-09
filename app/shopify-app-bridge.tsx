@@ -36,26 +36,22 @@ export default function ShopifyAppBridge() {
 
     async function handshake() {
       const params = new URLSearchParams(window.location.search);
-      const embedded =
-        params.get("embedded") === "1" ||
-        Boolean(params.get("host")) ||
-        Boolean(params.get("id_token")) ||
-        isShopifyAdminIframe();
-
-      const deadline = Date.now() + 8000;
-      while (!window.shopify?.idToken && Date.now() < deadline) {
-        await new Promise((resolve) => window.setTimeout(resolve, 50));
+      const hasShopifyRuntime =
+        Boolean(params.get("host") || params.get("id_token")) || isShopifyAdminIframe();
+      if (hasShopifyRuntime) {
+        const deadline = Date.now() + 8000;
+        while (!window.shopify?.idToken && Date.now() < deadline) {
+          await new Promise((resolve) => window.setTimeout(resolve, 50));
+        }
       }
       if (cancelled) return;
 
       if (!window.shopify?.idToken) {
-        if (embedded) {
-          window.dispatchEvent(
-            new CustomEvent("virello-shopify-session", {
-              detail: { connected: false, authenticating: true },
-            })
-          );
-        }
+        window.dispatchEvent(
+          new CustomEvent("virello-shopify-session", {
+            detail: { connected: false, authenticating: false },
+          })
+        );
         return;
       }
 
@@ -104,17 +100,20 @@ export default function ShopifyAppBridge() {
         await new Promise((resolve) => window.setTimeout(resolve, 400));
       }
 
-      if (embedded) {
-        window.dispatchEvent(
-          new CustomEvent("virello-shopify-session", {
-            detail: { connected: false, authenticating: true, shop: lastShop },
-          })
-        );
-      }
+      window.dispatchEvent(
+        new CustomEvent("virello-shopify-session", {
+          detail: { connected: false, authenticating: false, shop: lastShop },
+        })
+      );
     }
 
     handshake().catch((error) => {
       console.error("SHOPIFY_SESSION_HANDSHAKE_ERROR", error);
+      window.dispatchEvent(
+        new CustomEvent("virello-shopify-session", {
+          detail: { connected: false, authenticating: false },
+        })
+      );
     });
 
     return () => {

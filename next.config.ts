@@ -17,6 +17,14 @@ const nextConfig: NextConfig = {
             value:
               "frame-ancestors https://admin.shopify.com https://*.myshopify.com;",
           },
+          {
+            key: "Strict-Transport-Security",
+            value: "max-age=31536000; includeSubDomains",
+          },
+          {
+            key: "Permissions-Policy",
+            value: "camera=(), microphone=(), geolocation=()",
+          },
         ],
       },
     ];

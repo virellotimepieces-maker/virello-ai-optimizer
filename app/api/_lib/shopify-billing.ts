@@ -1,6 +1,7 @@
 import { getAppUrl } from "./app-url";
 import { dbQuery } from "./database";
 import { shopifyAdminGraphql } from "./shopify-admin";
+import { storedAccessToken } from "./shopify-auth";
 import { normalizeShop } from "./shop-domain";
 import { shopifyAdminAppUrl } from "./shopify-oauth";
 import { upsertShop } from "./shops";
@@ -81,9 +82,14 @@ export async function saveShopifyAppSubscription(input: {
 }): Promise<ShopifyBillingSnapshot> {
   const shop = await upsertShop(input.shop, { markInstalled: false });
   const status = normalizeShopifySubscriptionStatus(input.status) || "PENDING";
-  const currentPeriodEnd = input.currentPeriodEnd || 0;
-  const currentPeriodStart =
+  const now = Math.floor(Date.now() / 1000);
+  let currentPeriodEnd = input.currentPeriodEnd || 0;
+  let currentPeriodStart =
     input.currentPeriodStart || periodStartFromEnd(currentPeriodEnd);
+  if (status === "ACTIVE") {
+    if (!currentPeriodEnd) currentPeriodEnd = now + PERIOD_SECONDS;
+    if (!currentPeriodStart) currentPeriodStart = periodStartFromEnd(currentPeriodEnd) || now;
+  }
   await dbQuery(
     `INSERT INTO shopify_app_subscriptions (
        shop, shopify_subscription_gid, status, test, name, amount_cents,
@@ -420,6 +426,33 @@ export async function createShopifyAppSubscription(input: {
   return { confirmationUrl, billing, test };
 }
 
+export function usagePeriodStart(
+  billing: Pick<ShopifyBillingSnapshot, "currentPeriodStart" | "currentPeriodEnd">,
+  now = Math.floor(Date.now() / 1000)
+): number {
+  const start = Number(billing.currentPeriodStart) || 0;
+  const end = Number(billing.currentPeriodEnd) || 0;
+  if (start > 0 && (end <= 0 || now < end)) return start;
+  if (start > 0) {
+    const elapsed = Math.max(0, now - start);
+    return start + Math.floor(elapsed / PERIOD_SECONDS) * PERIOD_SECONDS;
+  }
+  if (end > 0) {
+    let periodEnd = end;
+    while (periodEnd <= now) periodEnd += PERIOD_SECONDS;
+    return Math.max(0, periodEnd - PERIOD_SECONDS);
+  }
+  return now;
+}
+
+export function billingPeriodIsStale(
+  billing: Pick<ShopifyBillingSnapshot, "currentPeriodStart" | "currentPeriodEnd">,
+  now = Math.floor(Date.now() / 1000)
+): boolean {
+  if (!billing.currentPeriodStart) return true;
+  return billing.currentPeriodEnd > 0 && billing.currentPeriodEnd <= now;
+}
+
 export function shopifyBillingManageUrl(
   shop: string,
   billing: ShopifyBillingSnapshot | null
@@ -439,13 +472,17 @@ export function shopifyBillingManageUrl(
   return `https://admin.shopify.com/store/${store}/settings/billing`;
 }
 
-export function billingReturnAppUrl(shop: string, flow: "embedded" | "standalone"): string {
+export function billingReturnAppUrl(
+  shop: string,
+  flow: "embedded" | "standalone",
+  checkout: "success" | "cancelled" = "success"
+): string {
   if (flow === "embedded") {
-    const url = shopifyAdminAppUrl(shop, { checkout: "success" });
+    const url = shopifyAdminAppUrl(shop, { checkout });
     return url.toString();
   }
   const url = new URL("/", getAppUrl());
-  url.searchParams.set("checkout", "success");
+  url.searchParams.set("checkout", checkout);
   url.searchParams.set("shop", shop);
   return url.toString();
 }
@@ -470,7 +507,7 @@ export async function applyAppSubscriptionWebhook(
   const status = normalizeShopifySubscriptionStatus(subscription.status);
   if (!gid || !status) return null;
   const stored = await billingForShop(shop);
-  return saveShopifyAppSubscription({
+  const saved = await saveShopifyAppSubscription({
     shop,
     subscriptionGid: gid,
     status,
@@ -485,4 +522,13 @@ export async function applyAppSubscriptionWebhook(
     currentPeriodEnd: stored?.currentPeriodEnd,
     confirmationUrl: stored?.confirmationUrl,
   });
+  try {
+    const token = await storedAccessToken(shop);
+    if (token) {
+      return (await syncShopifyBillingFromAdmin(shop, token)) || saved;
+    }
+  } catch {
+    // Stored snapshot is enough when Admin GraphQL is unreachable.
+  }
+  return saved;
 }

@@ -55,18 +55,19 @@ export function sessionCookieOptions(input: {
 }): {
   httpOnly: true;
   secure: boolean;
-  sameSite: "none";
+  sameSite: "none" | "lax";
   path: "/";
   maxAge: number;
   partitioned: boolean;
 } {
+  const embedded = input.mode === "embedded";
   return {
     httpOnly: true,
     secure: input.secure ?? true,
-    sameSite: "none",
+    sameSite: embedded ? "none" : "lax",
     path: "/",
     maxAge: SESSION_TTL_SECONDS,
-    partitioned: input.mode === "embedded",
+    partitioned: embedded,
   };
 }
 

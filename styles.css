@@ -380,6 +380,9 @@ textarea {
   min-width: 0;
   max-width: 100%;
   overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 
   border: 1px solid #e0e3e7;
   border-radius: 15px;
@@ -1619,6 +1622,42 @@ textarea {
 
 .dashboard-grid {
   align-items: stretch;
+}
+
+@media (min-width: 960px) {
+  .dashboard-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.app-footer {
+  width: min(1180px, calc(100% - 48px));
+  margin: 0 auto 40px;
+  font-size: 13px;
+}
+
+.app-footer a {
+  color: #475569;
+}
+
+.privacy-page .privacy-card {
+  width: min(760px, calc(100% - 48px));
+  margin: 24px auto 48px;
+}
+
+.privacy-card h1 {
+  margin: 0 0 8px;
+  font-size: 28px;
+}
+
+.privacy-card h2 {
+  margin: 18px 0 8px;
+  font-size: 16px;
+}
+
+.privacy-card ul {
+  margin: 0;
+  padding-left: 20px;
 }
 
 .input-label {

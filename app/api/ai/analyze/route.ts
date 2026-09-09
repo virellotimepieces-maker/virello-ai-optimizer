@@ -92,9 +92,6 @@ export async function POST(request: NextRequest) {
       );
     }
     console.error("AI_ANALYZE_ERROR:", error);
-    return errorResponse(
-      error instanceof Error ? error.message : "Unable to optimize this product.",
-      500
-    );
+    return errorResponse("Unable to optimize this product.", 500);
   }
 }
