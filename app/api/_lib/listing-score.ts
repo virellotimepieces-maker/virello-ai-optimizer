@@ -56,7 +56,7 @@ export function scoreLimitExplanation(missing: string[]): string[] {
 }
 
 function isGenericMerchantNote(value: string): boolean {
-  return /keep the listing factual|no further listed specifications|score is limited/i.test(
+  return /keep the listing factual|no further listed specifications|score is limited|use these listed facts|customer copy|only the product name and type are listed/i.test(
     value
   );
 }
@@ -121,4 +121,17 @@ export function scoreListing(input: ScoredListing): ListingScores {
     scores.title * 0.2 + scores.description * 0.3 + scores.seo * 0.2 + scores.conversion * 0.3
   );
   return { ...scores, overall, grade: gradeForScore(overall) };
+}
+
+export function capFallbackScores(
+  scores: ListingScores,
+  missingInformation: number
+): ListingScores {
+  const maxOverall = missingInformation >= 2 ? 69 : 79;
+  const overall = Math.min(scores.overall, maxOverall);
+  return {
+    ...scores,
+    overall,
+    grade: gradeForScore(overall),
+  };
 }

@@ -3,8 +3,12 @@ import { normalizeShop } from "./shop-domain";
 import type { BrandVoice } from "./brand-voice";
 import { DEFAULT_BRAND_VOICE } from "./brand-voice";
 import type { OptimizationResult, OptimizerProduct } from "./optimizer";
-import { merchantFactHaystack, merchantFactLines, parseMerchantFacts } from "./merchant-facts";
-import { scoreLimitExplanation } from "./listing-score";
+import {
+  merchantFactFieldPresent,
+  merchantFactHaystack,
+  merchantFactLines,
+  parseMerchantFacts,
+} from "./merchant-facts";
 
 const STOP_WORDS = new Set([
   "with",
@@ -62,9 +66,42 @@ const TRAILING_JUNK = /[\s|:;,.–—/-]+$/g;
 const PLACEHOLDER_TITLE = /^(default title|untitled|home page|welcome|example product|lorem ipsum)$/i;
 const TEMPLATE_JUNK =
   /\b(home page|welcome to our store|lorem ipsum|click here|insert description|product description here)\b/gi;
+const INTERNAL_INSTRUCTION =
+  /\b(use these (?:listed )?facts(?: in the customer copy)?|keep the listing factual|system prompt|internal (?:instruction|note|label)|validation note|return json only|write all customer-facing)\b/i;
+const INTERNAL_LEAD =
+  /^\s*(?:customer copy|use these facts|listed facts|internal note|system message|validation(?: failures?)?)\s*[:.\-–—]+\s*/i;
 
 export function cleanCopyText(value: unknown): string {
   return typeof value === "string" ? stripHtml(value).replace(/\s+/g, " ").trim() : "";
+}
+
+export function polishPunctuation(value: string): string {
+  let text = cleanCopyText(value);
+  if (!text) return "";
+  text = text.replace(/\s+/g, " ");
+  text = text.replace(/\s+([,.;:!?])/g, "$1");
+  text = text.replace(/([,.;:!?])\1+/g, "$1");
+  text = text.replace(/,\s*\./g, ".");
+  text = text.replace(/\.\s*\./g, ".");
+  text = text.replace(/\s+\./g, ".");
+  text = text.replace(/\s+/g, " ").trim();
+  text = text.replace(/^[,.;:!?]+/, "").replace(/[,:;]+$/, "").trim();
+  return text;
+}
+
+export function stripInternalInstructions(value: unknown): string {
+  let text = cleanCopyText(value);
+  if (!text) return "";
+  text = text.replace(INTERNAL_LEAD, "");
+  text = text.replace(new RegExp(INTERNAL_INSTRUCTION.source, "gi"), " ");
+  text = text.replace(/[:.\-–—]\s*$/g, " ");
+  return polishPunctuation(text);
+}
+
+export function hasInternalInstruction(value: string): boolean {
+  const text = cleanCopyText(value);
+  if (!text) return false;
+  return INTERNAL_LEAD.test(text) || INTERNAL_INSTRUCTION.test(text);
 }
 
 export function shopContentLeakTokens(shop?: string): string[] {
@@ -237,6 +274,7 @@ export function normalizeGeneratedText(
   kind: "plain" | "title" = "plain"
 ): string {
   let text = stripShopLeaks(cleanCopyText(value), product, shop);
+  text = stripInternalInstructions(text);
   text = text.replace(ROMAN_SLASH, " ");
   text = text.replace(TEMPLATE_JUNK, " ");
   text = dedupeRepeatedPrices(text);
@@ -252,7 +290,7 @@ export function normalizeGeneratedText(
       text = stripShopLeaks(cleanCopyText(product.title), product, shop);
     }
   }
-  return text.replace(/\s+/g, " ").trim();
+  return polishPunctuation(text);
 }
 
 function uniqueTexts(values: string[]): string[] {
@@ -385,11 +423,11 @@ function typeAlreadyInTitle(title: string, type: string): boolean {
 function listedAsLine(type: string): string {
   const kind = cleanCopyText(type);
   if (!kind) return "";
-  return `Listed as ${kind.toLowerCase() === "watch" ? "a watch" : kind}`;
+  return `Listed as ${withArticle(kind)}`;
 }
 
 function withArticle(noun: string): string {
-  const text = cleanCopyText(noun);
+  const text = cleanCopyText(noun).toLowerCase();
   if (!text) return "";
   const first = text.split(/\s+/)[0] || text;
   return `${/^[aeiou]/i.test(first) ? "an" : "a"} ${text}`;
@@ -435,7 +473,7 @@ export function listingFacts(
       includePrice ? cleanCopyText(product.price || "") : "",
       ...sentences.map((item) => stripDirtyMarketing(stripShopLeaks(item, product, shop))),
       ...merchantFactLines(product.merchantFacts).map((item) =>
-        stripDirtyMarketing(stripShopLeaks(item, product, shop))
+        stripShopLeaks(item, product, shop)
       ),
       ...(product.options || []).map((item) =>
         stripDirtyMarketing(stripShopLeaks(cleanCopyText(item), product, shop))
@@ -498,27 +536,45 @@ export function sanitizeProductSource(
 function sparseMissingDetails(product?: OptimizerProduct): string[] {
   if (!product) return ["Product specifications are not listed."];
   const hay = genuineProductHaystack(product);
+  const facts = parseMerchantFacts(product.merchantFacts);
   const missing: string[] = [];
   if (!cleanCopyText(product.description) || cleanCopyText(product.description).length < 24) {
     missing.push("A detailed product description is not listed.");
   }
-  if (!/\b(steel|leather|gold|silver|titanium|brass|ceramic|nylon|silicone)\b/i.test(hay)) {
+  if (!merchantFactFieldPresent(facts, "material") && !/\b(steel|leather|gold|silver|titanium|brass|ceramic|nylon|silicone|cotton|wool|wood|glass|plastic|linen|canvas)\b/i.test(hay)) {
     missing.push("Materials are not listed.");
   }
-  if (!/\b(quartz|automatic|mechanical|movement|battery)\b/i.test(hay)) {
-    missing.push("Movement or power details are not listed.");
-  }
-  if (!/\b(water|atm|waterproof|resistance)\b/i.test(hay)) {
-    missing.push("Water resistance is not listed.");
-  }
-  if (!/\b(mm|cm|size|diameter|length|width)\b/i.test(hay)) {
+  if (!merchantFactFieldPresent(facts, "dimensions") && !/\b(mm|cm|in(?:ch(?:es)?)?|size|diameter|length|width|height)\b/i.test(hay)) {
     missing.push("Dimensions are not listed.");
   }
-  if (!/\b(warranty|guarantee)\b/i.test(hay)) {
+  if (!merchantFactFieldPresent(facts, "warranty") && !/\b(warranty|guarantee)\b/i.test(hay)) {
     missing.push("Warranty terms are not listed.");
   }
-  if (!cleanCopyText(product.merchantFacts?.intendedUse) && !/\b(intended use|everyday|daily wear|dress|sport|dive)\b/i.test(hay)) {
+  if (
+    !merchantFactFieldPresent(facts, "intendedUse") &&
+    !/\b(intended use|everyday|daily wear|dress|sport|office|kitchen|outdoor)\b/i.test(hay)
+  ) {
     missing.push("Intended use is not listed.");
+  }
+  const mentionsMovementContext = /\b(watch|clock|timepiece|motor|engine|quartz|automatic|mechanical|movement)\b/i.test(
+    `${hay} ${product.productType || ""} ${product.title || ""}`
+  );
+  if (
+    mentionsMovementContext &&
+    !merchantFactFieldPresent(facts, "movement") &&
+    !/\b(quartz|automatic|mechanical|movement|battery|motor|engine)\b/i.test(hay)
+  ) {
+    missing.push("Movement or power details are not listed.");
+  }
+  const mentionsWaterContext = /\b(watch|dive|outdoor|jacket|coat|boot|speaker|camera|phone)\b/i.test(
+    `${hay} ${product.productType || ""} ${product.title || ""}`
+  );
+  if (
+    mentionsWaterContext &&
+    !merchantFactFieldPresent(facts, "waterResistance") &&
+    !/\b(water|atm|waterproof|resistance)\b/i.test(hay)
+  ) {
+    missing.push("Water resistance is not listed.");
   }
   return missing.slice(0, 7);
 }
@@ -565,9 +621,7 @@ function factualDescription(
   const type = stripDirtyMarketing(stripShopLeaks(cleanCopyText(product?.productType || ""), product, shop));
   const vendor = stripShopLeaks(cleanCopyText(product?.vendor || ""), product, shop);
   const named = extraFacts(product, shop, voice);
-  const typePhrase = type
-    ? withArticle(type.toLowerCase() === "watch" ? "watch" : type)
-    : "";
+  const typePhrase = type ? withArticle(type) : "";
   const sentences: string[] = [];
   if (vendor && typePhrase && !title.toLowerCase().includes(vendor.toLowerCase())) {
     sentences.push(`${title} is ${typePhrase} from ${vendor}.`);
@@ -603,7 +657,7 @@ function factualMeta(
   const vendor = stripShopLeaks(cleanCopyText(product?.vendor || ""), product, shop);
   const named = extraFacts(product, shop, voice);
   if (!named.length) {
-    const kind = type ? withArticle(type.toLowerCase() === "watch" ? "watch" : type) : "a listed product";
+    const kind = type ? withArticle(type) : "a listed product";
     return `${title} appears as ${kind} on this product page, with no further specifications.`.slice(0, 160);
   }
   const lead = vendor && !title.toLowerCase().includes(vendor.toLowerCase()) ? `${title} from ${vendor}` : title;
@@ -775,17 +829,21 @@ export function applyCopyGuards(
 
   const usableFacts = facts.filter((item) => !isTypeOnlyFact(item, source));
   let conversionCopy = normalizeGeneratedText(result.optimization.conversionCopy, source, shop);
+  conversionCopy = stripInternalInstructions(conversionCopy);
   if (
     !conversionCopy ||
     looksLikeRemnant(conversionCopy) ||
+    hasInternalInstruction(conversionCopy) ||
     sharesSentence(conversionCopy, title) ||
     sharesSentence(conversionCopy, description) ||
     hasDropshippingLanguage(conversionCopy) ||
     hasValueHypeLanguage(conversionCopy)
   ) {
     conversionCopy = usableFacts.length
-      ? `Use these listed facts in the customer copy: ${usableFacts.slice(0, 3).join("; ")}.`
-      : "This score is limited because only the product name and type are listed. Add material, movement, dimensions, water resistance, coverage period, or intended use.";
+      ? polishPunctuation(
+          `${stripShopLeaks(cleanCopyText(source?.title || "This product"), source, shop)} lists ${joinList(usableFacts.slice(0, 3))}.`
+        )
+      : "Only the product name and type are listed, so this draft stays factual.";
   }
 
   let seoTitle = normalizeGeneratedText(result.optimization.seoTitle, source, shop, "title").slice(0, 60);
@@ -844,11 +902,15 @@ export function applyCopyGuards(
     ...sparseMissingDetails(source),
   ]).filter(Boolean);
   result.analysis.missingInformation = missing.slice(0, 8);
-  result.analysis.warnings = uniqueTexts([
-    ...scoreLimitExplanation(missing),
-    ...result.analysis.warnings.map((item) => neutralizeAnalysisLine(item, source, shop)),
-    ...missing.map((item) => `Missing product information: ${item}`),
-  ]).filter(Boolean).slice(0, 14);
+  result.analysis.warnings = uniqueTexts(
+    result.analysis.warnings
+      .map((item) => neutralizeAnalysisLine(item, source, shop))
+      .filter(Boolean)
+      .filter((item) => !missing.some((gap) => item.toLowerCase().includes(gap.toLowerCase())))
+      .filter((item) => !/missing product information:/i.test(item))
+      .filter((item) => !/limited by missing product facts/i.test(item))
+      .filter((item) => !/would improve the score:/i.test(item))
+  ).slice(0, 8);
   result.analysis.targetCustomer = neutralizeAnalysisLine(
     result.analysis.targetCustomer,
     source,

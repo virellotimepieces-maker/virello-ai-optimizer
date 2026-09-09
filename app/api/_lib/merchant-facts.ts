@@ -42,21 +42,33 @@ export function merchantFactHaystack(facts?: MerchantFacts): string {
     .join(" \n ");
 }
 
+export function merchantFactValue(field: MerchantFactField, value: string): string {
+  const text = cleanFactValue(value);
+  if (!text) return "";
+  if (field === "movement" && !/\bmovement\b/i.test(text)) {
+    return `${text} movement`;
+  }
+  return text;
+}
+
 export function merchantFactLines(facts?: MerchantFacts): string[] {
   if (!facts) return [];
   const lines: string[] = [];
   for (const field of MERCHANT_FACT_FIELDS) {
     const value = facts[field];
     if (!value) continue;
-    if (field === "movement" && !/\bmovement\b/i.test(value)) {
-      lines.push(`${value} movement`);
-    } else {
-      lines.push(`${LABELS[field]} ${value}`);
-    }
+    const customer = merchantFactValue(field, value);
+    if (customer) lines.push(customer);
   }
   return lines;
+}
+
+export function merchantFactFieldPresent(facts: MerchantFacts | undefined, field: MerchantFactField): boolean {
+  return Boolean(cleanFactValue(facts?.[field] || ""));
 }
 
 export function hasMerchantFacts(facts?: MerchantFacts): boolean {
   return Boolean(facts && MERCHANT_FACT_FIELDS.some((field) => facts[field]));
 }
+
+export { LABELS as MERCHANT_FACT_LABELS };
