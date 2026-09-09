@@ -17,10 +17,12 @@ import {
 } from "./optimizer-copy";
 import {
   collectCopyQualityIssues,
+  detectCopyQualityIssues,
   resultQualityFields,
 } from "./copy-quality";
 import {
   merchantFactHaystack,
+  merchantFactsMissingFromText,
   parseMerchantFacts,
   type MerchantFacts,
 } from "./merchant-facts";
@@ -253,9 +255,10 @@ function ensureHighConversionFields(
       120
     );
   }
-  if (!result.optimization.conversionCopy || hasInternalInstruction(result.optimization.conversionCopy)) {
-    result.optimization.conversionCopy = facts.length
-      ? `${cleanText(source?.title || "This product")} lists ${facts.slice(0, 2).join("; ")}.`
+  if (!result.optimization.conversionCopy || hasInternalInstruction(result.optimization.conversionCopy) || /\blists\s+(?:introducing|the)\b/i.test(result.optimization.conversionCopy)) {
+    const named = facts.filter((item) => item.toLowerCase() !== cleanText(source?.title || "").toLowerCase());
+    result.optimization.conversionCopy = named.length
+      ? `This product has ${named.slice(0, 4).join(", ")}.`
       : "Only listed product facts are available.";
   }
   if (result.analysis.objections.length === 0) {
@@ -356,9 +359,33 @@ const LIFESTYLE_CLAIM =
   /\b(everyday wear|daily wear|date night|weekend wear|perfect gift|gift for (?:him|her|them)|any occasion)\b/i;
 const PRICE_CLAIM = /(?:php|usd|\$|€|₱)\s?\d[\d,]*(?:\.\d+)?/gi;
 
+function normalizeClaimText(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[-_]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function claimSupportedBySource(claim: string, source: string): boolean {
+  const hay = normalizeClaimText(source);
+  const needle = normalizeClaimText(claim);
+  if (!needle) return true;
+  if (hay.includes(needle)) return true;
+  const stem = needle.replace(/(?:ing|ed|s|ant|ance|ent|ence)$/g, "").trim();
+  if (stem.length >= 8 && hay.includes(stem)) return true;
+  if (/water\s*resist/.test(needle) && /water\s*resist|splash\s*resist|\batm\b|\bmetres?\b|\bmeters?\b/.test(hay)) {
+    return true;
+  }
+  if (/splash\s*resist/.test(needle) && /splash\s*resist|water\s*resist|\batm\b|\bmetres?\b|\bmeters?\b/.test(hay)) {
+    return true;
+  }
+  if (needle === "waterproof") return /\bwaterproof\b/.test(hay);
+  return false;
+}
+
 export function inventedClaimsIn(source: string, generated: string): string[] {
   const issues: string[] = [];
-  const sourceLower = source.toLowerCase();
   const generatedLower = generated.toLowerCase();
   for (const pattern of [
     INVENTED_CLAIM,
@@ -371,11 +398,12 @@ export function inventedClaimsIn(source: string, generated: string): string[] {
   ]) {
     const matches = generatedLower.match(new RegExp(pattern, "gi")) || [];
     for (const claim of matches) {
-      if (!sourceLower.includes(claim.toLowerCase())) {
+      if (!claimSupportedBySource(claim, source)) {
         issues.push(`Invented claim: ${claim}`);
       }
     }
   }
+  const sourceLower = source.toLowerCase();
   const prices = generated.match(PRICE_CLAIM) || [];
   for (const price of prices) {
     if (!sourceLower.includes(price.toLowerCase()) && !sourceLower.includes(price.replace(/[^\d.]/g, ""))) {
@@ -414,14 +442,16 @@ export function validateOptimizationResult(
     data.productTitle,
     cleanedSource?.title
   ).slice(0, 120);
-  const recoveredDescription = pickText(
-    optimization.description,
-    optimization.body,
-    optimization.productDescription,
-    data.description,
-    cleanedSource?.description,
-    fallbackDescription(cleanedSource)
-  );
+  const recoveredDescription = options.fallback
+    ? pickText(recoveredTitle, cleanedSource?.title, "Product")
+    : pickText(
+        optimization.description,
+        optimization.body,
+        optimization.productDescription,
+        data.description,
+        cleanedSource?.description,
+        fallbackDescription(cleanedSource)
+      );
   if (
     (!cleanText(optimization.title) || !cleanText(optimization.description)) &&
     recoveredTitle &&
@@ -488,9 +518,9 @@ export function validateOptimizationResult(
   if (!result.optimization.title || !result.optimization.description) {
     throw new OptimizerError("AI result is missing a product title or description.", 502);
   }
-  applyCopyGuards(result, cleanedSource, shop, voice);
+  applyCopyGuards(result, cleanedSource, shop, voice, options);
   ensureHighConversionFields(result, cleanedSource, shop, voice);
-  applyCopyGuards(result, cleanedSource, shop, voice);
+  applyCopyGuards(result, cleanedSource, shop, voice, options);
   result.optimization.seoTitle = specificSeoTitle(
     result.optimization.seoTitle,
     result.optimization.title,
@@ -504,7 +534,7 @@ export function validateOptimizationResult(
     cleanedSource,
     shop
   );
-  applyCopyGuards(result, cleanedSource, shop, voice);
+  applyCopyGuards(result, cleanedSource, shop, voice, options);
   result.scores = scoreListing({
     sourceTitle: cleanedSource?.title || result.optimization.title,
     title: result.optimization.title,
@@ -542,6 +572,49 @@ function uniqueTexts(values: string[]): string[] {
     unique.push(value);
   }
   return unique;
+}
+
+function rawPublishableText(raw: unknown): string {
+  const data = recordOf(raw);
+  const optimization = recordOf(data.optimization);
+  const asLines = (value: unknown): string[] =>
+    Array.isArray(value)
+      ? value.filter((item): item is string => typeof item === "string")
+      : [];
+  return [
+    optimization.title,
+    optimization.description,
+    ...asLines(optimization.benefitBullets),
+    optimization.seoTitle,
+    optimization.metaDescription,
+    ...asLines(optimization.tags),
+    ...asLines(optimization.keywords),
+    optimization.callToAction,
+    optimization.conversionCopy,
+  ]
+    .map((item) => cleanText(item))
+    .filter(Boolean)
+    .join(" \n ");
+}
+
+function assertRawModelCopy(product: OptimizerProduct, raw: unknown): void {
+  const generated = rawPublishableText(raw);
+  const issues = inventedClaimsIn(sourceFactText(product), generated).filter(
+    (issue) => !/^Invented price:/i.test(issue)
+  );
+  if (hasInternalInstruction(generated)) {
+    issues.push("Internal instruction leaked into customer copy");
+  }
+  const qualityIssues = detectCopyQualityIssues(generated);
+  if (qualityIssues.length) {
+    issues.push(`Copy quality failed: ${qualityIssues.join("; ")}`);
+  }
+  if (issues.length) {
+    throw new OptimizerError(
+      `The AI invented details that are not in the product data: ${issues.join("; ")}`,
+      422
+    );
+  }
 }
 
 export function assertGroundedResult(
@@ -738,7 +811,7 @@ export function buildSafeFallbackResult(
       },
       optimization: {
         title: cleaned.title,
-        description: cleaned.description || cleaned.title,
+        description: cleaned.title,
       },
     },
     cleaned,
@@ -746,6 +819,24 @@ export function buildSafeFallbackResult(
     voice,
     { fallback: true }
   );
+  if (
+    !result.analysis.warnings.some((item) => /could not produce grounded copy/i.test(item))
+  ) {
+    result.analysis.warnings = uniqueTexts([
+      "The AI could not produce grounded copy, so Virello wrote a factual draft from listed product data only.",
+      ...result.analysis.warnings,
+    ]).slice(0, 8);
+  }
+  const missingFacts = merchantFactsMissingFromText(
+    cleaned.merchantFacts,
+    publishableCopy(result)
+  );
+  if (missingFacts.length) {
+    throw new OptimizerError(
+      `Fallback omitted verified merchant facts: ${missingFacts.join(", ")}`,
+      502
+    );
+  }
   assertGroundedResult(cleaned, result, shop);
   return result;
 }
@@ -782,7 +873,9 @@ export async function runOptimizeProduct(
         attempt === 0 ? system : retrySystemPrompt(system, lastError, cleaned),
         user
       );
-      const result = validateOptimizationResult(parseModelText(content), cleaned, shop, voice);
+      const parsed = parseModelText(content);
+      assertRawModelCopy(cleaned, parsed);
+      const result = validateOptimizationResult(parsed, cleaned, shop, voice);
       assertGroundedResult(cleaned, result, shop);
       return { result, chargeUsage: true };
     } catch (error) {

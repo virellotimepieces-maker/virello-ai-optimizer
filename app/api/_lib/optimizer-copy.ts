@@ -8,6 +8,8 @@ import {
   merchantFactHaystack,
   merchantFactLines,
   parseMerchantFacts,
+  MERCHANT_FACT_FIELDS,
+  MERCHANT_FACT_LABELS,
 } from "./merchant-facts";
 import { repairCopyQuality, rewriteMerchantInsight, isVagueBrandIdentityWarning } from "./copy-quality";
 
@@ -56,7 +58,7 @@ export const REVIEW_SUGGESTION =
   /\b(customer reviews?|verified reviews?|display reviews?|add reviews?|show reviews?|social proof|\d+\s*[- ]stars?|star ratings?|leave a review|see (?:our|the) reviews|rated \d|customers love|highly rated|top rated)\b/gi;
 
 export const LIFESTYLE_FILLER =
-  /\b(everyday wear|daily wear|date night|weekend wear|office (?:or|and) weekend|perfect gift|gift for (?:him|her|them)|any occasion|various occasions|versatile design|gym (?:or|and) street|workout)\b/gi;
+  /\b(everyday wear|daily wear|date night|weekend wear|office (?:or|and) weekend|perfect gift|gift for (?:him|her|them)|any occasion|various occasions|versatile design|transitions seamlessly|gym (?:or|and) street|workout)\b/gi;
 
 const GENERIC_FILLER =
   /\b(best|premium|amazing|quality|stunning|exclusive|must[- ]have|perfect gift|top rated|shop now|buy now|deal of|hot sale|luxury(?: lifestyle)?|affordable|high[- ]end|unbeatable|world[- ]class|ultimate|elegance|sophistication)\b/gi;
@@ -138,6 +140,31 @@ export function genuineProductHaystack(product?: OptimizerProduct): string {
     .toLowerCase();
 }
 
+function verifiedAllowlistHaystack(product?: OptimizerProduct): string {
+  if (!product) return "";
+  return [
+    product.title,
+    product.productType,
+    product.vendor,
+    ...(product.tags || []),
+    ...(product.options || []),
+    ...(product.variants || []),
+    merchantFactHaystack(product.merchantFacts),
+  ]
+    .map((item) => cleanCopyText(item))
+    .filter(Boolean)
+    .join(" \n ")
+    .toLowerCase();
+}
+
+function lifestyleAllowedInProduct(match: string, product?: OptimizerProduct): boolean {
+  const needle = match.toLowerCase().trim();
+  if (!needle) return false;
+  const hay = verifiedAllowlistHaystack(product);
+  const escaped = needle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(?:^|[^a-z0-9])${escaped}(?:[^a-z0-9]|$)`, "i").test(hay);
+}
+
 function tokenAllowedInProduct(token: string, product?: OptimizerProduct): boolean {
   const needle = token.toLowerCase().trim();
   if (!needle) return false;
@@ -195,11 +222,10 @@ function dedupeRepeatedPrices(value: string): string {
 function stripPattern(
   value: string,
   pattern: RegExp,
-  product?: OptimizerProduct
+  product?: OptimizerProduct,
+  allowed: (match: string, product?: OptimizerProduct) => boolean = tokenAllowedInProduct
 ): string {
-  return value.replace(pattern, (match) =>
-    tokenAllowedInProduct(match, product) ? match : " "
-  );
+  return value.replace(pattern, (match) => (allowed(match, product) ? match : " "));
 }
 
 function matches(pattern: RegExp, value: string): boolean {
@@ -240,29 +266,29 @@ function stripAlways(value: string, pattern: RegExp): string {
   return value.replace(new RegExp(pattern.source, "gi"), " ");
 }
 
-export function stripDirtyMarketing(value: string): string {
+export function stripDirtyMarketing(value: string, product?: OptimizerProduct): string {
   let text = cleanCopyText(value);
   if (!text) return "";
   text = stripAlways(text, VALUE_HYPE_LANGUAGE);
   text = stripAlways(text, DROPSHIPPING_LANGUAGE);
   text = stripAlways(text, CHEAP_LANGUAGE);
   text = stripAlways(text, REVIEW_SUGGESTION);
-  text = stripAlways(text, LIFESTYLE_FILLER);
+  text = stripPattern(text, LIFESTYLE_FILLER, product, lifestyleAllowedInProduct);
   text = stripAlways(text, GENERIC_FILLER);
   text = stripAlways(text, PRICE_LEAD_LANGUAGE);
-  text = text.replace(/[|]{2,}/g, " ").replace(/\s*\/\s*/g, " ");
+  text = text.replace(/[|]{2,}/g, " ");
   text = text.replace(/\s+/g, " ").replace(/\s+\./g, ".").trim();
   text = text.replace(INCOMPLETE_TAIL, "").replace(TRAILING_JUNK, "").trim();
   return text.replace(/\s+/g, " ").trim();
 }
 
-function stripBannedRetail(value: string): string {
+function stripBannedRetail(value: string, product?: OptimizerProduct): string {
   let text = value;
   text = stripAlways(text, VALUE_HYPE_LANGUAGE);
   text = stripAlways(text, DROPSHIPPING_LANGUAGE);
   text = stripAlways(text, CHEAP_LANGUAGE);
   text = stripAlways(text, REVIEW_SUGGESTION);
-  text = stripAlways(text, LIFESTYLE_FILLER);
+  text = stripPattern(text, LIFESTYLE_FILLER, product, lifestyleAllowedInProduct);
   text = stripAlways(text, GENERIC_FILLER);
   text = stripAlways(text, PRICE_LEAD_LANGUAGE);
   return text.replace(/\s+/g, " ").trim();
@@ -279,8 +305,8 @@ export function normalizeGeneratedText(
   text = text.replace(ROMAN_SLASH, " ");
   text = text.replace(TEMPLATE_JUNK, " ");
   text = dedupeRepeatedPrices(text);
-  text = stripBannedRetail(text);
-  text = text.replace(/[|]{2,}/g, " ").replace(/\s*\/\s*/g, " ");
+  text = stripBannedRetail(text, product);
+  text = text.replace(/[|]{2,}/g, " ");
   text = dedupeSentences(text);
   if (kind === "title") {
     text = text.split(/[.!\n]/)[0] || text;
@@ -462,6 +488,16 @@ function withoutPriceTokens(value: string, includePrice: boolean): string {
     .trim();
 }
 
+function verifiedMerchantLines(product?: OptimizerProduct, shop?: string): string[] {
+  if (!product) return [];
+  return uniqueTexts(
+    merchantFactLines(product.merchantFacts)
+      .map((item) => stripShopLeaks(item, product, shop))
+      .map((item) => item.replace(/\s+/g, " ").trim())
+      .filter((item) => item.length >= 3)
+  );
+}
+
 export function listingFacts(
   product?: OptimizerProduct,
   shop?: string,
@@ -472,24 +508,20 @@ export function listingFacts(
     .split(/[.!\n]+/)
     .map((item) => item.trim())
     .filter((item) => item.length >= 8);
-  return uniqueTexts(
+  const merchant = verifiedMerchantLines(product, shop);
+  const rest = uniqueTexts(
     [
-      stripShopLeaks(cleanCopyText(product.vendor || ""), product, shop),
-      stripShopLeaks(cleanCopyText(product.productType || ""), product, shop),
       includePrice ? cleanCopyText(product.price || "") : "",
-      ...sentences.map((item) => stripDirtyMarketing(stripShopLeaks(item, product, shop))),
-      ...merchantFactLines(product.merchantFacts).map((item) =>
-        stripShopLeaks(item, product, shop)
-      ),
+      ...sentences.map((item) => stripDirtyMarketing(stripShopLeaks(item, product, shop), product)),
       ...(product.options || []).map((item) =>
-        stripDirtyMarketing(stripShopLeaks(cleanCopyText(item), product, shop))
+        stripDirtyMarketing(stripShopLeaks(cleanCopyText(item), product, shop), product)
       ),
       ...(product.tags || []).map((item) =>
-        stripDirtyMarketing(stripShopLeaks(cleanCopyText(item), product, shop))
+        stripDirtyMarketing(stripShopLeaks(cleanCopyText(item), product, shop), product)
       ),
       ...(product.variants || [])
         .slice(0, 6)
-        .map((item) => stripDirtyMarketing(stripShopLeaks(cleanCopyText(item), product, shop))),
+        .map((item) => stripDirtyMarketing(stripShopLeaks(cleanCopyText(item), product, shop), product)),
     ]
       .map((item) => withoutPriceTokens(item.replace(ROMAN_SLASH, " ").replace(TEMPLATE_JUNK, " ").trim(), includePrice))
       .map((item) => naturalizeFact(item))
@@ -497,7 +529,17 @@ export function listingFacts(
       .filter((item) => !hasDirtyMarketingLanguage(item))
       .filter((item) => !looksLikeRemnant(item))
       .filter((item) => !/^(with|and|or|for|to|of)\s+(this|that|it)$/i.test(item))
-  ).slice(0, 12);
+      .filter((item) => !/\b(introducing the|transitions seamlessly|versatile design)\b/i.test(item))
+      .filter((item) => !merchant.some((fact) => fact.toLowerCase() === item.toLowerCase()))
+  );
+  return uniqueTexts(
+    [
+      stripShopLeaks(cleanCopyText(product.vendor || ""), product, shop),
+      stripShopLeaks(cleanCopyText(product.productType || ""), product, shop),
+      ...merchant,
+      ...rest,
+    ].filter((item) => item.length >= 3)
+  ).slice(0, 16);
 }
 
 export function sanitizeProductSource(
@@ -509,7 +551,7 @@ export function sanitizeProductSource(
     text = text.replace(ROMAN_SLASH, " ");
     text = text.replace(TEMPLATE_JUNK, " ");
     text = dedupeRepeatedPrices(text);
-    text = stripDirtyMarketing(text);
+    text = stripDirtyMarketing(text, product);
     text = dedupeSentences(text);
     if (kind === "title") {
       text = text.split(/[.!\n]/)[0] || text;
@@ -593,21 +635,43 @@ function extraFacts(
   voice: BrandVoice = DEFAULT_BRAND_VOICE
 ): string[] {
   const title = stripDirtyMarketing(
-    stripShopLeaks(cleanCopyText(product?.title || ""), product, shop)
+    stripShopLeaks(cleanCopyText(product?.title || ""), product, shop),
+    product
   ).toLowerCase();
   const type = stripDirtyMarketing(
-    stripShopLeaks(cleanCopyText(product?.productType || ""), product, shop)
+    stripShopLeaks(cleanCopyText(product?.productType || ""), product, shop),
+    product
   ).toLowerCase();
   const vendor = stripShopLeaks(cleanCopyText(product?.vendor || ""), product, shop).toLowerCase();
-  return listingFacts(product, shop, voice === "value").filter((item) => {
+  const merchant = verifiedMerchantLines(product, shop);
+  const extra = listingFacts(product, shop, voice === "value").filter((item) => {
     const lower = item.toLowerCase();
     return lower !== title && lower !== type && lower !== vendor;
   });
+  return uniqueTexts([...merchant, ...extra]);
+}
+
+function merchantFactSentences(product?: OptimizerProduct, shop?: string): string[] {
+  const facts = parseMerchantFacts(product?.merchantFacts);
+  const sentences: string[] = [];
+  for (const field of MERCHANT_FACT_FIELDS) {
+    const value = stripShopLeaks(cleanCopyText(facts[field] || ""), product, shop);
+    if (!value) continue;
+    const label = MERCHANT_FACT_LABELS[field].toLowerCase();
+    sentences.push(`The listed ${label} is ${value.replace(/[.]+$/g, "")}.`);
+  }
+  return sentences;
 }
 
 function factualTitle(product?: OptimizerProduct, shop?: string): string {
-  const title = stripDirtyMarketing(stripShopLeaks(cleanCopyText(product?.title || ""), product, shop));
-  const type = stripDirtyMarketing(stripShopLeaks(cleanCopyText(product?.productType || ""), product, shop));
+  const title = stripDirtyMarketing(
+    stripShopLeaks(cleanCopyText(product?.title || ""), product, shop),
+    product
+  );
+  const type = stripDirtyMarketing(
+    stripShopLeaks(cleanCopyText(product?.productType || ""), product, shop),
+    product
+  );
   const vendor = stripShopLeaks(cleanCopyText(product?.vendor || ""), product, shop);
   if (vendor && title && !title.toLowerCase().includes(vendor.toLowerCase())) {
     return `${vendor} ${title}`.slice(0, 120).trim();
@@ -624,11 +688,14 @@ function factualDescription(
   voice: BrandVoice = DEFAULT_BRAND_VOICE
 ): string {
   const title = stripDirtyMarketing(
-    stripShopLeaks(cleanCopyText(product?.title || "This product"), product, shop)
+    stripShopLeaks(cleanCopyText(product?.title || "This product"), product, shop),
+    product
   );
-  const type = stripDirtyMarketing(stripShopLeaks(cleanCopyText(product?.productType || ""), product, shop));
+  const type = stripDirtyMarketing(
+    stripShopLeaks(cleanCopyText(product?.productType || ""), product, shop),
+    product
+  );
   const vendor = stripShopLeaks(cleanCopyText(product?.vendor || ""), product, shop);
-  const named = extraFacts(product, shop, voice);
   const typePhrase = type ? withArticle(type) : "";
   const sentences: string[] = [];
   if (vendor && typePhrase && !title.toLowerCase().includes(vendor.toLowerCase())) {
@@ -638,19 +705,40 @@ function factualDescription(
   } else {
     sentences.push(`${title} is the product named on this listing.`);
   }
-  if (named.length) {
-    sentences.push(`The listing specifies ${joinList(named.slice(0, 6))}.`);
+  const factSentences = merchantFactSentences(product, shop);
+  if (factSentences.length) {
+    sentences.push(...factSentences);
   } else {
-    sentences.push("No further specifications are provided on this listing.");
+    const named = extraFacts(product, shop, voice).filter((item) => !looksLikeRemnant(item));
+    if (named.length) {
+      sentences.push(`The listing includes ${joinList(named.slice(0, 6))}.`);
+    } else {
+      sentences.push("No further specifications are provided on this listing.");
+    }
   }
-  return sentences.join(" ");
+  return polishPunctuation(sentences.join(" "));
 }
 
 function factualCta(product?: OptimizerProduct, shop?: string): string {
   const title = stripDirtyMarketing(
-    stripShopLeaks(cleanCopyText(product?.title || "this product"), product, shop)
+    stripShopLeaks(cleanCopyText(product?.title || "this product"), product, shop),
+    product
   );
   return `Review the listed details for ${title}.`.slice(0, 120);
+}
+
+function factualConversionCopy(
+  product?: OptimizerProduct,
+  shop?: string
+): string {
+  const lines = verifiedMerchantLines(product, shop);
+  if (lines.length) {
+    return polishPunctuation(`This product has ${joinList(lines.slice(0, 4))}.`);
+  }
+  const type = stripShopLeaks(cleanCopyText(product?.productType || ""), product, shop);
+  const title = stripShopLeaks(cleanCopyText(product?.title || "This product"), product, shop);
+  if (type) return polishPunctuation(`${title} is listed as ${withArticle(type)}.`);
+  return "Only the product name and type are listed, so this draft stays factual.";
 }
 
 function factualMeta(
@@ -659,11 +747,16 @@ function factualMeta(
   voice: BrandVoice = DEFAULT_BRAND_VOICE
 ): string {
   const title = stripDirtyMarketing(
-    stripShopLeaks(cleanCopyText(product?.title || "This product"), product, shop)
+    stripShopLeaks(cleanCopyText(product?.title || "This product"), product, shop),
+    product
   );
-  const type = stripDirtyMarketing(stripShopLeaks(cleanCopyText(product?.productType || ""), product, shop));
+  const type = stripDirtyMarketing(
+    stripShopLeaks(cleanCopyText(product?.productType || ""), product, shop),
+    product
+  );
   const vendor = stripShopLeaks(cleanCopyText(product?.vendor || ""), product, shop);
-  const named = extraFacts(product, shop, voice);
+  const lines = verifiedMerchantLines(product, shop);
+  const named = lines.length ? lines : extraFacts(product, shop, voice);
   if (!named.length) {
     const kind = type ? withArticle(type) : "a listed product";
     return `${title} appears as ${kind} on this product page, with no further specifications.`.slice(0, 160);
@@ -702,6 +795,7 @@ function sharesSentence(left: string, right: string): boolean {
 }
 
 function neutralizeAnalysisLine(value: string, product?: OptimizerProduct, shop?: string): string {
+  if (/could not produce grounded copy/i.test(value)) return cleanCopyText(value);
   if (isVagueBrandIdentityWarning(value)) {
     return rewriteMerchantInsight(value, product);
   }
@@ -735,7 +829,8 @@ export function applyCopyGuards(
   result: OptimizationResult,
   source?: OptimizerProduct,
   shop?: string,
-  voice: BrandVoice = DEFAULT_BRAND_VOICE
+  voice: BrandVoice = DEFAULT_BRAND_VOICE,
+  options: { fallback?: boolean } = {}
 ): OptimizationResult {
   const includePrice = voice === "value";
   const facts = listingFacts(source, shop, includePrice);
@@ -743,6 +838,31 @@ export function applyCopyGuards(
   const rawTitle = cleanCopyText(result.optimization.title);
   const rawDescription = cleanCopyText(result.optimization.description);
 
+  if (options.fallback) {
+    const factBullets = merchantFactSentences(source, shop);
+    result.optimization.title = factualTitle(source, shop);
+    result.optimization.description = factualDescription(source, shop, voice);
+    result.optimization.benefitBullets = uniqueTexts(
+      factBullets.length
+        ? factBullets
+        : facts
+            .filter((item) => includePrice || !looksLikePrice(item))
+            .map((item) => (isTypeOnlyFact(item, source) ? listedAsLine(source?.productType || item) : item))
+            .filter((item) => !looksLikeRemnant(item))
+            .slice(0, 4)
+    ).slice(0, 8);
+    result.optimization.tags = inferred.tags.slice(0, 20);
+    result.optimization.keywords = inferred.keywords
+      .filter((item) => !inferred.tags.includes(item) || item.split(" ").length > 1)
+      .slice(0, 20);
+    if (!result.optimization.keywords.length) {
+      result.optimization.keywords = result.optimization.tags.slice(0, 8);
+    }
+    result.optimization.callToAction = factualCta(source, shop);
+    result.optimization.conversionCopy = factualConversionCopy(source, shop);
+    result.optimization.seoTitle = factualSeoTitle(source, shop).slice(0, 60);
+    result.optimization.metaDescription = factualMeta(source, shop, voice).slice(0, 160);
+  } else {
   let title = normalizeGeneratedText(result.optimization.title, source, shop, "title").slice(0, 120);
   if (!includePrice) {
     title = title.replace(/(?:php|usd|\$|€|₱)\s?\d[\d,]*(?:\.\d+)?/gi, " ").replace(/\s+/g, " ").trim();
@@ -854,19 +974,17 @@ export function applyCopyGuards(
   conversionCopy = repairCopyQuality(conversionCopy).text;
   if (
     !conversionCopy ||
+    wordCount(conversionCopy) < 4 ||
     looksLikeRemnant(conversionCopy) ||
     repairCopyQuality(conversionCopy).issues.length > 0 ||
     hasInternalInstruction(conversionCopy) ||
+    /\blists\s+(?:introducing|the)\b/i.test(conversionCopy) ||
     sharesSentence(conversionCopy, title) ||
     sharesSentence(conversionCopy, description) ||
     hasDropshippingLanguage(conversionCopy) ||
     hasValueHypeLanguage(conversionCopy)
   ) {
-    conversionCopy = usableFacts.length
-      ? polishPunctuation(
-          `${stripShopLeaks(cleanCopyText(source?.title || "This product"), source, shop)} lists ${joinList(usableFacts.slice(0, 3))}.`
-        )
-      : "Only the product name and type are listed, so this draft stays factual.";
+    conversionCopy = factualConversionCopy(source, shop);
   }
 
   let seoTitle = normalizeGeneratedText(result.optimization.seoTitle, source, shop, "title").slice(0, 60);
@@ -923,6 +1041,7 @@ export function applyCopyGuards(
   result.optimization.conversionCopy = conversionCopy;
   result.optimization.seoTitle = seoTitle.slice(0, 60);
   result.optimization.metaDescription = metaDescription.slice(0, 160);
+  }
 
   const missing = uniqueTexts([
     ...result.analysis.missingInformation.map((item) => neutralizeAnalysisLine(item, source, shop)),

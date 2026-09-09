@@ -22,7 +22,7 @@ const LABELS: Record<MerchantFactField, string> = {
 
 function cleanFactValue(value: unknown): string {
   if (typeof value !== "string") return "";
-  return value.replace(/\s+/g, " ").trim().slice(0, 120);
+  return value.replace(/\s+/g, " ").trim().slice(0, 240);
 }
 
 export function parseMerchantFacts(raw: unknown): MerchantFacts {
@@ -37,7 +37,11 @@ export function parseMerchantFacts(raw: unknown): MerchantFacts {
 
 export function merchantFactHaystack(facts?: MerchantFacts): string {
   if (!facts) return "";
-  return MERCHANT_FACT_FIELDS.map((field) => facts[field] || "")
+  return MERCHANT_FACT_FIELDS.map((field) => {
+    const value = facts[field] || "";
+    if (!value) return "";
+    return `${LABELS[field]} ${value}`;
+  })
     .filter(Boolean)
     .join(" \n ");
 }
@@ -65,6 +69,32 @@ export function merchantFactLines(facts?: MerchantFacts): string[] {
 
 export function merchantFactFieldPresent(facts: MerchantFacts | undefined, field: MerchantFactField): boolean {
   return Boolean(cleanFactValue(facts?.[field] || ""));
+}
+
+export function merchantFactTokens(value: string): string[] {
+  return cleanFactValue(value)
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .map((token) => token.trim())
+    .filter((token) => token.length >= 3 || /^\d/.test(token));
+}
+
+export function merchantFactsMissingFromText(
+  facts: MerchantFacts | undefined,
+  text: string
+): MerchantFactField[] {
+  if (!facts) return [];
+  const hay = (text || "").toLowerCase();
+  const missing: MerchantFactField[] = [];
+  for (const field of MERCHANT_FACT_FIELDS) {
+    const value = facts[field];
+    if (!value) continue;
+    const tokens = merchantFactTokens(value);
+    if (!tokens.length) continue;
+    const hits = tokens.filter((token) => hay.includes(token)).length;
+    if (hits < Math.min(2, tokens.length)) missing.push(field);
+  }
+  return missing;
 }
 
 export function hasMerchantFacts(facts?: MerchantFacts): boolean {

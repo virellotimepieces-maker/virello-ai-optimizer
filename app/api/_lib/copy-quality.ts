@@ -11,6 +11,8 @@ const BARE_FOR =
 const GENERIC_OCCASION =
   /\b(?:ideal|perfect|suitable|great)\s+for(?:\s+and)?\s+(?:various|any)\s+occasions\b/i;
 const EMPTY_POINTING = /\b(?:with|for)\s+(?:this|that|it)(?=\s*[.!?]|,$|$)/i;
+const LISTS_CONCAT = /\blists\s+(?:introducing|the)\b/i;
+const ITS_FRAGMENT = /\bIts\s+[a-z]+(?:s|ed|ing)\b/;
 const VAGUE_BRAND =
   /\b(?:comprehensive\s+brand\s+identity|lack of comprehensive brand|limited product details may affect purchasing(?: decisions)?)\b/i;
 
@@ -76,6 +78,8 @@ export function detectCopyQualityIssues(value: string): string[] {
   if (ARTICLE_GAP.test(text)) issues.push("Empty phrase");
   if (GENERIC_OCCASION.test(text)) issues.push("Incomplete phrase: ideal for and various occasions");
   if (EMPTY_POINTING.test(text)) issues.push("Empty phrase");
+  if (LISTS_CONCAT.test(text)) issues.push("Title-lists concatenation");
+  if (ITS_FRAGMENT.test(text)) issues.push("Sentence fragment");
   if (STACKED_CONNECTOR.test(text) && !/\bto and from\b/i.test(text)) {
     issues.push("Dangling and/or after a preposition");
   }
@@ -114,6 +118,8 @@ function repairPass(value: string): string {
   text = text.replace(/\bto and from\b/gi, "TO_AND_FROM");
   text = text.replace(GENERIC_OCCASION, " ");
   text = text.replace(EMPTY_POINTING, " ");
+  text = text.replace(LISTS_CONCAT, " ");
+  text = text.replace(ITS_FRAGMENT, " ");
   text = text.replace(/([,.;:!?])\s*\1+/g, "$1");
   text = text.replace(/\b(and|or|for|with|to|of|the|a)\s+\1\b/gi, "$1");
   text = text.replace(/\b(a|an|the)\s+and\s+(a|an|the)\b/gi, "$2");
@@ -132,6 +138,7 @@ function keepSentence(sentence: string): string {
   if (hasDanglingTail(clipped)) return "";
   if (BARE_FOR.test(clipped)) return "";
   if (GENERIC_OCCASION.test(clipped)) return "";
+  if (LISTS_CONCAT.test(clipped) || ITS_FRAGMENT.test(clipped)) return "";
   const words = wordCount(clipped);
   if (words <= 4 && FRAGMENT_LEAD.test(clipped)) return "";
   if (detectCopyQualityIssues(repaired).length) return "";
