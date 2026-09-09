@@ -11,6 +11,7 @@ import {
   parseMerchantFacts,
 } from "./merchant-facts";
 import { repairCopyQuality, rewriteMerchantInsight, isVagueBrandIdentityWarning } from "./copy-quality";
+import { clipAtWordLimit, META_DESCRIPTION_MAX, SEO_TITLE_MAX } from "./listing-score";
 
 const STOP_WORDS = new Set([
   "with",
@@ -884,17 +885,40 @@ function factualMeta(
   const lead = vendor && !title.toLowerCase().includes(vendor.toLowerCase()) ? `${title} from ${vendor}` : title;
   if (!named.length) {
     const kind = type ? withArticle(type) : "a listed product";
-    return `${title} appears as ${kind} on this product page, with no further specifications.`.slice(0, 160);
+    return clipAtWordLimit(
+      `${title} appears as ${kind} on this product page, with no further specifications.`,
+      META_DESCRIPTION_MAX
+    );
   }
-  let text = `${lead} is listed with ${joinList(named.slice(0, 3).map(embedFactValue))}.`;
-  if (text.length < 120 && named.length > 3) {
-    text = `${lead} is listed with ${joinList(named.slice(0, 4).map(embedFactValue))}.`;
+  const facts = named.map(embedFactValue).filter(Boolean);
+  const chosen: string[] = [];
+  for (const fact of facts) {
+    const candidate = `${lead} is listed with ${joinList([...chosen, fact])}.`;
+    if (candidate.length > META_DESCRIPTION_MAX) break;
+    chosen.push(fact);
   }
-  return text.slice(0, 160);
+  if (!chosen.length) {
+    return clipAtWordLimit(`${lead} is listed with ${facts[0]}.`, META_DESCRIPTION_MAX);
+  }
+  return `${lead} is listed with ${joinList(chosen)}.`;
+}
+
+function fitSeoTitleParts(base: string, extra: string, max: number): string {
+  const lead = clipAtWordLimit(base, max);
+  const extraText = extra.replace(/\s+/g, " ").trim();
+  if (!extraText) return lead;
+  const words = extraText.split(/\s+/).filter(Boolean);
+  let fitted = lead;
+  for (let i = 1; i <= words.length; i += 1) {
+    const candidate = `${lead} ${words.slice(0, i).join(" ")}`.replace(/\s+/g, " ").trim();
+    if (candidate.length > max) break;
+    fitted = candidate;
+  }
+  return fitted;
 }
 
 function factualSeoTitle(product?: OptimizerProduct, shop?: string): string {
-  const base = factualTitle(product, shop).slice(0, 60);
+  const base = clipAtWordLimit(factualTitle(product, shop), SEO_TITLE_MAX);
   const named = extraFacts(product, shop, "refined");
   const spec = named.find((item) => {
     const short = item.split(/\s+/).slice(0, 3).join(" ");
@@ -902,7 +926,7 @@ function factualSeoTitle(product?: OptimizerProduct, shop?: string): string {
   });
   if (spec && base.length < 50) {
     const short = spec.split(/\s+/).slice(0, 3).join(" ");
-    const combined = `${base} ${short}`.slice(0, 60).trim();
+    const combined = fitSeoTitleParts(base, short, SEO_TITLE_MAX);
     if (combined.toLowerCase() !== base.toLowerCase()) return combined;
   }
   return base;
@@ -993,8 +1017,8 @@ export function applyCopyGuards(
     }
     result.optimization.callToAction = factualCta(source, shop);
     result.optimization.conversionCopy = factualConversionCopy(source, shop);
-    result.optimization.seoTitle = factualSeoTitle(source, shop).slice(0, 60);
-    result.optimization.metaDescription = factualMeta(source, shop, voice).slice(0, 160);
+    result.optimization.seoTitle = clipAtWordLimit(factualSeoTitle(source, shop), SEO_TITLE_MAX);
+    result.optimization.metaDescription = clipAtWordLimit(factualMeta(source, shop, voice), META_DESCRIPTION_MAX);
   } else {
   let title = normalizeGeneratedText(result.optimization.title, source, shop, "title").slice(0, 120);
   if (!includePrice) {
@@ -1121,8 +1145,11 @@ export function applyCopyGuards(
     conversionCopy = factualConversionCopy(source, shop);
   }
 
-  let seoTitle = normalizeGeneratedText(result.optimization.seoTitle, source, shop, "title").slice(0, 60);
-  seoTitle = repairCopyQuality(seoTitle, "title").text.slice(0, 60);
+  let seoTitle = clipAtWordLimit(
+    normalizeGeneratedText(result.optimization.seoTitle, source, shop, "title"),
+    SEO_TITLE_MAX
+  );
+  seoTitle = clipAtWordLimit(repairCopyQuality(seoTitle, "title").text, SEO_TITLE_MAX);
   if (
     !seoTitle ||
     looksLikeRemnant(seoTitle) ||
@@ -1140,16 +1167,15 @@ export function applyCopyGuards(
     !typeAlreadyInTitle(title, productType) &&
     (seoTitle.toLowerCase() === title.toLowerCase() || sharesSentence(seoTitle, title))
   ) {
-    const typed = `${title} ${productType}`.slice(0, 60).trim();
+    const typed = clipAtWordLimit(`${title} ${productType}`, SEO_TITLE_MAX);
     if (!sharesSentence(typed, title)) seoTitle = typed;
   }
 
-  let metaDescription = normalizeGeneratedText(
-    result.optimization.metaDescription,
-    source,
-    shop
-  ).slice(0, 160);
-  metaDescription = repairCopyQuality(metaDescription).text.slice(0, 160);
+  let metaDescription = clipAtWordLimit(
+    normalizeGeneratedText(result.optimization.metaDescription, source, shop),
+    META_DESCRIPTION_MAX
+  );
+  metaDescription = clipAtWordLimit(repairCopyQuality(metaDescription).text, META_DESCRIPTION_MAX);
   const descKey = sentenceKey(description).slice(0, 36);
   if (
     !metaDescription ||
@@ -1173,8 +1199,8 @@ export function applyCopyGuards(
   result.optimization.keywords = keywords.length ? keywords : tags.slice(0, 8);
   result.optimization.callToAction = callToAction;
   result.optimization.conversionCopy = conversionCopy;
-  result.optimization.seoTitle = seoTitle.slice(0, 60);
-  result.optimization.metaDescription = metaDescription.slice(0, 160);
+  result.optimization.seoTitle = clipAtWordLimit(seoTitle, SEO_TITLE_MAX);
+  result.optimization.metaDescription = clipAtWordLimit(metaDescription, META_DESCRIPTION_MAX);
   }
 
   const missing = uniqueTexts([

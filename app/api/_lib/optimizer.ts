@@ -1,6 +1,6 @@
 import { parseAppLocale, type AppLocale } from "./locales";
 import { stripHtml } from "./listing-html";
-import { scoreListing, META_DESCRIPTION_MAX, SEO_TITLE_MAX, capFallbackScores, capBrokenGrammarScores, type ListingScores } from "./listing-score";
+import { scoreListing, META_DESCRIPTION_MAX, SEO_TITLE_MAX, capFallbackScores, capBrokenGrammarScores, clipAtWordLimit, type ListingScores } from "./listing-score";
 import {
   applyCopyGuards,
   factualConversionCopy,
@@ -127,14 +127,7 @@ const GENERIC_SEO =
   /\b(best|premium|amazing|quality|stunning|exclusive|must[- ]have|perfect gift|top rated|shop now|buy now|deal of|hot sale|luxury lifestyle|elevate your|game changer|budget[- ]friendly|affordable elegance|affordable luxury|priced at just)\b/i;
 
 function clipAtLimit(value: string, max: number): string {
-  const text = cleanText(value);
-  if (text.length <= max) return text;
-  const sliced = text.slice(0, max).trim();
-  const space = sliced.lastIndexOf(" ");
-  if (space >= Math.min(36, Math.floor(max * 0.6))) {
-    return sliced.slice(0, space).replace(/[,:;.-]+$/, "").trim();
-  }
-  return sliced.replace(/[,:;.-]+$/, "").trim();
+  return clipAtWordLimit(value, max);
 }
 
 function sourceTokens(product?: OptimizerProduct, shop?: string): string[] {

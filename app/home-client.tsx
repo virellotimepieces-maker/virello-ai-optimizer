@@ -1086,9 +1086,10 @@ export default function Home({
                   <label className="input-label" htmlFor="opt-seo-title">
                     {copy.seoTitle} ({optimization.seoTitle.length}/{SEO_TITLE_MAX})
                   </label>
-                  <input
+                  <textarea
                     id="opt-seo-title"
                     className="review-input"
+                    rows={2}
                     maxLength={SEO_TITLE_MAX}
                     value={optimization.seoTitle}
                     onChange={(event) =>

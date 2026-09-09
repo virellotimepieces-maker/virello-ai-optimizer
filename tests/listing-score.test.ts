@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { gradeForScore, scoreLimitExplanation, scoreListing } from "../app/api/_lib/listing-score";
+import { clipAtWordLimit, gradeForScore, scoreLimitExplanation, scoreListing } from "../app/api/_lib/listing-score";
 
 describe("Listing score honesty", () => {
   it("does not call 62 Ready to convert", () => {
@@ -9,6 +9,20 @@ describe("Listing score honesty", () => {
     expect(gradeForScore(70)).toBe("good");
     expect(gradeForScore(80)).toBe("strong");
     expect(gradeForScore(90)).toBe("excellent");
+  });
+
+  it("clips SEO fields on a word boundary instead of mid-word", () => {
+    expect(
+      clipAtWordLimit("Virello Sample Watch: for Everyday Style Stainless steel case", 60)
+    ).toBe("Virello Sample Watch: for Everyday Style Stainless steel");
+    const overflow =
+      "Sample Watch: for Everyday Style from Virello is listed with Stainless steel case with genuine leather strap, 40 mm case diameter, 8 mm case thickness, 20 mm strap width, and Japanese quartz movement.";
+    expect(overflow.length).toBeGreaterThan(160);
+    const meta = clipAtWordLimit(overflow, 160);
+    expect(meta.length).toBeLessThanOrEqual(160);
+    expect(meta).not.toMatch(/\bcas$/);
+    expect(meta).not.toMatch(/\b(with|and|for|the|a|an|of|from)\s*$/i);
+    expect(clipAtWordLimit("Short title", 60)).toBe("Short title");
   });
 
   it("explains which missing facts limit a sparse score", () => {
