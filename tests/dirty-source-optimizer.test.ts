@@ -141,6 +141,8 @@ describe("Automatic retry, safe fallback, and one usage charge", () => {
       };
       if (calls === 1) return modelReply(inventedPayload);
       expect(body.messages?.[0]?.content || "").toMatch(/Retry:/i);
+      expect(body.messages?.[0]?.content || "").toMatch(/Validation failures:/i);
+      expect(body.messages?.[0]?.content || "").toMatch(/Verified product facts:/i);
       expect(body.messages?.[0]?.content || "").toMatch(/not a product fact/i);
       return modelReply(groundedPayload);
     });

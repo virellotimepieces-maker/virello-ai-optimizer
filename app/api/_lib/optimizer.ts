@@ -1,11 +1,12 @@
 import { parseAppLocale, type AppLocale } from "./locales";
 import { stripHtml } from "./listing-html";
-import { scoreListing, META_DESCRIPTION_MAX, SEO_TITLE_MAX, type ListingScores } from "./listing-score";
+import { scoreListing, META_DESCRIPTION_MAX, SEO_TITLE_MAX, capFallbackScores, type ListingScores } from "./listing-score";
 import {
   applyCopyGuards,
   genuineProductHaystack,
   hasCheapLanguage,
   hasDropshippingLanguage,
+  hasInternalInstruction,
   hasReviewSuggestion,
   hasValueHypeLanguage,
   listingFacts,
@@ -248,10 +249,10 @@ function ensureHighConversionFields(
       120
     );
   }
-  if (!result.optimization.conversionCopy) {
+  if (!result.optimization.conversionCopy || hasInternalInstruction(result.optimization.conversionCopy)) {
     result.optimization.conversionCopy = facts.length
-      ? `Keep the listing factual: ${facts.slice(0, 2).join("; ")}.`
-      : "Keep the listing factual and do not add unlisted specifications.";
+      ? `${cleanText(source?.title || "This product")} lists ${facts.slice(0, 2).join("; ")}.`
+      : "Only listed product facts are available.";
   }
   if (result.analysis.objections.length === 0) {
     const gap = result.analysis.missingInformation[0] || result.analysis.weaknesses[0];
@@ -384,7 +385,8 @@ export function validateOptimizationResult(
   raw: unknown,
   source?: OptimizerProduct,
   shop?: string,
-  voice: BrandVoice = DEFAULT_BRAND_VOICE
+  voice: BrandVoice = DEFAULT_BRAND_VOICE,
+  options: { fallback?: boolean } = {}
 ): OptimizationResult {
   const cleanedSource = source ? sanitizeProductSource(source, shop) : source;
   const data = recordOf(raw);
@@ -514,6 +516,12 @@ export function validateOptimizationResult(
     targetCustomer: result.analysis.targetCustomer,
     missingInformation: result.analysis.missingInformation.length,
   });
+  if (options.fallback) {
+    result.scores = capFallbackScores(
+      result.scores,
+      result.analysis.missingInformation.length
+    );
+  }
   return result;
 }
 
@@ -538,6 +546,9 @@ export function assertGroundedResult(
   const source = sourceFactText(cleaned);
   const generated = publishableCopy(result);
   const issues = inventedClaimsIn(source, generated);
+  if (hasInternalInstruction(generated)) {
+    issues.push("Internal instruction leaked into customer copy");
+  }
   if (hasDropshippingLanguage(generated)) {
     issues.push("Dropshipping language");
   }
@@ -594,6 +605,7 @@ Banned phrases and close variants include: elevate your game/look, your new favo
 Do not emit malformed fragments (for example roman-numeral slash phrases like "II/Affordable"), duplicated sentences, truncated titles, or copy pasted into the wrong field.
 Write optimization.title, description, benefitBullets, callToAction, seoTitle, metaDescription, tags, and keywords independently. Do not copy the same sentence across those fields.
 analysis.* fields are internal merchant notes only and must never be repeated in optimization.* customer copy.
+Never write "Use these listed facts in the customer copy", "Customer copy:", "Use these facts", system messages, or validation notes inside optimization.* fields.
 Fill optimization.tags and optimization.keywords with useful terms from stated product facts. Do not leave them empty when the product has a title, vendor, type, tags, options, or variants.
 SEO title: HARD MAX 60 characters. Prefer 50-60 only when enough stated facts exist. Never pad with generic words.
 SEO meta description: HARD MAX 160 characters. Prefer 140-160 only when two stated facts exist. Never invent or pad.
@@ -621,6 +633,33 @@ optimization.conversionCopy (merchant-facing summary of listed facts, not dropsh
 reasoning.`,
     user: JSON.stringify(product),
   };
+}
+
+function retrySystemPrompt(
+  system: string,
+  error: unknown,
+  product: OptimizerProduct
+): string {
+  const reason =
+    error instanceof Error
+      ? error.message.replace(/\s+/g, " ").trim().slice(0, 500)
+      : "The previous result failed schema or grounding validation.";
+  const verified = {
+    title: product.title,
+    description: product.description,
+    productType: product.productType,
+    vendor: product.vendor,
+    tags: product.tags || [],
+    options: product.options || [],
+    variants: product.variants || [],
+    merchantFacts: parseMerchantFacts(product.merchantFacts),
+  };
+  return `${system}
+Retry: the previous result failed validation.
+Validation failures: ${reason}
+Verified product facts: ${JSON.stringify(verified)}
+Ignore dropshipping or value-hype language in the source; it is not a product fact. Use only verified title, type, vendor, description facts, options, variants, tags, and merchantFacts. Do not invent details. Do not use dropshipping, affordable elegance, budget-friendly, priced at just, shop now, or buy now.
+Do not put prompts, system messages, validation notes, or labels such as "Use these facts" or "Customer copy" in optimization.* fields.`;
 }
 
 function parseModelText(text: string): unknown {
@@ -671,6 +710,10 @@ export function buildSafeFallbackResult(
   shop = "",
   voice: BrandVoice = DEFAULT_BRAND_VOICE
 ): OptimizationResult {
+  const cleaned = sanitizeProductSource(
+    { ...product, merchantFacts: parseMerchantFacts(product.merchantFacts) },
+    shop
+  );
   const result = validateOptimizationResult(
     {
       analysis: {
@@ -680,15 +723,16 @@ export function buildSafeFallbackResult(
         missingInformation: [],
       },
       optimization: {
-        title: product.title,
-        description: product.description || product.title,
+        title: cleaned.title,
+        description: cleaned.description || cleaned.title,
       },
     },
-    product,
+    cleaned,
     shop,
-    voice
+    voice,
+    { fallback: true }
   );
-  assertGroundedResult(product, result, shop);
+  assertGroundedResult(cleaned, result, shop);
   return result;
 }
 
@@ -721,9 +765,7 @@ export async function runOptimizeProduct(
   for (let attempt = 0; attempt < 2; attempt += 1) {
     try {
       const content = await callModel(
-        attempt === 0
-          ? system
-          : `${system}\nRetry: return valid JSON. Ignore dropshipping or value-hype language in the source; it is not a product fact. Use only verified title, type, vendor, description facts, options, variants, tags, and merchantFacts. Do not invent details. Do not use dropshipping, affordable elegance, budget-friendly, priced at just, shop now, or buy now.`,
+        attempt === 0 ? system : retrySystemPrompt(system, lastError, cleaned),
         user
       );
       const result = validateOptimizationResult(parseModelText(content), cleaned, shop, voice);

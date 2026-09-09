@@ -75,7 +75,8 @@ describe("Conversion-focused AI listing output", () => {
     expect(result.scores.overall).toBeGreaterThan(0);
     expect(["needs_work", "good", "strong", "excellent"]).toContain(result.scores.grade);
     expect(result.analysis.objections[0]?.response).toMatch(/not listed/i);
-    expect(result.analysis.warnings.join(" ")).toMatch(/missing/i);
+    expect(result.analysis.missingInformation.join(" ")).toMatch(/missing|not listed/i);
+    expect(result.analysis.warnings.join(" ")).not.toMatch(/Missing product information:/i);
     expect(() => assertGroundedResult(product, result)).not.toThrow();
   });
 
