@@ -610,6 +610,10 @@ function assertRawModelCopy(product: OptimizerProduct, raw: unknown): void {
   if (qualityIssues.length) {
     issues.push(`Copy quality failed: ${qualityIssues.join("; ")}`);
   }
+  const omitted = merchantFactsMissingFromText(product.merchantFacts, generated);
+  if (omitted.length) {
+    issues.push(`Omitted listed specifications: ${omitted.join(", ")}`);
+  }
   if (issues.length) {
     throw new OptimizerError(
       `The AI invented details that are not in the product data: ${issues.join("; ")}`,
@@ -654,6 +658,10 @@ export function assertGroundedResult(
       issues.push(`Invented claim: ${token}`);
     }
   }
+  const omitted = merchantFactsMissingFromText(cleaned.merchantFacts, generated);
+  if (omitted.length) {
+    issues.push(`Omitted listed specifications: ${omitted.join(", ")}`);
+  }
   if (issues.length) {
     throw new OptimizerError(
       `The AI invented details that are not in the product data: ${issues.join("; ")}`,
@@ -685,6 +693,8 @@ Do not make low price the main benefit unless the brand voice is value-focused, 
 For refined, minimal, warm, or bold voice, never use price-led or generic value phrasing, including affordable elegance, affordable luxury, budget-friendly, priced at just, and close variants.
 Never suggest displaying customer reviews or ratings unless review data is in the source.
 If a shopper-facing claim is not in the source, omit it and list it under missingInformation and warnings.
+Repeat every merchantFacts value in optimization.description and optimization.conversionCopy. Numeric facts (sizes, ATM, warranty years) must keep at least one listed number.
+Do not list vendor or brand name as missing when product.vendor is present. Do not treat style, color, or variant options as score-limiting missing facts.
 If the listing is sparse, write concise factual copy, name the missing details in analysis.missingInformation, and warn that the listing score is limited by those gaps. Do not pad copy to inflate scores.
 Never use a Shopify shop domain, a *.myshopify.com handle, or "virello-dev" as a brand, feature, benefit, CTA, tag, or keyword unless that exact text appears in the product title, description, type, tags, options, variants, or merchantFacts.
 Banned phrases and close variants include: elevate your game/look, your new favorite, must-have, game changer, affordable elegance, affordable luxury, budget-friendly, priced at just, without breaking the bank, perfect for everyone, shop now, buy now.

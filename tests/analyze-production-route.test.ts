@@ -12,6 +12,7 @@ import {
 } from "../app/api/_lib/optimizer";
 import { listingFacts, publishableCopy } from "../app/api/_lib/optimizer-copy";
 import { merchantFactsMissingFromText, parseMerchantFacts } from "../app/api/_lib/merchant-facts";
+import { scoreLimitExplanation } from "../app/api/_lib/listing-score";
 import { clearTestDatabase, usePglite } from "./helpers/pglite";
 import { seedShopifyBilling, mockShopifyBillingGraphql } from "./helpers/shopify-billing";
 
@@ -110,7 +111,8 @@ describe("Production Optimize request path", () => {
     expect(home).toMatch(/capFallbackScores/);
     expect(home).toMatch(/invented details\|invented claim/);
     expect(readFileSync("app/api/_lib/optimizer-copy.ts", "utf8")).not.toMatch(/\$\{[^}]*\}\s*lists\s*\$\{/);
-    expect(readFileSync("app/api/_lib/optimizer.ts", "utf8")).not.toMatch(/\$\{[^}]*\}\s*lists\s*\$\{/);
+    expect(readFileSync("app/api/_lib/optimizer.ts", "utf8")).toMatch(/Omitted listed specifications/);
+    expect(readFileSync("app/api/_lib/optimizer.ts", "utf8")).toMatch(/Do not treat style, color, or variant options/);
   });
 
   it("puts merchant-entered facts in the listing fact list ahead of Shopify description filler", () => {
@@ -373,4 +375,161 @@ describe("Production Optimize request path", () => {
   },
   20_000
 );
+
+  const screenshotCopy =
+    "The Sample Watch is a refined everyday accessory with a stainless steel case, genuine leather strap, and Japanese quartz movement, offering versatility and style";
+
+  it("rejects thin screenshot copy that omits listed numbers and does not treat vendor or style options as score gaps", async () => {
+    process.env.OPENAI_API_KEY = "test-openai-key";
+    setOptimizerFetchForTests(async () =>
+      modelReply({
+        analysis: {
+          warnings: ["Listing score is limited by the lack of a vendor name and missing style options"],
+          missingInformation: [
+            "Vendor name is not provided",
+            "No additional style or color options listed",
+          ],
+        },
+        optimization: {
+          title: "Sample Watch: for Everyday Style",
+          description: screenshotCopy,
+          benefitBullets: ["Stainless steel case", "Genuine leather strap", "Japanese quartz movement"],
+          seoTitle: "Sample Watch Everyday Style",
+          metaDescription: screenshotCopy.slice(0, 160),
+          tags: ["watch"],
+          keywords: ["sample watch"],
+          callToAction: "Review the listed details for Sample Watch.",
+          conversionCopy: screenshotCopy,
+        },
+      })
+    );
+    const outcome = await runOptimizeProduct(
+      {
+        ...productionUiPayload.product,
+        merchantFacts: PRODUCTION_FACTS,
+      },
+      "en",
+      "virello-dev.myshopify.com"
+    );
+    expect(outcome.chargeUsage).toBe(false);
+    const pub = publishableCopy(outcome.result);
+    const gaps = [
+      ...(outcome.result.analysis.missingInformation || []),
+      ...(outcome.result.analysis.warnings || []),
+    ].join(" ");
+    expect(merchantFactsMissingFromText(PRODUCTION_FACTS, pub)).toEqual([]);
+    expect(pub).toMatch(/40 mm/i);
+    expect(pub).toMatch(/3 ATM/i);
+    expect(pub).toMatch(/1-year limited manufacturer warranty/i);
+    expect(pub).toMatch(/everyday wear/i);
+    expect(pub).not.toMatch(/versatility and style/i);
+    expect(outcome.result.optimization.conversionCopy).toMatch(/[.!?]/);
+    expect(outcome.result.optimization.conversionCopy).not.toMatch(/refined everyday accessory/i);
+    expect(gaps).not.toMatch(/vendor name is not provided/i);
+    expect(gaps).not.toMatch(/style or color options/i);
+    expect(gaps).not.toMatch(/lack of a vendor name/i);
+    expect(scoreLimitExplanation(outcome.result.analysis.missingInformation).join(" ")).not.toMatch(
+      /vendor name is not provided|style or color options/i
+    );
+    expect(outcome.result.scores.grade).not.toBe("strong");
+    expect(outcome.result.scores.grade).not.toBe("excellent");
+    expect(outcome.result.scores.overall).toBeLessThan(80);
+  });
+
+  it("returns a factual draft from /api/ai/analyze for the live screenshot payload", async () => {
+    setOptimizerFetchForTests(async () =>
+      modelReply({
+        analysis: {
+          warnings: ["Listing score is limited by the lack of a vendor name and missing style options"],
+          missingInformation: [
+            "Vendor name is not provided",
+            "No additional style or color options listed",
+          ],
+        },
+        optimization: {
+          title: "Sample Watch: for Everyday Style",
+          description: screenshotCopy,
+          conversionCopy: screenshotCopy,
+        },
+      })
+    );
+    const response = await postAnalyze(productionUiPayload);
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      success?: boolean;
+      result?: {
+        analysis?: { warnings?: string[]; missingInformation?: string[] };
+        optimization?: { description?: string; conversionCopy?: string };
+        scores?: { overall?: number; grade?: string; description?: number };
+      };
+    };
+    expect(body.success).toBe(true);
+    const pub = `${body.result?.optimization?.description || ""} ${body.result?.optimization?.conversionCopy || ""}`;
+    expect(merchantFactsMissingFromText(PRODUCTION_FACTS, pub)).toEqual([]);
+    expect(pub).toMatch(/40 mm/i);
+    expect(pub).toMatch(/Japanese quartz/i);
+    expect(pub).not.toMatch(/versatility and style/i);
+    const notes = [
+      ...(body.result?.analysis?.missingInformation || []),
+      ...(body.result?.analysis?.warnings || []),
+    ].join(" ");
+    expect(notes).not.toMatch(/vendor name is not provided/i);
+    expect(notes).not.toMatch(/style or color options/i);
+    expect(scoreLimitExplanation(body.result?.analysis?.missingInformation || []).join(" ")).not.toMatch(
+      /Would improve the score: Vendor name/i
+    );
+    expect(body.result?.scores?.grade).not.toBe("strong");
+    expect(body.result?.scores?.grade).not.toBe("excellent");
+  }, 20_000);
+
+  it("keeps grounded copy when the model only invents vendor and style-option gaps", async () => {
+    process.env.OPENAI_API_KEY = "test-openai-key";
+    const groundedDescription =
+      "Harbor Supply Sample Watch has a stainless steel case with a genuine leather strap, 40 mm case diameter, Japanese quartz movement, and is water-resistant to 3 ATM / 30 metres, splash resistant only. The listed warranty is a 1-year limited manufacturer warranty for everyday wear, office, casual outings, and formal occasions.";
+    setOptimizerFetchForTests(async () =>
+      modelReply({
+        analysis: {
+          missingInformation: [
+            "Vendor name is not provided",
+            "No additional style or color options listed",
+          ],
+          warnings: ["Listing score is limited by the lack of a vendor name and missing style options"],
+        },
+        optimization: {
+          title: "Harbor Supply Sample Watch",
+          description: groundedDescription,
+          benefitBullets: [
+            "Stainless steel case with genuine leather strap",
+            "40 mm case diameter",
+            "Japanese quartz movement",
+          ],
+          seoTitle: "Harbor Supply Sample Watch steel",
+          metaDescription:
+            "Harbor Supply Sample Watch with stainless steel, 40 mm case, Japanese quartz, and 3 ATM splash resistance.",
+          tags: ["watch", "quartz"],
+          keywords: ["harbor supply watch"],
+          callToAction: "Review the listed details for Harbor Supply Sample Watch.",
+          conversionCopy:
+            "Stainless steel case, 40 mm diameter, Japanese quartz movement, and 3 ATM splash resistance with a 1-year limited manufacturer warranty for everyday wear.",
+        },
+      })
+    );
+    const outcome = await runOptimizeProduct(
+      {
+        ...productionUiPayload.product,
+        title: "Harbor Supply Sample Watch",
+        description: "Steel case with a leather strap.",
+        merchantFacts: PRODUCTION_FACTS,
+      },
+      "en"
+    );
+    expect(outcome.chargeUsage).toBe(true);
+    const gaps = outcome.result.analysis.missingInformation.join(" ");
+    const warnings = outcome.result.analysis.warnings.join(" ");
+    expect(gaps).not.toMatch(/vendor name is not provided/i);
+    expect(gaps).not.toMatch(/style or color options/i);
+    expect(warnings).not.toMatch(/lack of a vendor name/i);
+    expect(outcome.result.optimization.description).toMatch(/40 mm/i);
+    expect(scoreLimitExplanation(outcome.result.analysis.missingInformation)).toEqual([]);
+  });
 });
