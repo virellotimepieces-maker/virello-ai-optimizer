@@ -1,3 +1,5 @@
+import { copyHasBrokenGrammar } from "./copy-quality";
+
 export const SEO_TITLE_MAX = 60;
 export const META_DESCRIPTION_MAX = 160;
 
@@ -120,7 +122,18 @@ export function scoreListing(input: ScoredListing): ListingScores {
   const overall = clampScore(
     scores.title * 0.2 + scores.description * 0.3 + scores.seo * 0.2 + scores.conversion * 0.3
   );
-  return { ...scores, overall, grade: gradeForScore(overall) };
+  const graded = { ...scores, overall, grade: gradeForScore(overall) };
+  if (
+    copyHasBrokenGrammar(input.description) ||
+    copyHasBrokenGrammar(input.conversionCopy) ||
+    copyHasBrokenGrammar(input.callToAction) ||
+    copyHasBrokenGrammar(input.title) ||
+    copyHasBrokenGrammar(input.metaDescription) ||
+    input.benefitBullets.some((item) => copyHasBrokenGrammar(item))
+  ) {
+    return capBrokenGrammarScores(graded);
+  }
+  return graded;
 }
 
 export function capFallbackScores(
@@ -129,6 +142,15 @@ export function capFallbackScores(
 ): ListingScores {
   const maxOverall = missingInformation >= 2 ? 69 : 79;
   const overall = Math.min(scores.overall, maxOverall);
+  return {
+    ...scores,
+    overall,
+    grade: gradeForScore(overall),
+  };
+}
+
+export function capBrokenGrammarScores(scores: ListingScores): ListingScores {
+  const overall = Math.min(scores.overall, 69);
   return {
     ...scores,
     overall,

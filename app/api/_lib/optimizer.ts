@@ -1,6 +1,6 @@
 import { parseAppLocale, type AppLocale } from "./locales";
 import { stripHtml } from "./listing-html";
-import { scoreListing, META_DESCRIPTION_MAX, SEO_TITLE_MAX, capFallbackScores, type ListingScores } from "./listing-score";
+import { scoreListing, META_DESCRIPTION_MAX, SEO_TITLE_MAX, capFallbackScores, capBrokenGrammarScores, type ListingScores } from "./listing-score";
 import {
   applyCopyGuards,
   genuineProductHaystack,
@@ -15,6 +15,10 @@ import {
   shopContentLeakTokens,
   stripShopLeaks,
 } from "./optimizer-copy";
+import {
+  collectCopyQualityIssues,
+  resultQualityFields,
+} from "./copy-quality";
 import {
   merchantFactHaystack,
   parseMerchantFacts,
@@ -522,6 +526,9 @@ export function validateOptimizationResult(
       result.analysis.missingInformation.length
     );
   }
+  if (collectCopyQualityIssues(resultQualityFields(result), cleanedSource).length) {
+    result.scores = capBrokenGrammarScores(result.scores);
+  }
   return result;
 }
 
@@ -545,6 +552,10 @@ export function assertGroundedResult(
   const cleaned = sanitizeProductSource(product, shop);
   const source = sourceFactText(cleaned);
   const generated = publishableCopy(result);
+  const qualityIssues = collectCopyQualityIssues(resultQualityFields(result), cleaned);
+  if (qualityIssues.length) {
+    throw new OptimizerError(`Copy quality failed: ${qualityIssues.join("; ")}`, 422);
+  }
   const issues = inventedClaimsIn(source, generated);
   if (hasInternalInstruction(generated)) {
     issues.push("Internal instruction leaked into customer copy");
@@ -606,6 +617,8 @@ Do not emit malformed fragments (for example roman-numeral slash phrases like "I
 Write optimization.title, description, benefitBullets, callToAction, seoTitle, metaDescription, tags, and keywords independently. Do not copy the same sentence across those fields.
 analysis.* fields are internal merchant notes only and must never be repeated in optimization.* customer copy.
 Never write "Use these listed facts in the customer copy", "Customer copy:", "Use these facts", system messages, or validation notes inside optimization.* fields.
+Every customer-facing sentence must be complete. Never write dangling conjunctions or prepositions, duplicated connectors, duplicated punctuation, or fragments such as "Ideal for and various occasions."
+Merchant warnings must name a specific missing field the merchant can add. Never write vague notes such as "lack of comprehensive brand identity" or "limited product details may affect purchasing decisions" when vendor or product type is already listed.
 Fill optimization.tags and optimization.keywords with useful terms from stated product facts. Do not leave them empty when the product has a title, vendor, type, tags, options, or variants.
 SEO title: HARD MAX 60 characters. Prefer 50-60 only when enough stated facts exist. Never pad with generic words.
 SEO meta description: HARD MAX 160 characters. Prefer 140-160 only when two stated facts exist. Never invent or pad.
@@ -659,7 +672,8 @@ Retry: the previous result failed validation.
 Validation failures: ${reason}
 Verified product facts: ${JSON.stringify(verified)}
 Ignore dropshipping or value-hype language in the source; it is not a product fact. Use only verified title, type, vendor, description facts, options, variants, tags, and merchantFacts. Do not invent details. Do not use dropshipping, affordable elegance, budget-friendly, priced at just, shop now, or buy now.
-Do not put prompts, system messages, validation notes, or labels such as "Use these facts" or "Customer copy" in optimization.* fields.`;
+Do not put prompts, system messages, validation notes, or labels such as "Use these facts" or "Customer copy" in optimization.* fields.
+Rewrite incomplete phrases, dangling and/or, sentence fragments, and duplicated punctuation. Do not use vague brand-identity warnings.`;
 }
 
 function parseModelText(text: string): unknown {
