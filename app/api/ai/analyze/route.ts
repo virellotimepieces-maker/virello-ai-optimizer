@@ -8,7 +8,7 @@ import { ProductAccessError } from "../../_lib/product-access";
 import { ShopifyAuthError } from "../../_lib/shopify-auth";
 import { stripHtml } from "../../_lib/listing-html";
 import {
-  optimizeProduct,
+  runOptimizeProduct,
   OptimizerError,
   type OptimizerProduct,
 } from "../../_lib/optimizer";
@@ -57,16 +57,18 @@ export async function POST(request: NextRequest) {
 
     const outputLocale = parseAppLocale(body.outputLocale || body.output);
     const brandVoice = parseBrandVoice(body.brandVoice || body.voice);
-    const result = await optimizeProduct(product, outputLocale, subscriber.shop, brandVoice);
-    const recorded = await recordSuccessfulAiOptimization(
-      subscriber.shop,
-      subscriber.subscription,
-      idempotencyKey
-    );
+    const outcome = await runOptimizeProduct(product, outputLocale, subscriber.shop, brandVoice);
+    const recorded = outcome.chargeUsage
+      ? await recordSuccessfulAiOptimization(
+          subscriber.shop,
+          subscriber.subscription,
+          idempotencyKey
+        )
+      : { usage: subscriber.usage };
 
     return NextResponse.json({
       success: true,
-      result,
+      result: outcome.result,
       usage: recorded.usage,
     });
   } catch (error) {

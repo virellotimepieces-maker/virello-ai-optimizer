@@ -386,6 +386,7 @@ export function validateOptimizationResult(
   shop?: string,
   voice: BrandVoice = DEFAULT_BRAND_VOICE
 ): OptimizationResult {
+  const cleanedSource = source ? sanitizeProductSource(source, shop) : source;
   const data = recordOf(raw);
   const analysis = recordOf(data.analysis);
   const optimization = recordOf(data.optimization);
@@ -405,15 +406,15 @@ export function validateOptimizationResult(
     optimization.listingTitle,
     data.title,
     data.productTitle,
-    source?.title
+    cleanedSource?.title
   ).slice(0, 120);
   const recoveredDescription = pickText(
     optimization.description,
     optimization.body,
     optimization.productDescription,
     data.description,
-    source?.description,
-    fallbackDescription(source)
+    cleanedSource?.description,
+    fallbackDescription(cleanedSource)
   );
   if (
     (!cleanText(optimization.title) || !cleanText(optimization.description)) &&
@@ -428,14 +429,14 @@ export function validateOptimizationResult(
   const seoTitle = specificSeoTitle(
     pickText(optimization.seoTitle, data.seoTitle, title),
     title,
-    source,
+    cleanedSource,
     shop
   );
   const metaDescription = specificMetaDescription(
     pickText(optimization.metaDescription, data.metaDescription, description),
     title,
     description,
-    source,
+    cleanedSource,
     shop
   );
   const callToAction = pickText(optimization.callToAction, data.callToAction);
@@ -481,25 +482,25 @@ export function validateOptimizationResult(
   if (!result.optimization.title || !result.optimization.description) {
     throw new OptimizerError("AI result is missing a product title or description.", 502);
   }
-  applyCopyGuards(result, source, shop, voice);
-  ensureHighConversionFields(result, source, shop, voice);
-  applyCopyGuards(result, source, shop, voice);
+  applyCopyGuards(result, cleanedSource, shop, voice);
+  ensureHighConversionFields(result, cleanedSource, shop, voice);
+  applyCopyGuards(result, cleanedSource, shop, voice);
   result.optimization.seoTitle = specificSeoTitle(
     result.optimization.seoTitle,
     result.optimization.title,
-    source,
+    cleanedSource,
     shop
   );
   result.optimization.metaDescription = specificMetaDescription(
     result.optimization.metaDescription,
     result.optimization.title,
     result.optimization.description,
-    source,
+    cleanedSource,
     shop
   );
-  applyCopyGuards(result, source, shop, voice);
+  applyCopyGuards(result, cleanedSource, shop, voice);
   result.scores = scoreListing({
-    sourceTitle: source?.title || result.optimization.title,
+    sourceTitle: cleanedSource?.title || result.optimization.title,
     title: result.optimization.title,
     description: result.optimization.description,
     benefitBullets: result.optimization.benefitBullets,
@@ -533,7 +534,8 @@ export function assertGroundedResult(
   result: OptimizationResult,
   shop?: string
 ): void {
-  const source = sourceFactText(product);
+  const cleaned = sanitizeProductSource(product, shop);
+  const source = sourceFactText(cleaned);
   const generated = publishableCopy(result);
   const issues = inventedClaimsIn(source, generated);
   if (hasDropshippingLanguage(generated)) {
@@ -548,7 +550,7 @@ export function assertGroundedResult(
   if (hasValueHypeLanguage(generated)) {
     issues.push("Generic value-hype language");
   }
-  const hay = genuineProductHaystack(product);
+  const hay = genuineProductHaystack(cleaned);
   for (const token of shopContentLeakTokens(shop)) {
     const leak = new RegExp(token.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
     if (leak.test(generated) && !hay.includes(token.toLowerCase())) {
@@ -577,6 +579,7 @@ export function buildOptimizerMessages(
   return {
     system: `You are Virello AI Optimizer, writing customer-facing copy for an established specialty retailer.
 Optimize only the supplied Shopify product. Use every valid fact in the product title, description, type, vendor, tags, price, options, variants, and merchantFacts. Never invent a fact that is not in that source.
+Dropshipping language, value-hype, shop-now CTAs, and similar marketing filler already present in the source are dirty text to ignore, not verified product facts.
 Default to polished, credible, brand-neutral retail English. Never sound like dropshipping, marketplace spam, or hype ads.
 ${brandVoiceInstruction(voice)}
 Never invent materials, specifications, discounts, prices, reviews, guarantees, shipping times, stock scarcity, certifications, medical claims, lifestyle uses, quality judgments, or fake urgency.
@@ -663,12 +666,43 @@ async function callModel(system: string, user: string): Promise<string> {
   return content;
 }
 
-export async function optimizeProduct(
+export function buildSafeFallbackResult(
+  product: OptimizerProduct,
+  shop = "",
+  voice: BrandVoice = DEFAULT_BRAND_VOICE
+): OptimizationResult {
+  const result = validateOptimizationResult(
+    {
+      analysis: {
+        warnings: [
+          "The AI could not produce grounded copy, so Virello wrote a factual draft from listed product data only.",
+        ],
+        missingInformation: [],
+      },
+      optimization: {
+        title: product.title,
+        description: product.description || product.title,
+      },
+    },
+    product,
+    shop,
+    voice
+  );
+  assertGroundedResult(product, result, shop);
+  return result;
+}
+
+export type OptimizeProductOutcome = {
+  result: OptimizationResult;
+  chargeUsage: boolean;
+};
+
+export async function runOptimizeProduct(
   product: OptimizerProduct,
   outputLocale: AppLocale = "en",
   shop = "",
   brandVoice: BrandVoice | string = DEFAULT_BRAND_VOICE
-): Promise<OptimizationResult> {
+): Promise<OptimizeProductOutcome> {
   if (!cleanText(product.title)) {
     throw new OptimizerError("Product title is required for AI optimization.", 400);
   }
@@ -689,17 +723,30 @@ export async function optimizeProduct(
       const content = await callModel(
         attempt === 0
           ? system
-          : `${system}\nRetry: return valid JSON, do not invent facts, and do not use dropshipping language.`,
+          : `${system}\nRetry: return valid JSON. Ignore dropshipping or value-hype language in the source; it is not a product fact. Use only verified title, type, vendor, description facts, options, variants, tags, and merchantFacts. Do not invent details. Do not use dropshipping, affordable elegance, budget-friendly, priced at just, shop now, or buy now.`,
         user
       );
       const result = validateOptimizationResult(parseModelText(content), cleaned, shop, voice);
       assertGroundedResult(cleaned, result, shop);
-      return result;
+      return { result, chargeUsage: true };
     } catch (error) {
       lastError = error;
     }
   }
 
-  if (lastError instanceof OptimizerError) throw lastError;
-  throw new OptimizerError("The AI optimizer could not produce a valid result.", 502);
+  try {
+    return { result: buildSafeFallbackResult(cleaned, shop, voice), chargeUsage: false };
+  } catch {
+    if (lastError instanceof OptimizerError) throw lastError;
+    throw new OptimizerError("The AI optimizer could not produce a valid result.", 502);
+  }
+}
+
+export async function optimizeProduct(
+  product: OptimizerProduct,
+  outputLocale: AppLocale = "en",
+  shop = "",
+  brandVoice: BrandVoice | string = DEFAULT_BRAND_VOICE
+): Promise<OptimizationResult> {
+  return (await runOptimizeProduct(product, outputLocale, shop, brandVoice)).result;
 }

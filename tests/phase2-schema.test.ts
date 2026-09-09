@@ -298,8 +298,9 @@ describe("Phase 2 database behavior", () => {
     expect(authorizeAt).toBeGreaterThan(-1);
     expect(openaiAt).toBeGreaterThan(-1);
     expect(consumeAt).toBeGreaterThan(authorizeAt);
-    expect(analyze.indexOf("optimizeProduct")).toBeGreaterThan(authorizeAt);
-    expect(analyze.lastIndexOf("optimizeProduct")).toBeLessThan(consumeAt);
+    expect(analyze.indexOf("runOptimizeProduct")).toBeGreaterThan(authorizeAt);
+    expect(analyze.lastIndexOf("runOptimizeProduct")).toBeLessThan(consumeAt);
+    expect(analyze).toMatch(/outcome\.chargeUsage/);
     expect(analyze).toMatch(/parseIdempotencyKey/);
     expect(analyze).toMatch(/Idempotency-Key/);
   });

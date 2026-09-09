@@ -30,6 +30,7 @@ test.describe("review approval layout", () => {
 
     await expect(page.getByTestId("brand-voice")).toHaveValue("refined");
     await expect(page.getByTestId("product-facts")).toBeVisible();
+    await expect(page.getByTestId("product-facts")).toContainText(/Optional/i);
     await expect(page.getByTestId("save-dock")).toHaveCount(1);
     await expect(page.getByTestId("save-shopify")).toHaveCount(1);
     const save = page.getByTestId("save-shopify");

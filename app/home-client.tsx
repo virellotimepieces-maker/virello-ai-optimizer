@@ -246,6 +246,11 @@ export default function Home({
     setError(text);
   }
 
+  function clearError() {
+    setError("");
+    setErrorKind("");
+  }
+
   useEffect(() => {
     function onSession(event: Event) {
       const detail = (event as CustomEvent<{
@@ -324,7 +329,7 @@ export default function Home({
       return;
     }
     setCheckoutLoading(true);
-    setError("");
+    clearError();
     try {
       const response = await shopifyFetch("/api/billing/subscribe", {
         method: "POST",
@@ -375,7 +380,7 @@ export default function Home({
     }
     setShopInput(cleaned);
     setConnecting(true);
-    setError("");
+    clearError();
     try {
       if (billedShop && cleaned !== billedShop) {
         const moved = await shopifyFetch("/api/shopify/retarget", {
@@ -426,7 +431,7 @@ export default function Home({
       return;
     }
     setChangingStore(true);
-    setError("");
+    clearError();
     try {
       const response = await shopifyFetch("/api/shopify/retarget", {
         method: "POST",
@@ -454,7 +459,7 @@ export default function Home({
     if (changingStore) return;
     if (shopInstalled && !window.confirm(copy.changeStoreConfirm)) return;
     setChangingStore(true);
-    setError("");
+    clearError();
     try {
       const response = await shopifyFetch("/api/shopify/disconnect", {
         method: "POST",
@@ -480,7 +485,7 @@ export default function Home({
 
   async function importProducts(nextCursor = "") {
     setImporting(true);
-    setError("");
+    clearError();
     try {
       const url = nextCursor
         ? `/api/shopify/products?cursor=${encodeURIComponent(nextCursor)}`
@@ -505,9 +510,14 @@ export default function Home({
       setCursor(data.pageInfo?.endCursor || null);
       setShop(data.shop || shop);
       setShopInstalled(true);
-      setMessage(
-        incoming.length ? `${incoming.length} ${copy.productsLoaded}` : copy.emptyProducts
-      );
+      clearError();
+      if (!nextCursor && incoming.length === 1 && !data.pageInfo?.hasNextPage) {
+        setMessage(copy.singleProductImported);
+      } else {
+        setMessage(
+          incoming.length ? `${incoming.length} ${copy.productsLoaded}` : copy.emptyProducts
+        );
+      }
     } catch (err) {
       showError("shopify", err instanceof Error ? err.message : copy.shopifyError);
     } finally {
@@ -527,7 +537,7 @@ export default function Home({
       `opt-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
     setOptimizing(true);
     setApproved(false);
-    setError("");
+    clearError();
     try {
       const response = await shopifyFetch("/api/ai/analyze", {
         method: "POST",
@@ -594,6 +604,7 @@ export default function Home({
       });
       setMissing(data.result.analysis?.missingInformation || data.result.analysis?.warnings || []);
       if (data.usage) setUsage(data.usage);
+      clearError();
       setMessage(copy.reviewChanges);
     } catch {
       showError("ai", copy.aiError);
@@ -613,7 +624,7 @@ export default function Home({
       return;
     }
     setSaving(true);
-    setError("");
+    clearError();
     try {
       const response = await shopifyFetch("/api/shopify/products", {
         method: "POST",
@@ -723,7 +734,7 @@ export default function Home({
       </header>
 
       {error && (
-        <div className={`error-bar error-${errorKind || "generic"}`}>
+        <div className={`error-bar error-${errorKind || "generic"}`} data-testid="app-error">
           {errorKind === "quota" ? copy.quotaError : error}
         </div>
       )}
@@ -740,7 +751,11 @@ export default function Home({
           {copy.wrongHost} <a href={canonicalUrl}>{canonicalUrl}</a>
         </div>
       )}
-      {message && !error && <div className="success-bar">{message}</div>}
+      {message && !error && (
+        <div className="success-bar" data-testid="import-status">
+          {message}
+        </div>
+      )}
 
       <section className={shopInstalled ? "hero hero-compact" : "hero"}>
         <div className="hero-inner">

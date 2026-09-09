@@ -41,6 +41,7 @@ export type CopyKey =
   | "standaloneHint"
   | "subscriptionActivated"
   | "productsLoaded"
+  | "singleProductImported"
   | "checkingShopify"
   | "shopDomainLabel"
   | "connectHeadline"
@@ -185,6 +186,8 @@ export const COPY: Record<AppLocale, Record<CopyKey, string>> = {
     standaloneHint: "Works in Shopify Admin and as a standalone dashboard.",
     subscriptionActivated: "Subscription activated successfully.",
     productsLoaded: "products loaded.",
+    singleProductImported:
+      "Imported 1 product. This store currently has only one product, so Import is complete. That is not a failure.",
     checkingShopify: "Checking Shopify connection...",
     shopDomainLabel: "Shopify store domain",
     connectHeadline: "Connect your Shopify store",
@@ -350,6 +353,8 @@ export const COPY: Record<AppLocale, Record<CopyKey, string>> = {
     standaloneHint: "Gumagana sa Shopify Admin at sa standalone dashboard.",
     subscriptionActivated: "Aktibo na ang subscription.",
     productsLoaded: "products ang na-load.",
+    singleProductImported:
+      "Na-import ang 1 product. Isang product lang ang laman ng store na ito, kaya tapos na ang Import. Hindi iyon failure.",
     checkingShopify: "Tinitingnan ang koneksyon sa Shopify...",
     shopDomainLabel: "Domain ng Shopify store",
     connectHeadline: "Ikonekta ang iyong Shopify store",

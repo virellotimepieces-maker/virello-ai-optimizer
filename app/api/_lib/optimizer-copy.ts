@@ -181,22 +181,52 @@ export function hasReviewSuggestion(value: string): boolean {
 }
 
 export function hasValueHypeLanguage(value: string): boolean {
-  return matches(VALUE_HYPE_LANGUAGE, value) || matches(DROPSHIPPING_LANGUAGE, value);
+  return matches(VALUE_HYPE_LANGUAGE, value);
 }
 
 export function hasPriceLeadLanguage(value: string): boolean {
   return matches(PRICE_LEAD_LANGUAGE, value);
 }
 
-function stripBannedRetail(value: string, product?: OptimizerProduct): string {
+export function hasDirtyMarketingLanguage(value: string): boolean {
+  return (
+    hasDropshippingLanguage(value) ||
+    hasValueHypeLanguage(value) ||
+    hasCheapLanguage(value) ||
+    hasReviewSuggestion(value) ||
+    hasPriceLeadLanguage(value)
+  );
+}
+
+function stripAlways(value: string, pattern: RegExp): string {
+  return value.replace(new RegExp(pattern.source, "gi"), " ");
+}
+
+export function stripDirtyMarketing(value: string): string {
+  let text = cleanCopyText(value);
+  if (!text) return "";
+  text = stripAlways(text, VALUE_HYPE_LANGUAGE);
+  text = stripAlways(text, DROPSHIPPING_LANGUAGE);
+  text = stripAlways(text, CHEAP_LANGUAGE);
+  text = stripAlways(text, REVIEW_SUGGESTION);
+  text = stripAlways(text, LIFESTYLE_FILLER);
+  text = stripAlways(text, GENERIC_FILLER);
+  text = stripAlways(text, PRICE_LEAD_LANGUAGE);
+  text = text.replace(/[|]{2,}/g, " ").replace(/\s*\/\s*/g, " ");
+  text = text.replace(/\s+/g, " ").replace(/\s+\./g, ".").trim();
+  text = text.replace(INCOMPLETE_TAIL, "").replace(TRAILING_JUNK, "").trim();
+  return text.replace(/\s+/g, " ").trim();
+}
+
+function stripBannedRetail(value: string): string {
   let text = value;
-  text = stripPattern(text, VALUE_HYPE_LANGUAGE, product);
-  text = stripPattern(text, DROPSHIPPING_LANGUAGE, product);
-  text = stripPattern(text, CHEAP_LANGUAGE, product);
-  text = stripPattern(text, REVIEW_SUGGESTION, product);
-  text = stripPattern(text, LIFESTYLE_FILLER, product);
-  text = stripPattern(text, GENERIC_FILLER, product);
-  text = stripPattern(text, PRICE_LEAD_LANGUAGE, product);
+  text = stripAlways(text, VALUE_HYPE_LANGUAGE);
+  text = stripAlways(text, DROPSHIPPING_LANGUAGE);
+  text = stripAlways(text, CHEAP_LANGUAGE);
+  text = stripAlways(text, REVIEW_SUGGESTION);
+  text = stripAlways(text, LIFESTYLE_FILLER);
+  text = stripAlways(text, GENERIC_FILLER);
+  text = stripAlways(text, PRICE_LEAD_LANGUAGE);
   return text.replace(/\s+/g, " ").trim();
 }
 
@@ -210,7 +240,7 @@ export function normalizeGeneratedText(
   text = text.replace(ROMAN_SLASH, " ");
   text = text.replace(TEMPLATE_JUNK, " ");
   text = dedupeRepeatedPrices(text);
-  text = stripBannedRetail(text, product);
+  text = stripBannedRetail(text);
   text = text.replace(/[|]{2,}/g, " ").replace(/\s*\/\s*/g, " ");
   text = dedupeSentences(text);
   if (kind === "title") {
@@ -403,17 +433,24 @@ export function listingFacts(
       stripShopLeaks(cleanCopyText(product.vendor || ""), product, shop),
       stripShopLeaks(cleanCopyText(product.productType || ""), product, shop),
       includePrice ? cleanCopyText(product.price || "") : "",
-      ...sentences.map((item) => stripShopLeaks(item, product, shop)),
-      ...merchantFactLines(product.merchantFacts).map((item) => stripShopLeaks(item, product, shop)),
-      ...(product.options || []).map((item) => stripShopLeaks(cleanCopyText(item), product, shop)),
-      ...(product.tags || []).map((item) => stripShopLeaks(cleanCopyText(item), product, shop)),
+      ...sentences.map((item) => stripDirtyMarketing(stripShopLeaks(item, product, shop))),
+      ...merchantFactLines(product.merchantFacts).map((item) =>
+        stripDirtyMarketing(stripShopLeaks(item, product, shop))
+      ),
+      ...(product.options || []).map((item) =>
+        stripDirtyMarketing(stripShopLeaks(cleanCopyText(item), product, shop))
+      ),
+      ...(product.tags || []).map((item) =>
+        stripDirtyMarketing(stripShopLeaks(cleanCopyText(item), product, shop))
+      ),
       ...(product.variants || [])
         .slice(0, 6)
-        .map((item) => stripShopLeaks(cleanCopyText(item), product, shop)),
+        .map((item) => stripDirtyMarketing(stripShopLeaks(cleanCopyText(item), product, shop))),
     ]
       .map((item) => withoutPriceTokens(item.replace(ROMAN_SLASH, " ").replace(TEMPLATE_JUNK, " ").trim(), includePrice))
       .map((item) => naturalizeFact(item))
       .filter((item) => item.length >= 3 && (includePrice || !looksLikePrice(item)))
+      .filter((item) => !hasDirtyMarketingLanguage(item))
   ).slice(0, 12);
 }
 
@@ -426,18 +463,21 @@ export function sanitizeProductSource(
     text = text.replace(ROMAN_SLASH, " ");
     text = text.replace(TEMPLATE_JUNK, " ");
     text = dedupeRepeatedPrices(text);
+    text = stripDirtyMarketing(text);
     text = dedupeSentences(text);
     if (kind === "title") {
       text = text.split(/[.!\n]/)[0] || text;
+      text = text.replace(TRAILING_JUNK, "").trim();
+      text = text.replace(INCOMPLETE_TAIL, "").trim();
       text = text.replace(TRAILING_JUNK, "").trim();
     }
     return text.replace(/\s+/g, " ").trim();
   };
 
   let title = cleanField(product.title, "title");
-  if (PLACEHOLDER_TITLE.test(title)) {
+  if (PLACEHOLDER_TITLE.test(title) || !title) {
     const fromDescription = cleanField(product.description).split(/[.!]/)[0] || "";
-    title = fromDescription || title;
+    title = fromDescription || cleanField(product.productType, "title") || title;
   }
 
   return {
@@ -488,8 +528,12 @@ function extraFacts(
   shop?: string,
   voice: BrandVoice = DEFAULT_BRAND_VOICE
 ): string[] {
-  const title = stripShopLeaks(cleanCopyText(product?.title || ""), product, shop).toLowerCase();
-  const type = stripShopLeaks(cleanCopyText(product?.productType || ""), product, shop).toLowerCase();
+  const title = stripDirtyMarketing(
+    stripShopLeaks(cleanCopyText(product?.title || ""), product, shop)
+  ).toLowerCase();
+  const type = stripDirtyMarketing(
+    stripShopLeaks(cleanCopyText(product?.productType || ""), product, shop)
+  ).toLowerCase();
   const vendor = stripShopLeaks(cleanCopyText(product?.vendor || ""), product, shop).toLowerCase();
   return listingFacts(product, shop, voice === "value").filter((item) => {
     const lower = item.toLowerCase();
@@ -498,8 +542,8 @@ function extraFacts(
 }
 
 function factualTitle(product?: OptimizerProduct, shop?: string): string {
-  const title = stripShopLeaks(cleanCopyText(product?.title || ""), product, shop);
-  const type = stripShopLeaks(cleanCopyText(product?.productType || ""), product, shop);
+  const title = stripDirtyMarketing(stripShopLeaks(cleanCopyText(product?.title || ""), product, shop));
+  const type = stripDirtyMarketing(stripShopLeaks(cleanCopyText(product?.productType || ""), product, shop));
   const vendor = stripShopLeaks(cleanCopyText(product?.vendor || ""), product, shop);
   if (vendor && title && !title.toLowerCase().includes(vendor.toLowerCase())) {
     return `${vendor} ${title}`.slice(0, 120).trim();
@@ -515,8 +559,10 @@ function factualDescription(
   shop?: string,
   voice: BrandVoice = DEFAULT_BRAND_VOICE
 ): string {
-  const title = stripShopLeaks(cleanCopyText(product?.title || "This product"), product, shop);
-  const type = stripShopLeaks(cleanCopyText(product?.productType || ""), product, shop);
+  const title = stripDirtyMarketing(
+    stripShopLeaks(cleanCopyText(product?.title || "This product"), product, shop)
+  );
+  const type = stripDirtyMarketing(stripShopLeaks(cleanCopyText(product?.productType || ""), product, shop));
   const vendor = stripShopLeaks(cleanCopyText(product?.vendor || ""), product, shop);
   const named = extraFacts(product, shop, voice);
   const typePhrase = type
@@ -539,7 +585,9 @@ function factualDescription(
 }
 
 function factualCta(product?: OptimizerProduct, shop?: string): string {
-  const title = stripShopLeaks(cleanCopyText(product?.title || "this product"), product, shop);
+  const title = stripDirtyMarketing(
+    stripShopLeaks(cleanCopyText(product?.title || "this product"), product, shop)
+  );
   return `Review the listed details for ${title}.`.slice(0, 120);
 }
 
@@ -548,8 +596,10 @@ function factualMeta(
   shop?: string,
   voice: BrandVoice = DEFAULT_BRAND_VOICE
 ): string {
-  const title = stripShopLeaks(cleanCopyText(product?.title || "This product"), product, shop);
-  const type = stripShopLeaks(cleanCopyText(product?.productType || ""), product, shop);
+  const title = stripDirtyMarketing(
+    stripShopLeaks(cleanCopyText(product?.title || "This product"), product, shop)
+  );
+  const type = stripDirtyMarketing(stripShopLeaks(cleanCopyText(product?.productType || ""), product, shop));
   const vendor = stripShopLeaks(cleanCopyText(product?.vendor || ""), product, shop);
   const named = extraFacts(product, shop, voice);
   if (!named.length) {
@@ -591,8 +641,8 @@ function sharesSentence(left: string, right: string): boolean {
 
 function neutralizeAnalysisLine(value: string, product?: OptimizerProduct, shop?: string): string {
   let text = normalizeGeneratedText(value, product, shop);
-  text = stripPattern(text, CHEAP_LANGUAGE, product);
-  text = stripPattern(text, DROPSHIPPING_LANGUAGE, product);
+  text = stripAlways(text, CHEAP_LANGUAGE);
+  text = stripAlways(text, DROPSHIPPING_LANGUAGE);
   text = text.replace(/\s+/g, " ").replace(/\s+\./g, ".").trim();
   if (!text || looksLikeRemnant(text)) return "";
   if (hasCheapLanguage(text) || /lacking|cheap|low-quality|questionable/i.test(text)) {

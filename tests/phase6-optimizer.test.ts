@@ -5,6 +5,7 @@ import {
   assertGroundedResult,
   inventedClaimsIn,
   optimizeProduct,
+  runOptimizeProduct,
   setOptimizerFetchForTests,
   validateOptimizationResult,
 } from "../app/api/_lib/optimizer";
@@ -105,7 +106,7 @@ describe("Phase 6 optimizer grounding", () => {
     setOptimizerFetchForTests(null);
   });
 
-  it("does not consume quota when optimization fails", async () => {
+  it("returns a safe factual fallback without consuming quota when the model is down", async () => {
     process.env.SHOPIFY_TOKEN_ENCRYPTION_KEY = "x".repeat(32);
     process.env.OPENAI_API_KEY = "test-openai-key";
     await usePglite();
@@ -122,7 +123,10 @@ describe("Phase 6 optimizer grounding", () => {
         return JSON.stringify({ error: { message: "down" } });
       },
     }));
-    await expect(optimizeProduct(product, "en")).rejects.toThrow(/unavailable|optimizer/i);
+    const outcome = await runOptimizeProduct(product, "en");
+    expect(outcome.chargeUsage).toBe(false);
+    expect(outcome.result.optimization.title).toMatch(/Gold Watch/i);
+    expect(() => assertGroundedResult(product, outcome.result)).not.toThrow();
     const usage = await peekAiUsage("store-alpha.myshopify.com", "sub_1", 100);
     expect(usage.used).toBe(0);
     setOptimizerFetchForTests(null);
