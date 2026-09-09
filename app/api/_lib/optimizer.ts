@@ -3,6 +3,7 @@ import { stripHtml } from "./listing-html";
 import { scoreListing, META_DESCRIPTION_MAX, SEO_TITLE_MAX, capFallbackScores, capBrokenGrammarScores, type ListingScores } from "./listing-score";
 import {
   applyCopyGuards,
+  factualConversionCopy,
   genuineProductHaystack,
   hasCheapLanguage,
   hasDropshippingLanguage,
@@ -23,6 +24,7 @@ import {
 import {
   merchantFactHaystack,
   merchantFactsMissingFromText,
+  hasMerchantFacts,
   parseMerchantFacts,
   type MerchantFacts,
 } from "./merchant-facts";
@@ -255,11 +257,8 @@ function ensureHighConversionFields(
       120
     );
   }
-  if (!result.optimization.conversionCopy || hasInternalInstruction(result.optimization.conversionCopy) || /\blists\s+(?:introducing|the)\b/i.test(result.optimization.conversionCopy)) {
-    const named = facts.filter((item) => item.toLowerCase() !== cleanText(source?.title || "").toLowerCase());
-    result.optimization.conversionCopy = named.length
-      ? `This product has ${named.slice(0, 4).join(", ")}.`
-      : "Only listed product facts are available.";
+  if (!result.optimization.conversionCopy || hasInternalInstruction(result.optimization.conversionCopy) || /\blists\s+(?:introducing|the)\b/i.test(result.optimization.conversionCopy) || /^this product has\b/i.test(result.optimization.conversionCopy)) {
+    result.optimization.conversionCopy = factualConversionCopy(source, shop);
   }
   if (result.analysis.objections.length === 0) {
     const gap = result.analysis.missingInformation[0] || result.analysis.weaknesses[0];
@@ -453,6 +452,8 @@ export function validateOptimizationResult(
         fallbackDescription(cleanedSource)
       );
   if (
+    !options.fallback &&
+    !hasMerchantFacts(cleanedSource?.merchantFacts) &&
     (!cleanText(optimization.title) || !cleanText(optimization.description)) &&
     recoveredTitle &&
     recoveredDescription

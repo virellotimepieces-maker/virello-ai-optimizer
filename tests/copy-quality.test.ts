@@ -90,6 +90,12 @@ describe("Copy quality detection and repair", () => {
     expect(
       rewriteMerchantInsight(vagueBrandWarning, { vendor: "North Kettle", productType: "Kettle" })
     ).toBe("");
+    expect(
+      rewriteMerchantInsight(
+        "Comprehensive vendor details could enhance credibility and customer confidence",
+        { vendor: "North Kettle", productType: "Kettle" }
+      )
+    ).toBe("");
     expect(rewriteMerchantInsight(vagueBrandWarning, { vendor: "", productType: "Kettle" })).toMatch(
       /vendor or brand name is not listed/i
     );
