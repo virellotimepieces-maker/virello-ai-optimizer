@@ -4,6 +4,7 @@ import { dbQuery, neonSql } from "../app/api/_lib/database";
 import {
   rollbackPhase2,
   rollbackPhase4,
+  rollbackPhase10ShopifyBilling,
   splitSqlStatements,
 } from "../app/api/_lib/migrate";
 import { saveShopifySession } from "../app/api/_lib/shopify-auth";
@@ -13,8 +14,9 @@ import {
   revokeShopifyInstallation,
   upsertShop,
 } from "../app/api/_lib/shops";
-import { saveShopSubscription, subscriptionForShop } from "../app/api/_lib/subscriber";
+import { billingForShop } from "../app/api/_lib/shopify-billing";
 import { consumeAiUsage, peekAiUsage } from "../app/api/_lib/usage";
+import { seedShopifyBilling } from "./helpers/shopify-billing";
 import {
   claimWebhookEvent,
   markWebhookEvent,
@@ -77,6 +79,7 @@ describe("Phase 2 database behavior", () => {
         "stripe_customers",
         "stripe_invoices",
         "rate_limit_buckets",
+        "shopify_app_subscriptions",
       ])
     );
 
@@ -93,20 +96,22 @@ describe("Phase 2 database behavior", () => {
       "007_rate_limits",
       "008_shop_binding",
       "009_expiring_offline_tokens",
+      "010_shopify_billing",
     ]);
   });
 
   it("rolls Phase 2 back without dropping billing tables", async () => {
     await upsertShop(SHOP_A);
-    await saveShopSubscription(SHOP_A, {
-      customerId: "cus_keep",
-      subscriptionId: "sub_keep",
-      status: "active",
-      currentPeriodStart: 1_700_000_000,
-      currentPeriodEnd: 1_702_592_000,
-    });
+    await dbQuery(
+      `INSERT INTO shop_subscriptions (
+         shop, stripe_customer_id, stripe_subscription_id, status,
+         current_period_start, current_period_end
+       ) VALUES ($1, $2, $3, $4, $5, $6)`,
+      [SHOP_A, "cus_keep", "sub_keep", "active", 1_700_000_000, 1_702_592_000]
+    );
 
     const { exec } = neonSql();
+    await rollbackPhase10ShopifyBilling(exec);
     await rollbackPhase4(exec);
     await rollbackPhase2(exec);
 
@@ -163,17 +168,13 @@ describe("Phase 2 database behavior", () => {
   it("keeps usage, sessions, and subscriptions tenant-isolated", async () => {
     await upsertShop(SHOP_A);
     await upsertShop(SHOP_B);
-    await saveShopSubscription(SHOP_A, {
-      customerId: "cus_a",
-      subscriptionId: "sub_a",
-      status: "active",
+    await seedShopifyBilling(SHOP_A, {
+      subscriptionGid: "gid://shopify/AppSubscription/a",
       currentPeriodStart: 100,
       currentPeriodEnd: 200,
     });
-    await saveShopSubscription(SHOP_B, {
-      customerId: "cus_b",
-      subscriptionId: "sub_b",
-      status: "active",
+    await seedShopifyBilling(SHOP_B, {
+      subscriptionGid: "gid://shopify/AppSubscription/b",
       currentPeriodStart: 100,
       currentPeriodEnd: 200,
     });
@@ -199,16 +200,18 @@ describe("Phase 2 database behavior", () => {
     });
     expect(await getActiveAppSession("sess_a", SHOP_B)).toBeNull();
     expect((await getActiveAppSession("sess_a", SHOP_A))?.shop).toBe(SHOP_A);
-    expect((await subscriptionForShop(SHOP_A))?.subscriptionId).toBe("sub_a");
-    expect((await subscriptionForShop(SHOP_B))?.subscriptionId).toBe("sub_b");
+    expect((await billingForShop(SHOP_A))?.subscriptionId).toBe(
+      "gid://shopify/AppSubscription/a"
+    );
+    expect((await billingForShop(SHOP_B))?.subscriptionId).toBe(
+      "gid://shopify/AppSubscription/b"
+    );
   });
 
   it("revokes the Shopify install on uninstall and keeps billing for reinstall", async () => {
     await saveShopifySession(SHOP_A, "offline-token-alpha", "read_products");
-    await saveShopSubscription(SHOP_A, {
-      customerId: "cus_a",
-      subscriptionId: "sub_persist",
-      status: "active",
+    await seedShopifyBilling(SHOP_A, {
+      subscriptionGid: "gid://shopify/AppSubscription/persist",
       currentPeriodStart: 100,
       currentPeriodEnd: 200,
     });
@@ -230,8 +233,8 @@ describe("Phase 2 database behavior", () => {
       [SHOP_A]
     );
     expect(shopRow[0]?.uninstalled_at).toBeTruthy();
-    expect((await subscriptionForShop(SHOP_A))?.subscriptionId).toBe(
-      "sub_persist"
+    expect((await billingForShop(SHOP_A))?.subscriptionId).toBe(
+      "gid://shopify/AppSubscription/persist"
     );
 
     await saveShopifySession(SHOP_A, "offline-token-reinstall", "read_products");
@@ -244,9 +247,8 @@ describe("Phase 2 database behavior", () => {
     );
     expect(restored[0]?.revoked_at).toBeNull();
     expect(restored[0]?.encrypted_access_token).not.toBe("");
-    expect((await subscriptionForShop(SHOP_A))?.customerId).toBe("cus_a");
-    expect((await subscriptionForShop(SHOP_A))?.subscriptionId).toBe(
-      "sub_persist"
+    expect((await billingForShop(SHOP_A))?.subscriptionId).toBe(
+      "gid://shopify/AppSubscription/persist"
     );
   });
 

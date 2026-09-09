@@ -7,7 +7,6 @@ import { normalizeShop, isAllowedShopifyConnectUrl, resolveStoreBindingDisplay }
 import { assignTopLevel, isShopifyAdminIframe } from "./shopify-embed";
 import { buildShopifyDescriptionHtml, stripHtml } from "./api/_lib/listing-html";
 import { scoreListing, META_DESCRIPTION_MAX, SEO_TITLE_MAX, type ListingGrade } from "./api/_lib/listing-score";
-import { isStripeWrongModeObjectError } from "./api/_lib/stripe-mode";
 
 type Product = {
   id: string;
@@ -107,7 +106,7 @@ export default function Home({
   const [missing, setMissing] = useState<string[]>([]);
   const [approved, setApproved] = useState(false);
   const [adminIframe, setAdminIframe] = useState(false);
-  const [stripeMode, setStripeMode] = useState<"live" | "test" | null>(null);
+  const [billingTest, setBillingTest] = useState(false);
   const [embeddedSessionReady, setEmbeddedSessionReady] = useState(!embeddedInstall);
 
   const [checkoutLoading, setCheckoutLoading] = useState(false);
@@ -191,8 +190,8 @@ export default function Home({
           shopifyFetch("/api/subscriber/status", { cache: "no-store" }),
         ]);
         const status = await statusRes.json().catch(() => null);
-        setCanManage(Boolean(status?.canManage) && !status?.sandboxBilling);
-        setStripeMode(status?.stripeMode === "live" || status?.stripeMode === "test" ? status.stripeMode : null);
+        setCanManage(Boolean(status?.canManage));
+        setBillingTest(Boolean(status?.billingTest));
         setProductAccess(Boolean(status?.active));
         setShopInstalled(Boolean(status?.shopInstalled));
         setPendingShop(typeof status?.pendingShop === "string" ? status.pendingShop : "");
@@ -233,7 +232,7 @@ export default function Home({
     setCheckoutLoading(true);
     setError("");
     try {
-      const response = await shopifyFetch("/api/stripe/checkout", {
+      const response = await shopifyFetch("/api/billing/subscribe", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -258,18 +257,13 @@ export default function Home({
     if (!canManage || portalLoading) return;
     setPortalLoading(true);
     try {
-      const response = await shopifyFetch("/api/stripe/portal", { method: "POST" });
+      const response = await shopifyFetch("/api/billing/manage", { method: "POST" });
       const data = await response.json().catch(() => null);
       if (!response.ok || !data?.url) throw new Error(data?.error || copy.portalError);
       assignTopLevel(data.url);
     } catch (err) {
       const message = err instanceof Error ? err.message : copy.portalError;
-      if (isStripeWrongModeObjectError(message) || /test-mode only/i.test(message)) {
-        setCanManage(false);
-        showError("payment", copy.sandboxBillingBanner);
-      } else {
-        showError("payment", message);
-      }
+      showError("payment", message);
       setPortalLoading(false);
     }
   }
@@ -633,7 +627,7 @@ export default function Home({
       {error && /unauthorized access/i.test(error) && (
         <div className="error-bar error-shopify">{copy.oauthUnauthorizedHelp}</div>
       )}
-      {stripeMode === "test" && (
+      {billingTest && (
         <div className="error-bar error-shopify" data-testid="test-mode-banner">
           {copy.testModeBanner}
         </div>

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createHash } from "node:crypto";
 import { ensureDatabaseSchema } from "../_lib/database";
 import { deleteShopifyData } from "../_lib/shopify-auth";
+import { applyAppSubscriptionWebhook } from "../_lib/shopify-billing";
 import { verifyShopifyWebhookHmac } from "../_lib/shopify-security";
 import {
   claimWebhookEvent,
@@ -52,6 +53,15 @@ export async function POST(request: Request) {
           case "app/uninstalled":
           case "shop/redact":
             if (shop) await deleteShopifyData(shop);
+            break;
+          case "app_subscriptions/update":
+            if (shop) {
+              try {
+                await applyAppSubscriptionWebhook(shop, JSON.parse(body) as unknown);
+              } catch {
+                /* persist still acknowledged */
+              }
+            }
             break;
           case "customers/data_request":
           case "customers/redact":

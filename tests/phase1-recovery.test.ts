@@ -1,7 +1,5 @@
-import { createHmac } from "node:crypto";
 import { beforeEach, describe, expect, it } from "vitest";
 import { normalizeShop } from "../app/api/_lib/shopify-auth";
-import { verifyStripeSignature } from "../app/api/_lib/stripe-signature";
 import { getUsageLimit } from "../app/api/_lib/subscriber";
 import {
   decryptShopifyToken,
@@ -42,39 +40,6 @@ describe("recovered Shopify baseline", () => {
     process.env.AI_SUBSCRIBER_USAGE_LIMIT = "nope";
     expect(getUsageLimit()).toBe(1000);
     delete process.env.AI_SUBSCRIBER_USAGE_LIMIT;
-  });
-});
-
-describe("Stripe webhook signatures", () => {
-  const secret = "test-webhook-signing-secret";
-  const body = '{"id":"evt_test","type":"checkout.session.completed"}';
-
-  function headerFor(payload: string, ts: number) {
-    const signature = createHmac("sha256", secret)
-      .update(`${ts}.${payload}`)
-      .digest("hex");
-    return `t=${ts},v1=${signature}`;
-  }
-
-  it("accepts a current valid signature", () => {
-    const ts = Math.floor(Date.now() / 1000);
-    expect(verifyStripeSignature(body, headerFor(body, ts), secret)).toBe(
-      true
-    );
-  });
-
-  it("rejects a tampered body", () => {
-    const ts = Math.floor(Date.now() / 1000);
-    expect(
-      verifyStripeSignature(`${body} `, headerFor(body, ts), secret)
-    ).toBe(false);
-  });
-
-  it("rejects an expired timestamp", () => {
-    const ts = Math.floor(Date.now() / 1000) - 400;
-    expect(verifyStripeSignature(body, headerFor(body, ts), secret)).toBe(
-      false
-    );
   });
 });
 

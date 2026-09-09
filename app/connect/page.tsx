@@ -5,7 +5,6 @@ import { shopifyFetch } from "../shopify-fetch";
 import { COPY } from "../i18n";
 import { normalizeShop, isAllowedShopifyConnectUrl, resolveStoreBindingDisplay, shopifyAdminAppHref } from "../api/_lib/shop-domain";
 import { assignTopLevel, copyEmbedQuery, isShopifyAdminIframe } from "../shopify-embed";
-import { isStripeWrongModeObjectError } from "../api/_lib/stripe-mode";
 
 type ConnectionStatus = {
   success?: boolean;
@@ -39,7 +38,7 @@ export default function ConnectPage() {
     apiSecret?: boolean;
     previous?: boolean;
   } | null>(null);
-  const [stripeMode, setStripeMode] = useState<"live" | "test" | null>(null);
+  const [billingTest, setBillingTest] = useState(false);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -70,11 +69,7 @@ export default function ConnectPage() {
         const secret = await secretRes.json().catch(() => null);
         if (secret?.success) setSecretStatus(secret);
         setSubscriberActive(
-          Boolean(
-            billing?.success &&
-              !billing?.sandboxBilling &&
-              (billing?.canManage === true || billing?.active === true)
-          )
+          Boolean(billing?.success && (billing?.canManage === true || billing?.active === true))
         );
         const installed = Boolean(billing?.shopInstalled);
         const nextBillingShop = typeof billing?.shop === "string" ? billing.shop : "";
@@ -84,7 +79,7 @@ export default function ConnectPage() {
         setBillingShop(nextBillingShop);
         setPendingShop(nextPending);
         setBilledShop(nextBilled);
-        setStripeMode(billing?.stripeMode === "live" || billing?.stripeMode === "test" ? billing.stripeMode : null);
+        setBillingTest(Boolean(billing?.billingTest));
         if (!shopFromUrl) {
           const display = resolveStoreBindingDisplay({
             shopInstalled: installed,
@@ -115,7 +110,7 @@ export default function ConnectPage() {
       setBillingLoading(true);
       setError("");
       try {
-        const response = await shopifyFetch("/api/stripe/checkout", {
+        const response = await shopifyFetch("/api/billing/subscribe", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ shop: cleaned, flow: "standalone" }),
@@ -135,7 +130,7 @@ export default function ConnectPage() {
     setBillingLoading(true);
     setError("");
     try {
-      const response = await shopifyFetch("/api/stripe/portal", {
+      const response = await shopifyFetch("/api/billing/manage", {
         method: "POST",
         credentials: "include",
       });
@@ -146,12 +141,7 @@ export default function ConnectPage() {
       assignTopLevel(data.url);
     } catch (err) {
       const message = err instanceof Error ? err.message : copy.portalError;
-      if (isStripeWrongModeObjectError(message) || /test-mode only/i.test(message)) {
-        setSubscriberActive(false);
-        setError(copy.sandboxBillingBanner);
-      } else {
-        setError(message);
-      }
+      setError(message);
       setBillingLoading(false);
     }
   }
@@ -356,7 +346,7 @@ export default function ConnectPage() {
       </header>
 
       {error && <div className="error-bar">{error}</div>}
-      {stripeMode === "test" && (
+      {billingTest && (
         <div className="error-bar error-shopify" data-testid="test-mode-banner">
           {copy.testModeBanner}
         </div>
@@ -390,12 +380,12 @@ export default function ConnectPage() {
         /signature is invalid|Client ID, not the Client secret|does not match this Shopify app/i.test(
           error
         ) && <div className="error-bar error-shopify">{copy.oauthHmacHelp}</div>}
-      {error && /already has a Stripe subscription/i.test(error) && (
+      {error && /already has an active \$29\.99/i.test(error) && (
         <div className="error-bar error-shopify" data-testid="already-billed-help">
           {copy.alreadyBilledHelp}
         </div>
       )}
-      {error && /different Stripe customer/i.test(error) && (
+      {error && /already has an active Shopify installation/i.test(error) && (
         <div className="error-bar error-shopify" data-testid="different-customer-help">
           {copy.differentCustomerHelp}
         </div>

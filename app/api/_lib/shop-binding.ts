@@ -3,7 +3,6 @@ import { isSessionIdShape, readSessionId } from "./app-session";
 import { dbQuery } from "./database";
 import { normalizeShop } from "./shop-domain";
 import { isShopifyInstallationActive, upsertShop } from "./shops";
-import { shopForCustomerId } from "./stripe-billing";
 
 export const OAUTH_PENDING_TTL_MS = 10 * 60 * 1000;
 
@@ -146,8 +145,7 @@ async function attachSessionsToShop(from: string, to: string): Promise<void> {
 
 export async function rehomeUninstalledBilling(
   fromShop: string,
-  toShop: string,
-  subscriberCustomerId?: string | null
+  toShop: string
 ): Promise<void> {
   const from = normalizeShop(fromShop);
   const to = normalizeShop(toShop);
@@ -158,7 +156,7 @@ export async function rehomeUninstalledBilling(
 
   if (await isShopifyInstallationActive(from)) {
     throw new ShopBindingError(
-      "Cannot rehome billing while a Shopify installation is active.",
+      "Cannot switch stores while a Shopify installation is active.",
       403
     );
   }
@@ -169,132 +167,23 @@ export async function rehomeUninstalledBilling(
     );
   }
 
-  const toCustomers = await dbQuery<{ stripe_customer_id: string }>(
-    `SELECT stripe_customer_id FROM stripe_customers WHERE shop = $1`,
-    [to]
-  );
-  const fromCustomers = await dbQuery<{ stripe_customer_id: string }>(
-    `SELECT stripe_customer_id FROM stripe_customers WHERE shop = $1`,
-    [from]
-  );
-  const fromSubs = await dbQuery<{
-    stripe_subscription_id: string;
-    stripe_customer_id: string;
-  }>(
-    `SELECT stripe_subscription_id, stripe_customer_id FROM shop_subscriptions WHERE shop = $1`,
-    [from]
-  );
-  const toSubs = await dbQuery<{
-    stripe_subscription_id: string;
-    stripe_customer_id: string;
-  }>(
-    `SELECT stripe_subscription_id, stripe_customer_id FROM shop_subscriptions WHERE shop = $1`,
-    [to]
-  );
-
-  const fromCustomerId = fromCustomers[0]?.stripe_customer_id || fromSubs[0]?.stripe_customer_id || "";
-  const toCustomerId = toCustomers[0]?.stripe_customer_id || toSubs[0]?.stripe_customer_id || "";
-  const sessionCustomer = (subscriberCustomerId || "").trim();
-  const sameCustomer = Boolean(fromCustomerId && toCustomerId && fromCustomerId === toCustomerId);
-  const sessionOwnsTarget = Boolean(sessionCustomer && toCustomerId && sessionCustomer === toCustomerId);
-  const sameSubscription =
-    Boolean(fromSubs[0]?.stripe_subscription_id) &&
-    fromSubs[0]?.stripe_subscription_id === toSubs[0]?.stripe_subscription_id;
-  const targetAlreadyBilled = toCustomers.length > 0 || toSubs.length > 0;
-  const sourceHasNoBilling = fromCustomers.length === 0 && fromSubs.length === 0;
-  const sessionOwnsSource = Boolean(
-    sessionCustomer && fromCustomerId && sessionCustomer === fromCustomerId
-  );
-  const keepTargetBilling =
-    targetAlreadyBilled &&
-    (sourceHasNoBilling || sameCustomer || sameSubscription || sessionOwnsTarget);
-
-  if (keepTargetBilling) {
-    if (sameSubscription && fromSubs.length > 0) {
-      await dbQuery(`DELETE FROM shop_subscriptions WHERE shop = $1`, [to]);
-    } else {
-      await attachSessionsToShop(from, to);
-      return;
-    }
-  } else if (sessionOwnsSource && toCustomerId && toCustomerId !== fromCustomerId) {
-    await dbQuery(`DELETE FROM subscriber_usage WHERE shop = $1`, [to]);
-    await dbQuery(
-      `DELETE FROM shop_subscriptions
-       WHERE shop = $1
-         AND stripe_customer_id <> $2`,
-      [to, sessionCustomer]
-    );
-    await dbQuery(
-      `DELETE FROM stripe_customers
-       WHERE shop = $1
-         AND stripe_customer_id <> $2`,
-      [to, sessionCustomer]
-    );
-  } else if (toCustomerId && fromCustomerId && toCustomerId !== fromCustomerId) {
-    throw new ShopBindingError(
-      "Target shop already has a different Stripe customer.",
-      403
-    );
-  } else if (toSubs.length > 0 && fromSubs.length > 0 && !sameSubscription) {
-    throw new ShopBindingError(
-      "Target shop already has a Stripe subscription.",
-      403
-    );
-  }
-
-  await upsertShop(to, { markInstalled: false });
-
-  if (fromSubs.length > 0) {
-    await dbQuery(`DELETE FROM subscriber_usage WHERE shop = $1`, [to]);
-  }
-
-  await dbQuery(
-    `UPDATE stripe_customers SET shop = $1, updated_at = NOW() WHERE shop = $2`,
-    [to, from]
-  );
-  await dbQuery(
-    `UPDATE shop_subscriptions SET shop = $1, updated_at = NOW() WHERE shop = $2`,
-    [to, from]
-  );
-  await dbQuery(`UPDATE subscriber_usage SET shop = $1 WHERE shop = $2`, [to, from]);
-  await dbQuery(
-    `UPDATE stripe_invoices SET shop = $1, updated_at = NOW() WHERE shop = $2`,
-    [to, from]
-  );
-  await dbQuery(
-    `UPDATE app_sessions
-     SET shop = $1,
-         pending_shop = NULL,
-         pending_shop_expires_at = NULL,
-         updated_at = NOW()
-     WHERE shop = $2
-       AND revoked_at IS NULL`,
-    [to, from]
-  );
+  // Shopify app subscriptions belong to one shop and cannot be moved.
+  await attachSessionsToShop(from, to);
 }
 
 export async function retargetUninstalledShop(
   sessionShop: string,
-  toShop: string,
-  subscriberCustomerId?: string | null
+  toShop: string
 ): Promise<string> {
   const session = normalizeShop(sessionShop);
   const to = normalizeShop(toShop);
   if (!to) {
     throw new ShopBindingError("Invalid Shopify store.", 400);
   }
-
-  const billed = subscriberCustomerId
-    ? await shopForCustomerId(subscriberCustomerId)
-    : "";
-  const from = billed || session;
-  if (from && from !== to) {
-    await rehomeUninstalledBilling(from, to, subscriberCustomerId);
-  }
-  if (session && session !== to && session !== from) {
+  if (session && session !== to) {
     if (await isShopifyInstallationActive(session)) {
       throw new ShopBindingError(
-        "Cannot rehome billing while a Shopify installation is active.",
+        "Cannot switch stores while a Shopify installation is active.",
         403
       );
     }

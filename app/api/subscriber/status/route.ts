@@ -5,29 +5,24 @@ import {
 } from "../../_lib/app-session";
 import { getAppUrl } from "../../_lib/app-url";
 import { getActiveSubscriberStatus } from "../../_lib/subscriber";
-import { configuredStripeMode } from "../../_lib/stripe-mode";
+import { shopifyBillingIsTest } from "../../_lib/shopify-billing";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-function currentStripeMode(): "live" | "test" | null {
-  try {
-    return configuredStripeMode();
-  } catch {
-    return null;
-  }
-}
-
 export async function GET(request: NextRequest) {
   try {
     const subscriber = await getActiveSubscriberStatus(request);
-    const stripeMode = currentStripeMode();
     let appUrl = "";
     try {
       appUrl = getAppUrl();
     } catch {
       appUrl = "";
     }
+    const billingTest =
+      typeof subscriber.billingTest === "boolean"
+        ? subscriber.billingTest
+        : shopifyBillingIsTest();
     const response = NextResponse.json(
       {
         success: true,
@@ -37,16 +32,14 @@ export async function GET(request: NextRequest) {
         billedShop: subscriber.billedShop,
         pendingShop: subscriber.pendingShop,
         canReplaceShop: subscriber.canReplaceShop,
-        customerId: subscriber.customerId,
         subscriptionId: subscriber.subscriptionId,
         status: subscriber.status,
         shop: subscriber.shop,
         usage: subscriber.usage ?? null,
         reason: subscriber.reason ?? null,
-        sandboxBilling: Boolean(subscriber.sandboxBilling),
         appUrl,
-        stripeMode,
-        live: stripeMode === "live",
+        billingTest,
+        live: !billingTest,
       },
       { headers: { "Cache-Control": "no-store" } }
     );
@@ -58,7 +51,6 @@ export async function GET(request: NextRequest) {
         request,
         response,
         shop: subscriber.shop,
-        stripeCustomerId: subscriber.customerId,
         rotate: false,
       });
     }
@@ -75,11 +67,9 @@ export async function GET(request: NextRequest) {
         billedShop: null,
         pendingShop: null,
         canReplaceShop: true,
-        customerId: null,
         subscriptionId: null,
         status: null,
-        sandboxBilling: false,
-        stripeMode: null,
+        billingTest: true,
         live: false,
       },
       { status: 500, headers: { "Cache-Control": "no-store" } }

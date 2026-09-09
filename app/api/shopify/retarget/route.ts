@@ -44,11 +44,7 @@ export async function POST(request: NextRequest) {
     }
 
     await assertRateLimit(tenantRateKey(request, "retarget", shop), 15);
-    const billedShop = await retargetUninstalledShop(
-      binding.sessionShop,
-      shop,
-      binding.stripeCustomerId
-    );
+    const billedShop = await retargetUninstalledShop(binding.sessionShop, shop);
     await setPendingShop(binding.sessionId, shop);
 
     return NextResponse.json(
@@ -74,7 +70,7 @@ export async function POST(request: NextRequest) {
         error:
           error instanceof Error
             ? error.message
-            : "Unable to move billing to this Shopify store.",
+            : "Unable to switch this session to the Shopify store.",
       },
       { status, headers: { "Cache-Control": "no-store" } }
     );

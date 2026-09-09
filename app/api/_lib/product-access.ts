@@ -5,9 +5,8 @@ import { hasRequiredShopifyScopes } from "./shopify-scopes";
 import {
   productAccessDeniedMessage,
   type ProductAccessDecision,
-} from "./stripe-access";
-import { accessStateForShop } from "./stripe-events";
-import type { BillingSnapshot } from "./stripe-billing";
+} from "./billing-access";
+import { accessStateForShop, type ShopifyBillingSnapshot } from "./shopify-billing";
 
 export class ProductAccessError extends Error {
   status: number;
@@ -24,7 +23,7 @@ export class ProductAccessError extends Error {
 export async function requirePaidProductAccess(request: NextRequest): Promise<{
   shop: string;
   accessToken: string;
-  billing: BillingSnapshot;
+  billing: ShopifyBillingSnapshot;
   access: ProductAccessDecision;
 }> {
   const { shop, accessToken } = await authenticateShopifyRequest(request, true);

@@ -4,7 +4,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { assertSafeMutation, OriginGuardError } from "../app/api/_lib/origin-guard";
 import { parseSaveProductInput } from "../app/api/_lib/shopify-products";
-import { assertStripeMode, configuredStripeMode } from "../app/api/_lib/stripe-mode";
+import { shopifyBillingIsTest } from "../app/api/_lib/shopify-billing";
 import { resolvedPortalReturnUrl } from "../app/api/_lib/origin-guard";
 import { clearTestDatabase, usePglite } from "./helpers/pglite";
 import {
@@ -59,24 +59,26 @@ describe("Phase 7 authorization and abuse controls", () => {
     expect(parseSaveProductInput({ productId: "gid://shopify/Product/9", confirmed: true }).confirmed).toBe(true);
   });
 
-  it("never mixes Stripe test and live secrets", () => {
-    process.env.STRIPE_SECRET_KEY = "sk_test_abc";
-    expect(configuredStripeMode()).toBe("test");
-    expect(() => assertStripeMode("live", "test", "webhook")).toThrow(/live/);
+  it("defaults Shopify billing to test charges", () => {
+    delete process.env.SHOPIFY_BILLING_TEST;
+    expect(shopifyBillingIsTest()).toBe(true);
+    process.env.SHOPIFY_BILLING_TEST = "false";
+    expect(shopifyBillingIsTest(true)).toBe(true);
     expect(resolvedPortalReturnUrl("https://evil.example")).toBe("https://app.virello.example");
+    delete process.env.SHOPIFY_BILLING_TEST;
   });
 
   it("keeps paid routes behind origin and access helpers", () => {
     const analyze = readFileSync("app/api/ai/analyze/route.ts", "utf8");
     const products = readFileSync("app/api/_lib/shopify-products.ts", "utf8");
     const route = readFileSync("app/api/shopify/products/route.ts", "utf8");
-    const webhook = readFileSync("app/api/stripe/webhook/route.ts", "utf8");
+    const webhook = readFileSync("app/api/billing/subscribe/route.ts", "utf8");
     const shopifyHook = readFileSync("app/api/webhooks/route.ts", "utf8");
     expect(analyze).toMatch(/assertSafeMutation/);
     expect(analyze).toMatch(/authorizeSubscriberForAI/);
     expect(route).toMatch(/requirePaidProductAccess/);
     expect(products).toMatch(/confirmed/);
-    expect(webhook).toMatch(/verifyStripeSignature/);
+    expect(webhook).toMatch(/createShopifyAppSubscription/);
     expect(shopifyHook).toMatch(/verifyShopifyWebhookHmac/);
   });
 

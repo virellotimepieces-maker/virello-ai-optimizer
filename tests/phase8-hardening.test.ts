@@ -3,11 +3,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { NextRequest } from "next/server";
 import { issueAppSession } from "../app/api/_lib/app-session";
-import {
-  checkoutSuccessUrl,
-  resolveCheckoutShop,
-  CheckoutShopError,
-} from "../app/api/_lib/checkout-shop";
+import { billingReturnAppUrl } from "../app/api/_lib/shopify-billing";
 import { dbQuery } from "../app/api/_lib/database";
 import { rollbackPhase8RateLimits } from "../app/api/_lib/migrate";
 import {
@@ -17,8 +13,7 @@ import {
   resetRateLimitForTests,
   shopRateKey,
 } from "../app/api/_lib/rate-limit";
-import { upsertStripeCustomer } from "../app/api/_lib/stripe-billing";
-import { upsertShop } from "../app/api/_lib/shops";
+import { seedShopifyBilling } from "./helpers/shopify-billing";
 import { COPY } from "../app/i18n";
 import { saveShopifySession } from "../app/api/_lib/shopify-auth";
 import { clearTestDatabase, usePglite } from "./helpers/pglite";
@@ -94,89 +89,68 @@ describe("Phase 8 hardening", () => {
     expect(tables).toHaveLength(0);
   });
 
-  it("lets standalone checkout use a typed shop and rejects a mismatched session shop", async () => {
-    process.env.STRIPE_SECRET_KEY = "sk_live_abc";
-    const standalone = originRequest("https://app.virello.example/api/stripe/checkout", {
-      method: "POST",
-    });
-    const identity = await resolveCheckoutShop(standalone, {
-      shop: SHOP_A,
-      flow: "standalone",
-    });
-    expect(identity).toMatchObject({ shop: SHOP_A, flow: "standalone", source: "body" });
+  it("keeps embedded billing return URLs on Shopify Admin", async () => {
+    expect(billingReturnAppUrl(SHOP_A, "standalone")).toContain("checkout=success");
+    expect(billingReturnAppUrl(SHOP_A, "embedded")).toContain("admin.shopify.com");
+  });
+
+  it("rejects billing subscribe mutations without an allowed origin", async () => {
+    const { POST } = await import("../app/api/billing/subscribe/route");
+    const blocked = await POST(
+      new NextRequest("https://app.virello.example/api/billing/subscribe", {
+        method: "POST",
+        headers: { origin: "https://evil.example" },
+      })
+    );
+    expect(blocked.status).toBe(403);
 
     const leftover = await issueAppSession({ shop: SHOP_A });
-    const leftoverRequest = originRequest("https://app.virello.example/api/stripe/checkout", {
+    const leftoverRequest = originRequest("https://app.virello.example/api/billing/subscribe", {
       method: "POST",
       headers: { cookie: `virello_sid=${leftover}` },
     });
-    const replaced = await resolveCheckoutShop(leftoverRequest, {
-      shop: SHOP_B,
-      flow: "standalone",
-    });
-    expect(replaced).toMatchObject({ shop: SHOP_B, flow: "standalone", source: "body" });
+    const leftoverResponse = await POST(leftoverRequest);
+    expect(leftoverResponse.status).toBeGreaterThanOrEqual(400);
 
     await saveShopifySession(SHOP_A, "offline-token-alpha", "read_products,write_products");
     const installed = await issueAppSession({ shop: SHOP_A });
-    const installedRequest = originRequest("https://app.virello.example/api/stripe/checkout", {
-      method: "POST",
-      headers: { cookie: `virello_sid=${installed}` },
-    });
-    await expect(
-      resolveCheckoutShop(installedRequest, { shop: SHOP_B, flow: "standalone" })
-    ).rejects.toBeInstanceOf(CheckoutShopError);
-
-    const sameShop = await resolveCheckoutShop(installedRequest, {
-      shop: SHOP_A,
-      flow: "standalone",
-    });
-    expect(sameShop.source).toBe("session");
-  });
-
-  it("lets embedded JWT win and rejects a body shop for a different tenant", async () => {
-    const now = Math.floor(Date.now() / 1000);
+    const jwtNow = Math.floor(Date.now() / 1000);
     const token = signJwt(
       {
         aud: "shopify-client-id",
-        dest: `https://${SHOP_A}`,
-        iss: `https://${SHOP_A}/admin`,
+        dest: `https://${SHOP_B}`,
+        iss: `https://${SHOP_B}/admin`,
         sub: "user-1",
-        exp: now + 60,
-        nbf: now - 10,
+        exp: jwtNow + 60,
+        nbf: jwtNow - 10,
       },
       SECRET
     );
-    const request = originRequest("https://app.virello.example/api/stripe/checkout", {
+    const jwtRequest = originRequest("https://app.virello.example/api/billing/subscribe", {
       method: "POST",
-      headers: { authorization: `Bearer ${token}` },
+      headers: {
+        authorization: `Bearer ${token}`,
+        cookie: `virello_sid=${installed}`,
+      },
     });
-    const identity = await resolveCheckoutShop(request, { shop: SHOP_A, flow: "standalone" });
-    expect(identity).toMatchObject({ shop: SHOP_A, flow: "embedded", source: "jwt" });
-    await expect(
-      resolveCheckoutShop(request, { shop: SHOP_B })
-    ).rejects.toMatchObject({ status: 403 });
-    expect(checkoutSuccessUrl("https://app.virello.example", SHOP_A, "standalone")).toContain(
-      "checkout=success"
-    );
-    expect(checkoutSuccessUrl("https://app.virello.example", SHOP_A, "embedded")).toContain(
-      "admin.shopify.com"
-    );
+    const jwtResponse = await POST(jwtRequest);
+    expect(jwtResponse.status).toBeGreaterThanOrEqual(400);
   });
 
-  it("does not move a Stripe customer to another shop", async () => {
-    await upsertShop(SHOP_A, { markInstalled: false });
-    await upsertStripeCustomer({
-      customerId: "cus_bound",
-      shop: SHOP_A,
-      livemode: false,
+  it("keeps Shopify billing on the shop that owns the subscription", async () => {
+    await seedShopifyBilling(SHOP_A, {
+      subscriptionGid: "gid://shopify/AppSubscription/bound",
     });
-    await expect(
-      upsertStripeCustomer({
-        customerId: "cus_bound",
-        shop: SHOP_B,
-        livemode: false,
-      })
-    ).rejects.toThrow(/different Shopify store/);
+    await seedShopifyBilling(SHOP_B, {
+      subscriptionGid: "gid://shopify/AppSubscription/other",
+    });
+    const { billingForShop } = await import("../app/api/_lib/shopify-billing");
+    expect((await billingForShop(SHOP_A))?.subscriptionId).toBe(
+      "gid://shopify/AppSubscription/bound"
+    );
+    expect((await billingForShop(SHOP_B))?.subscriptionId).toBe(
+      "gid://shopify/AppSubscription/other"
+    );
   });
 
   it("keeps one canonical save endpoint and full FIL/EN copy", async () => {
@@ -200,28 +174,25 @@ describe("Phase 8 hardening", () => {
     expect(COPY.fil.hmacRetryNow).toMatch(/Shopify Admin/);
     expect(COPY.en.secretStatusMissing).toMatch(/Production-only/);
     expect(COPY.fil.secretStatusMissing).toMatch(/Production-only/);
-    expect(COPY.en.alreadyBilledHelp).toMatch(/Connect Shopify/);
-    expect(COPY.fil.alreadyBilledHelp).toMatch(/Connect Shopify/);
+    expect(COPY.en.alreadyBilledHelp).toMatch(/Shopify subscription/);
+    expect(COPY.fil.alreadyBilledHelp).toMatch(/Shopify Admin/);
     expect(COPY.en.emptyReview).toMatch(/conversion scores/);
     expect(COPY.fil.emptyReview).toMatch(/conversion scores/);
     expect(COPY.en.gradeHigh).toBe("High conversion");
-    expect(COPY.fil.alreadyBilledHelp).toMatch(/Connect Shopify/);
-    expect(COPY.en.differentCustomerHelp).toMatch(/myshopify\.com/);
-    expect(COPY.fil.differentCustomerHelp).toMatch(/myshopify\.com/);
-    expect(COPY.en.differentCustomerHelp).toMatch(/Use this store/);
-    expect(COPY.fil.differentCustomerHelp).toMatch(/Gamitin ang store na ito/);
+    expect(COPY.en.differentCustomerHelp).toMatch(/one store/);
+    expect(COPY.fil.differentCustomerHelp).toMatch(/isang store/);
     expect(COPY.en.billedStore).toMatch(/\$29\.99/);
     expect(COPY.fil.billedStore).toMatch(/\$29\.99/);
     expect(COPY.en.domainHint).toMatch(/myshopify\.com/);
     expect(COPY.fil.domainHint).toMatch(/myshopify\.com/);
     expect(COPY.en.liveBadge).toBe("Live");
     expect(COPY.fil.liveBadge).toBe("Live");
-    expect(COPY.en.sandboxBillingBanner).toMatch(/Subscribe again/);
-    expect(COPY.fil.sandboxBillingBanner).toMatch(/Mag-subscribe/);
+    expect(COPY.en.sandboxBillingBanner).toMatch(/Approve the Shopify/);
+    expect(COPY.fil.sandboxBillingBanner).toMatch(/Aprubahan/);
     expect(COPY.en.useThisStore).toBe("Use this store");
     expect(COPY.fil.useThisStore).toBe("Gamitin ang store na ito");
-    expect(COPY.en.domainMismatch).toMatch(/Use this store/);
-    expect(COPY.fil.domainMismatch).toMatch(/Gamitin ang store na ito/);
+    expect(COPY.en.domainMismatch).toMatch(/Change Store/);
+    expect(COPY.fil.domainMismatch).toMatch(/Palitan ang store/);
     expect(COPY.en.domainMismatch).not.toMatch(/Connect gfd1cp-1v/);
     expect(COPY.fil.domainMismatch).not.toMatch(/Connect gfd1cp-1v/);
     expect(connect).toMatch(/alreadyBilledHelp/);

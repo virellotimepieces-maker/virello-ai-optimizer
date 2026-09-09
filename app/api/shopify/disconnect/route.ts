@@ -39,7 +39,7 @@ export async function POST(request: NextRequest) {
             pendingShop: binding.pendingShop,
             canReplaceShop: false,
             error:
-              "Confirm Change Store to disconnect the installed Shopify store. Stripe billing is kept.",
+              "Confirm Change Store to disconnect the installed Shopify store. Shopify billing stays on that store.",
           },
           { status: 400, headers: { "Cache-Control": "no-store" } }
         );

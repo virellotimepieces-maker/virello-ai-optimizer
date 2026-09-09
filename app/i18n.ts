@@ -201,10 +201,10 @@ export const COPY: Record<AppLocale, Record<CopyKey, string>> = {
       "Shopify authorization must open Shopify Admin for this app, not the public storefront. Open Virello from Shopify Admin.",
     changeStore: "Change Store",
     changeStoreConfirm:
-      "Disconnect the installed Shopify store? Stripe billing is kept. You will need to authorize the new store.",
+      "Disconnect the installed Shopify store? Shopify billing stays on that store. You will need to authorize the new store.",
     pendingStore: "Pending store",
     disconnectSuccess:
-      "Shopify store disconnected. Connect a new .myshopify.com domain. Your Stripe subscription stays on this session.",
+      "Shopify store disconnected. Connect a new .myshopify.com domain. Shopify billing stays on the previous store.",
     alreadyLinkedInstalled:
       "This Virello session is already linked to a connected Shopify store. Use Change Store to disconnect it first.",
     benefitBullets: "Customer-benefit bullets",
@@ -242,14 +242,14 @@ export const COPY: Record<AppLocale, Record<CopyKey, string>> = {
     secretStatusMissing:
       "SHOPIFY_API_SECRET is missing on Production. In Vercel add one Production-only row with the Client secret from Dev Dashboard → virello-ai-optimizer → Settings. Do not use a Production and Preview row. Then Redeploy Production without build cache.",
     alreadyBilledHelp:
-      "This store already has your $29.99 subscription. Tap Connect Shopify again after this update. Your billing stays. Use Change Store only if you meant a different shop.",
+      "This store already has your $29.99/month Shopify subscription. Open Manage subscription in Shopify Admin.",
     differentCustomerHelp:
-      "Your $29.99 is on another .myshopify.com domain. Keep the store you meant in the field, tap Use this store, then Connect Shopify. Leftover billing on the other domain is moved.",
-    billedStore: "Your $29.99 subscription is on {shop}.",
+      "Shopify app subscriptions belong to one store. Open the store you meant from Shopify Admin, then Subscribe there.",
+    billedStore: "Your $29.99/month Shopify subscription is on {shop}.",
     domainHint:
       "Use the exact .myshopify.com domain from Shopify Admin → Settings → Domains. A one-letter difference is a different store. Do not use a custom domain.",
     domainMismatch:
-      "Your $29.99 is still on {shop}. Tap Use this store to move billing to the domain in the field, then Connect Shopify.",
+      "This session is on a different store than {shop}. Use Change Store, then open the app from Shopify Admin to subscribe on the store you meant.",
     useThisStore: "Use this store",
     fieldTitle: "Product title",
     fieldDescription: "Product description",
@@ -268,9 +268,9 @@ export const COPY: Record<AppLocale, Record<CopyKey, string>> = {
     outOf100: "/ 100",
     liveBadge: "Live",
     testModeBanner:
-      "Stripe is in test mode. Real cards are not charged until Vercel Production uses a live secret and live $29.99 Price.",
+      "Shopify billing is in test mode. This store is not charged a real $29.99 until live charges are enabled.",
     sandboxBillingBanner:
-      "Your previous $29.99 was a sandbox/test charge. Live Stripe cannot open that customer. Type the store you meant, then Subscribe again with a real card.",
+      "Approve the Shopify $29.99/month app subscription from Shopify Admin to continue.",
   },
   fil: {
     brandSmall: "VIRELLO AI",
@@ -348,10 +348,10 @@ export const COPY: Record<AppLocale, Record<CopyKey, string>> = {
       "Dapat sa Shopify Admin magbukas, hindi sa public storefront. Buksan ang Virello mula sa Shopify Admin.",
     changeStore: "Palitan ang store",
     changeStoreConfirm:
-      "I-disconnect ang naka-install na Shopify store? Mananatili ang Stripe billing. Kailangan i-authorize ulit ang bagong store.",
+      "I-disconnect ang naka-install na Shopify store? Mananatili ang Shopify billing sa store na iyon. Kailangan i-authorize ulit ang bagong store.",
     pendingStore: "Pending store",
     disconnectSuccess:
-      "Na-disconnect ang Shopify store. Ikonekta ang bagong .myshopify.com domain. Mananatili ang Stripe subscription sa session na ito.",
+      "Na-disconnect ang Shopify store. Ikonekta ang bagong .myshopify.com domain. Mananatili ang Shopify subscription sa dating store.",
     alreadyLinkedInstalled:
       "Naka-link na ang Virello session na ito sa ibang naka-connect na Shopify store. Gamitin muna ang Palitan ang store.",
     benefitBullets: "Mga customer-benefit bullet",
@@ -389,14 +389,14 @@ export const COPY: Record<AppLocale, Record<CopyKey, string>> = {
     secretStatusMissing:
       "Wala ang SHOPIFY_API_SECRET sa Production. Sa Vercel, magdagdag ng isang Production-only row: Client secret mula sa Dev Dashboard → virello-ai-optimizer → Settings. Huwag Production and Preview. Tapos i-Redeploy ang Production nang walang existing build cache.",
     alreadyBilledHelp:
-      "Naka-subscribe na ang store na ito ($29.99). I-tap ulit ang Connect Shopify. Mananatili ang billing. Gamitin ang Palitan ang store kung ibang shop ang gusto mo.",
+      "Naka-subscribe na ang store na ito ($29.99/month). Buksan ang I-manage ang subscription sa Shopify Admin.",
     differentCustomerHelp:
-      "Nasa ibang .myshopify.com ang $29.99 mo. Panatilihin sa field ang store na gusto mo, i-tap ang Gamitin ang store na ito, tapos Connect Shopify. Ililipat ang leftover billing.",
-    billedStore: "Naka-bill ang $29.99 subscription mo sa {shop}.",
+      "Ang Shopify app subscription ay para sa isang store lang. Buksan ang store na gusto mo mula sa Shopify Admin, tapos Mag-subscribe doon.",
+    billedStore: "Nasa {shop} ang $29.99/month Shopify subscription mo.",
     domainHint:
       "Gamitin ang exact .myshopify.com mula sa Shopify Admin → Settings → Domains. Isang letra lang ang pagkakaiba, ibang store na iyon. Huwag custom domain.",
     domainMismatch:
-      "Nasa {shop} pa ang $29.99. I-tap ang Gamitin ang store na ito para ilipat ang billing sa domain sa field, tapos Connect Shopify.",
+      "Ibang store ang session na ito kaysa {shop}. Gamitin ang Palitan ang store, tapos buksan ang app mula sa Shopify Admin para mag-subscribe sa store na gusto mo.",
     useThisStore: "Gamitin ang store na ito",
     fieldTitle: "Product title",
     fieldDescription: "Product description",
@@ -415,9 +415,9 @@ export const COPY: Record<AppLocale, Record<CopyKey, string>> = {
     outOf100: "/ 100",
     liveBadge: "Live",
     testModeBanner:
-      "Test mode ang Stripe. Hindi totoo ang charge hanggang live secret at live $29.99 Price sa Vercel Production.",
+      "Test mode ang Shopify billing. Hindi totoo ang $29.99 charge hanggang i-enable ang live charges.",
     sandboxBillingBanner:
-      "Sandbox/test lang ang dating $29.99. Hindi ito mabubuksan ng Live Stripe. I-type ang store na gusto mo, tapos Mag-subscribe ulit ng tunay na card.",
+      "Aprubahan ang $29.99/month Shopify app subscription mula sa Shopify Admin para magpatuloy.",
   },
 };
 

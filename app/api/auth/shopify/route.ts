@@ -88,11 +88,7 @@ export async function GET(request: NextRequest) {
     }
 
     if (binding && !binding.installedShop) {
-      await retargetUninstalledShop(
-        binding.sessionShop,
-        shop,
-        binding.stripeCustomerId
-      );
+      await retargetUninstalledShop(binding.sessionShop, shop);
     }
     if (binding?.sessionId) {
       await setPendingShop(binding.sessionId, shop);

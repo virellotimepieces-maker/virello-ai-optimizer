@@ -15,7 +15,6 @@ import {
   saveShopifySession,
   type ShopifyCodeExchangeResult,
 } from "../../../_lib/shopify-auth";
-import { billingForShop } from "../../../_lib/stripe-billing";
 import {
   getShopifyAppCredentials,
   getShopifyClientId,
@@ -229,11 +228,7 @@ export async function GET(request: NextRequest) {
     }
 
     if (binding && !binding.installedShop) {
-      await retargetUninstalledShop(
-        binding.sessionShop,
-        shop,
-        binding.stripeCustomerId
-      );
+      await retargetUninstalledShop(binding.sessionShop, shop);
     }
 
     await saveShopifySession(shop, exchanged.accessToken, exchanged.scope, {
@@ -241,10 +236,8 @@ export async function GET(request: NextRequest) {
       expiresIn: exchanged.expiresIn,
       refreshExpiresIn: exchanged.refreshExpiresIn,
     });
-    const billing = await billingForShop(shop);
     const sessionId = await issueAppSession({
       shop,
-      stripeCustomerId: billing?.customerId || binding?.stripeCustomerId || null,
       previousSessionId: readSessionId(request),
       revokeShopSessions: true,
     });

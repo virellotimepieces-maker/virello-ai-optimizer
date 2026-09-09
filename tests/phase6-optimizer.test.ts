@@ -10,8 +10,8 @@ import {
 } from "../app/api/_lib/optimizer";
 import { peekAiUsage } from "../app/api/_lib/usage";
 import { saveShopifySession } from "../app/api/_lib/shopify-auth";
-import { applySubscriptionEvent } from "../app/api/_lib/stripe-events";
 import { getShopLocales, saveShopLocales } from "../app/api/_lib/shops";
+import { seedShopifyBilling } from "./helpers/shopify-billing";
 import { clearTestDatabase, usePglite } from "./helpers/pglite";
 
 const product = {
@@ -107,26 +107,13 @@ describe("Phase 6 optimizer grounding", () => {
 
   it("does not consume quota when optimization fails", async () => {
     process.env.SHOPIFY_TOKEN_ENCRYPTION_KEY = "x".repeat(32);
-    process.env.STRIPE_SECRET_KEY = "sk_test_abc";
     process.env.OPENAI_API_KEY = "test-openai-key";
     await usePglite();
     await saveShopifySession("store-alpha.myshopify.com", "token", "write_products");
-    await applySubscriptionEvent({
-      shop: "store-alpha.myshopify.com",
-      object: {
-        id: "sub_1",
-        customer: "cus_1",
-        status: "active",
-        current_period_start: 100,
-        current_period_end: 200,
-        livemode: false,
-        metadata: { shop: "store-alpha.myshopify.com" },
-        items: {
-          data: [{ price: { id: "price_monthly" }, current_period_start: 100, current_period_end: 200 }],
-        },
-      },
-      eventCreated: 1,
-      livemode: false,
+    await seedShopifyBilling("store-alpha.myshopify.com", {
+      subscriptionGid: "sub_1",
+      currentPeriodStart: 100,
+      currentPeriodEnd: 200,
     });
     setOptimizerFetchForTests(async () => ({
       ok: false,

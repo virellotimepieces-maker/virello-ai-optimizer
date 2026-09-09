@@ -33,7 +33,7 @@ export function copyEmbedQuery(from: URLSearchParams, to: URL): URL {
   return to;
 }
 
-/** OAuth, Stripe, and Admin URLs must leave the Admin iframe. */
+/** OAuth, Shopify billing confirmation, and Admin URLs must leave the Admin iframe. */
 export function assignTopLevel(url: string): void {
   if (!url) return;
   if (isShopifyAdminIframe()) {

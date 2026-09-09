@@ -135,3 +135,7 @@ export async function rollbackPhase8RateLimits(exec: SqlExec): Promise<void> {
 export async function rollbackPhase9ShopBinding(exec: SqlExec): Promise<void> {
   await rollbackSqlFile(exec, "008_shop_binding.down.sql");
 }
+
+export async function rollbackPhase10ShopifyBilling(exec: SqlExec): Promise<void> {
+  await rollbackSqlFile(exec, "010_shopify_billing.down.sql");
+}

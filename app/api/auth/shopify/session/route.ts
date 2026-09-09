@@ -22,7 +22,6 @@ import {
   getShopifyIdToken,
   verifyShopifySessionToken,
 } from "../../../_lib/shopify-security";
-import { billingForShop } from "../../../_lib/stripe-billing";
 import { assertRateLimit, RateLimitError, tenantRateKey } from "../../../_lib/rate-limit";
 
 export const runtime = "nodejs";
@@ -59,17 +58,11 @@ export async function POST(request: NextRequest) {
     }
 
     if (binding && !binding.installedShop) {
-      await retargetUninstalledShop(
-        binding.sessionShop,
-        shop,
-        binding.stripeCustomerId
-      );
+      await retargetUninstalledShop(binding.sessionShop, shop);
     }
 
-    const billing = await billingForShop(shop);
     const sessionId = await issueAppSession({
       shop,
-      stripeCustomerId: billing?.customerId || binding?.stripeCustomerId || null,
       previousSessionId: readSessionId(request),
       revokeShopSessions: true,
     });

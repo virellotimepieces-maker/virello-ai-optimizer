@@ -38,7 +38,7 @@ import {
   parseSignedOAuthState,
   verifySignedOAuthState,
 } from "../app/api/_lib/shopify-security";
-import { applySubscriptionEvent } from "../app/api/_lib/stripe-events";
+import { seedShopifyBilling } from "./helpers/shopify-billing";
 import { clearTestDatabase, usePglite } from "./helpers/pglite";
 
 const SHOP = "store-alpha.myshopify.com";
@@ -279,7 +279,6 @@ describe("Phase 5 shop domains and OAuth", () => {
 describe("Phase 5 import, save, and access", () => {
   beforeEach(async () => {
     process.env.APP_URL = "https://app.virello.example";
-    process.env.STRIPE_SECRET_KEY = "sk_test_abc";
     process.env.SHOPIFY_TOKEN_ENCRYPTION_KEY = "x".repeat(32);
     process.env.SHOPIFY_API_KEY = "shopify-client-id";
     process.env.SHOPIFY_API_SECRET = SECRET;
@@ -295,28 +294,11 @@ describe("Phase 5 import, save, and access", () => {
 
   async function paidInstalledShop(scope = "read_products,write_products") {
     await saveShopifySession(SHOP, "offline-token-alpha", scope);
-    await applySubscriptionEvent({
-      shop: SHOP,
-      object: {
-        id: "sub_1",
-        customer: "cus_1",
-        status: "active",
-        current_period_start: 1_700_000_000,
-        current_period_end: 1_702_592_000,
-        livemode: false,
-        metadata: { shop: SHOP },
-        items: {
-          data: [
-            {
-              price: { id: "price_monthly" },
-              current_period_start: 1_700_000_000,
-              current_period_end: 1_702_592_000,
-            },
-          ],
-        },
-      },
-      eventCreated: 10,
-      livemode: false,
+    await seedShopifyBilling(SHOP, {
+      subscriptionGid: "gid://shopify/AppSubscription/1",
+      status: "ACTIVE",
+      currentPeriodStart: 1_700_000_000,
+      currentPeriodEnd: 1_702_592_000,
     });
     const sessionId = await issueAppSession({ shop: SHOP });
     return new NextRequest("https://app.virello.example/api/shopify/products", {

@@ -39,10 +39,9 @@ import {
   verifySignedOAuthState,
 } from "../app/api/_lib/shopify-security";
 import {
-  saveShopSubscription,
   storedSubscriberStatus,
-  subscriptionPrivilegeChanged,
 } from "../app/api/_lib/subscriber";
+import { seedShopifyBilling } from "./helpers/shopify-billing";
 import { clearTestDatabase, usePglite } from "./helpers/pglite";
 
 const SHOP_A = "store-alpha.myshopify.com";
@@ -526,7 +525,7 @@ describe("Phase 3 Shopify security module", () => {
   });
 
   it("rejects cross-origin POST mutations", () => {
-    const request = new NextRequest("https://app.virello.example/api/stripe/portal", {
+    const request = new NextRequest("https://app.virello.example/api/billing/manage", {
       method: "POST",
       headers: { origin: "https://evil.example" },
     });
@@ -561,22 +560,20 @@ describe("Phase 3 app sessions", () => {
 
   it("turns an active subscription into Manage-Subscription status", async () => {
     await upsertShop(SHOP_A);
-    await saveShopSubscription(SHOP_A, {
-      customerId: "cus_a",
-      subscriptionId: "sub_a",
-      status: "active",
+    await seedShopifyBilling(SHOP_A, {
+      subscriptionGid: "gid://shopify/AppSubscription/a",
+      status: "ACTIVE",
       currentPeriodStart: 100,
       currentPeriodEnd: 200,
     });
     const sessionId = await issueAppSession({
       shop: SHOP_A,
-      stripeCustomerId: "cus_a",
     });
     const session = await loadValidAppSession(sessionId, SHOP_A);
     expect(session?.shop).toBe(SHOP_A);
     const status = await storedSubscriberStatus(SHOP_A);
     expect(status.canManage).toBe(true);
-    expect(status.subscriptionId).toBe("sub_a");
+    expect(status.subscriptionId).toBe("gid://shopify/AppSubscription/a");
   });
 
   it("keeps a valid session across refresh and a simulated browser restart", async () => {
@@ -619,26 +616,23 @@ describe("Phase 3 app sessions", () => {
   });
 
   it("revokes sessions on uninstall without deleting billing", async () => {
-    await saveShopSubscription(SHOP_A, {
-      customerId: "cus_keep",
-      subscriptionId: "sub_keep",
-      status: "active",
+    await seedShopifyBilling(SHOP_A, {
+      subscriptionGid: "gid://shopify/AppSubscription/keep",
+      status: "ACTIVE",
       currentPeriodStart: 1,
       currentPeriodEnd: 2,
     });
     const sessionId = await issueAppSession({
       shop: SHOP_A,
-      stripeCustomerId: "cus_keep",
     });
     await revokeShopifyInstallation(SHOP_A);
     expect(await loadValidAppSession(sessionId, SHOP_A)).toBeNull();
     expect((await storedSubscriberStatus(SHOP_A)).subscriptionId).toBe(
-      "sub_keep"
+      "gid://shopify/AppSubscription/keep"
     );
 
     const reissued = await issueAppSession({
       shop: SHOP_A,
-      stripeCustomerId: "cus_keep",
     });
     expect(await loadValidAppSession(reissued, SHOP_A)).toBeTruthy();
   });
@@ -657,35 +651,17 @@ describe("Phase 3 app sessions", () => {
     expect(await loadValidAppSession(sessionId, SHOP_B)).toBeNull();
   });
 
-  it("treats canceled Stripe subscriptions as inactive", async () => {
-    await saveShopSubscription(SHOP_A, {
-      customerId: "cus_a",
-      subscriptionId: "sub_a",
-      status: "canceled",
+  it("treats cancelled Shopify subscriptions as inactive", async () => {
+    await seedShopifyBilling(SHOP_A, {
+      subscriptionGid: "gid://shopify/AppSubscription/a",
+      status: "CANCELLED",
       currentPeriodStart: 100,
       currentPeriodEnd: 200,
     });
     const status = await storedSubscriberStatus(SHOP_A);
     expect(status.active).toBe(false);
-    expect(status.status).toBe("canceled");
-    expect(
-      subscriptionPrivilegeChanged(
-        {
-          customerId: "cus_a",
-          subscriptionId: "sub_a",
-          status: "active",
-          currentPeriodStart: 100,
-          currentPeriodEnd: 200,
-        },
-        {
-          customerId: "cus_a",
-          subscriptionId: "sub_a",
-          status: "canceled",
-          currentPeriodStart: 100,
-          currentPeriodEnd: 200,
-        }
-      )
-    ).toBe(true);
+    expect(status.status).toBe("CANCELLED");
+    expect(status.canManage).toBe(false);
   });
 
   it("cleans up expired and old revoked sessions", async () => {
