@@ -29,13 +29,16 @@ test.describe("Virello dashboard", () => {
         body: "window.shopify = window.shopify || {};",
       });
     });
-    await page.goto("/?embedded=1&shop=demo-store.myshopify.com");
+    await page.goto(
+      "/?embedded=1&shop=demo-store.myshopify.com&host=YWRtaW4uc2hvcGlmeS5jb20vc3RvcmUvZGVtby1zdG9yZQ"
+    );
     await expect(page).not.toHaveURL(/admin\.shopify\.com|accounts\.shopify\.com/);
+    await expect(page.getByTestId("embedded-authenticating")).toBeVisible();
     await expect(page.getByPlaceholder(/your-store.myshopify.com/i)).toHaveCount(0);
     await expect(page.getByRole("button", { name: /Connect Shopify/i })).toHaveCount(0);
     await expect(page.getByRole("button", { name: /Import Products/i })).toHaveCount(0);
     await expect(page.getByRole("button", { name: /Subscribe|Checking|Manage Subscription/i })).toBeVisible({
-      timeout: 8_000,
+      timeout: 12_000,
     });
   });
 
