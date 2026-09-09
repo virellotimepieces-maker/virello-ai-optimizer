@@ -9,6 +9,7 @@ import {
   merchantFactLines,
   parseMerchantFacts,
 } from "./merchant-facts";
+import { repairCopyQuality, rewriteMerchantInsight, isVagueBrandIdentityWarning } from "./copy-quality";
 
 const STOP_WORDS = new Set([
   "with",
@@ -55,7 +56,7 @@ export const REVIEW_SUGGESTION =
   /\b(customer reviews?|verified reviews?|display reviews?|add reviews?|show reviews?|social proof|\d+\s*[- ]stars?|star ratings?|leave a review|see (?:our|the) reviews|rated \d|customers love|highly rated|top rated)\b/gi;
 
 export const LIFESTYLE_FILLER =
-  /\b(everyday wear|daily wear|date night|weekend wear|office (?:or|and) weekend|perfect gift|gift for (?:him|her|them)|any occasion|gym (?:or|and) street|workout)\b/gi;
+  /\b(everyday wear|daily wear|date night|weekend wear|office (?:or|and) weekend|perfect gift|gift for (?:him|her|them)|any occasion|various occasions|versatile design|gym (?:or|and) street|workout)\b/gi;
 
 const GENERIC_FILLER =
   /\b(best|premium|amazing|quality|stunning|exclusive|must[- ]have|perfect gift|top rated|shop now|buy now|deal of|hot sale|luxury(?: lifestyle)?|affordable|high[- ]end|unbeatable|world[- ]class|ultimate|elegance|sophistication)\b/gi;
@@ -289,8 +290,9 @@ export function normalizeGeneratedText(
     if (text.length < 8 && product?.title) {
       text = stripShopLeaks(cleanCopyText(product.title), product, shop);
     }
+    return repairCopyQuality(text, "title").text;
   }
-  return polishPunctuation(text);
+  return repairCopyQuality(text).text;
 }
 
 function uniqueTexts(values: string[]): string[] {
@@ -398,9 +400,13 @@ function looksLikeRemnant(value: string): boolean {
   const text = cleanCopyText(value).replace(/[.!?,;:]+$/g, "").trim();
   if (!text) return true;
   const words = wordCount(text);
+  if (/\d\s*in$/i.test(text)) {
+    return false;
+  }
   if (INCOMPLETE_TAIL.test(text)) return true;
   if (/^(with|and|for|the|a|an|of|this|it|is)\b/i.test(text) && words < 8) return true;
   if (/\b(is and|and the|with this|this is)\b/i.test(text) && words < 10) return true;
+  if (words <= 14 && repairCopyQuality(text).issues.length > 0) return true;
   return false;
 }
 
@@ -489,6 +495,8 @@ export function listingFacts(
       .map((item) => naturalizeFact(item))
       .filter((item) => item.length >= 3 && (includePrice || !looksLikePrice(item)))
       .filter((item) => !hasDirtyMarketingLanguage(item))
+      .filter((item) => !looksLikeRemnant(item))
+      .filter((item) => !/^(with|and|or|for|to|of)\s+(this|that|it)$/i.test(item))
   ).slice(0, 12);
 }
 
@@ -694,9 +702,13 @@ function sharesSentence(left: string, right: string): boolean {
 }
 
 function neutralizeAnalysisLine(value: string, product?: OptimizerProduct, shop?: string): string {
+  if (isVagueBrandIdentityWarning(value)) {
+    return rewriteMerchantInsight(value, product);
+  }
   let text = normalizeGeneratedText(value, product, shop);
   text = stripAlways(text, CHEAP_LANGUAGE);
   text = stripAlways(text, DROPSHIPPING_LANGUAGE);
+  text = rewriteMerchantInsight(text, product);
   text = text.replace(/\s+/g, " ").replace(/\s+\./g, ".").trim();
   if (!text || looksLikeRemnant(text)) return "";
   if (hasCheapLanguage(text) || /lacking|cheap|low-quality|questionable/i.test(text)) {
@@ -735,8 +747,10 @@ export function applyCopyGuards(
   if (!includePrice) {
     title = title.replace(/(?:php|usd|\$|€|₱)\s?\d[\d,]*(?:\.\d+)?/gi, " ").replace(/\s+/g, " ").trim();
   }
+  title = repairCopyQuality(title, "title").text.slice(0, 120);
   if (
     !title ||
+    repairCopyQuality(title, "title").issues.length > 0 ||
     hasDropshippingLanguage(title) ||
     hasCheapLanguage(title) ||
     hasValueHypeLanguage(title) ||
@@ -747,12 +761,15 @@ export function applyCopyGuards(
   }
 
   let description = normalizeGeneratedText(result.optimization.description, source, shop);
+  const descriptionQuality = repairCopyQuality(description);
+  description = descriptionQuality.text;
   const descriptionWords = description.split(/\s+/).filter(Boolean);
   const titleToken = stripShopLeaks(cleanCopyText(source?.title || ""), source, shop)
     .split(/\s+/)[0]
     ?.toLowerCase();
   if (
     !description ||
+    descriptionQuality.uncertain ||
     descriptionWords.length < 8 ||
     looksLikeRemnant(description) ||
     (titleToken && titleToken.length >= 4 && !description.toLowerCase().includes(titleToken)) ||
@@ -773,11 +790,13 @@ export function applyCopyGuards(
   const bullets = uniqueTexts(
     result.optimization.benefitBullets
       .map((item) => normalizeGeneratedText(item, source, shop))
+      .map((item) => repairCopyQuality(item).text)
       .map((item) => item.replace(/\b(with|and|for|the|a|an|of|from|to|in|on)\s*$/i, "").trim())
       .map((item) => (isTypeOnlyFact(item, source) ? listedAsLine(source?.productType || item) : item))
       .filter((item) => item.length >= 4)
       .filter((item) => includePrice || !looksLikePrice(item))
       .filter((item) => !looksLikeRemnant(item))
+      .filter((item) => repairCopyQuality(item).issues.length === 0)
       .filter(
         (item) =>
           !hasDropshippingLanguage(item) &&
@@ -815,9 +834,11 @@ export function applyCopyGuards(
     .slice(0, 20);
 
   let callToAction = normalizeGeneratedText(result.optimization.callToAction, source, shop);
+  callToAction = repairCopyQuality(callToAction).text;
   if (
     !callToAction ||
     looksLikeRemnant(callToAction) ||
+    repairCopyQuality(callToAction).issues.length > 0 ||
     sharesSentence(callToAction, description) ||
     hasDropshippingLanguage(callToAction) ||
     hasValueHypeLanguage(callToAction) ||
@@ -830,9 +851,11 @@ export function applyCopyGuards(
   const usableFacts = facts.filter((item) => !isTypeOnlyFact(item, source));
   let conversionCopy = normalizeGeneratedText(result.optimization.conversionCopy, source, shop);
   conversionCopy = stripInternalInstructions(conversionCopy);
+  conversionCopy = repairCopyQuality(conversionCopy).text;
   if (
     !conversionCopy ||
     looksLikeRemnant(conversionCopy) ||
+    repairCopyQuality(conversionCopy).issues.length > 0 ||
     hasInternalInstruction(conversionCopy) ||
     sharesSentence(conversionCopy, title) ||
     sharesSentence(conversionCopy, description) ||
@@ -847,9 +870,11 @@ export function applyCopyGuards(
   }
 
   let seoTitle = normalizeGeneratedText(result.optimization.seoTitle, source, shop, "title").slice(0, 60);
+  seoTitle = repairCopyQuality(seoTitle, "title").text.slice(0, 60);
   if (
     !seoTitle ||
     looksLikeRemnant(seoTitle) ||
+    repairCopyQuality(seoTitle, "title").issues.length > 0 ||
     hasDropshippingLanguage(seoTitle) ||
     hasValueHypeLanguage(seoTitle) ||
     (!includePrice && hasPriceLeadLanguage(seoTitle)) ||
@@ -872,10 +897,12 @@ export function applyCopyGuards(
     source,
     shop
   ).slice(0, 160);
+  metaDescription = repairCopyQuality(metaDescription).text.slice(0, 160);
   const descKey = sentenceKey(description).slice(0, 36);
   if (
     !metaDescription ||
     looksLikeRemnant(metaDescription) ||
+    repairCopyQuality(metaDescription).issues.length > 0 ||
     wordCount(metaDescription) < 12 ||
     sharesSentence(metaDescription, description) ||
     (descKey.length >= 18 && sentenceKey(metaDescription).includes(descKey)) ||
@@ -910,6 +937,11 @@ export function applyCopyGuards(
       .filter((item) => !/missing product information:/i.test(item))
       .filter((item) => !/limited by missing product facts/i.test(item))
       .filter((item) => !/would improve the score:/i.test(item))
+      .filter(
+        (item) =>
+          !isVagueBrandIdentityWarning(item) ||
+          !(cleanCopyText(source?.vendor) && cleanCopyText(source?.productType))
+      )
   ).slice(0, 8);
   result.analysis.targetCustomer = neutralizeAnalysisLine(
     result.analysis.targetCustomer,
