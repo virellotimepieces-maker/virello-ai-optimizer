@@ -3,8 +3,9 @@
 import { useEffect, useRef, useState } from "react";
 import { shopifyFetch } from "./shopify-fetch";
 import { COPY } from "./i18n";
-import { normalizeShop, isAllowedShopifyConnectUrl, resolveStoreBindingDisplay } from "./api/_lib/shop-domain";
+import { normalizeShop, isAllowedShopifyConnectUrl, resolveStoreBindingDisplay, shopifyAdminAppHref } from "./api/_lib/shop-domain";
 import { assignTopLevel, isShopifyAdminIframe } from "./shopify-embed";
+import { lastShopifySessionDetail } from "./shopify-session-events";
 import { buildShopifyDescriptionHtml, stripHtml } from "./api/_lib/listing-html";
 import { scoreListing, scoreLimitExplanation, META_DESCRIPTION_MAX, SEO_TITLE_MAX, type ListingGrade } from "./api/_lib/listing-score";
 import {
@@ -254,27 +255,45 @@ export default function Home({
   }
 
   useEffect(() => {
-    function onSession(event: Event) {
-      const detail = (event as CustomEvent<{
-        connected?: boolean;
-        shop?: string;
-        authenticating?: boolean;
-      }>).detail;
-      if (detail?.shop) {
+    function applySession(detail: {
+      connected?: boolean;
+      shop?: string;
+      authenticating?: boolean;
+    }) {
+      if (detail.shop) {
         setShop(detail.shop);
         setShopInput(detail.shop);
       }
-      if (detail?.connected) {
+      if (detail.connected) {
         setShopInstalled(true);
         setEmbeddedSessionReady(true);
         return;
       }
-      if (embeddedInstall && !detail?.authenticating) {
+      if (embeddedInstall && detail.authenticating !== true) {
         setEmbeddedSessionReady(true);
       }
     }
+
+    const queued = lastShopifySessionDetail();
+    if (queued) applySession(queued);
+
+    function onSession(event: Event) {
+      applySession(
+        (event as CustomEvent<{
+          connected?: boolean;
+          shop?: string;
+          authenticating?: boolean;
+        }>).detail || {}
+      );
+    }
     window.addEventListener("virello-shopify-session", onSession);
-    return () => window.removeEventListener("virello-shopify-session", onSession);
+    const timeout = window.setTimeout(() => {
+      if (embeddedInstall) setEmbeddedSessionReady(true);
+    }, 8500);
+    return () => {
+      window.clearTimeout(timeout);
+      window.removeEventListener("virello-shopify-session", onSession);
+    };
   }, [embeddedInstall]);
 
   useEffect(() => {
@@ -737,7 +756,7 @@ export default function Home({
               {portalLoading ? copy.opening : copy.manage}
             </button>
           ) : (
-            <button type="button" className="subscribe-button" onClick={startCheckout} disabled={checking || checkoutLoading}>
+            <button type="button" className="subscribe-button" onClick={startCheckout} disabled={checking || checkoutLoading || !shopInstalled}>
               {checking ? copy.checking : checkoutLoading ? copy.opening : copy.subscribe}
             </button>
           )}
@@ -829,6 +848,19 @@ export default function Home({
             <button type="button" className="subscribe-button" onClick={connectShopify} disabled={connecting || changingStore}>
               {connecting ? copy.connecting : shopInstalled ? copy.reconnect : copy.connectShopify}
             </button>
+            )}
+            {embeddedInstall && !shopInstalled && (
+              <a
+                className="subscribe-button"
+                data-testid="embedded-open-admin"
+                href={
+                  shopifyAdminAppHref(shopInput || shop) || "https://admin.shopify.com"
+                }
+                target="_top"
+                rel="noreferrer"
+              >
+                {copy.openInShopifyAdmin}
+              </a>
             )}
             {showChangeStore && (
               <button

@@ -22,22 +22,31 @@ test.describe("Virello dashboard", () => {
   });
 
   test("embedded Admin host authenticates before merchant controls", async ({ page }) => {
-    await page.goto(
-      "/?embedded=1&host=YWRtaW4uc2hvcGlmeS5jb20vc3RvcmUvZ2ZkMWNwLTF5&shop=gfd1cp-1y.myshopify.com"
-    );
+    await page.route("https://cdn.shopify.com/**", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/javascript",
+        body: "window.shopify = window.shopify || {};",
+      });
+    });
+    await page.goto("/?embedded=1&shop=demo-store.myshopify.com");
     await expect(page).not.toHaveURL(/admin\.shopify\.com|accounts\.shopify\.com/);
-    await expect(page.getByTestId("embedded-authenticating")).toBeVisible();
+    await expect(page.getByPlaceholder(/your-store.myshopify.com/i)).toHaveCount(0);
     await expect(page.getByRole("button", { name: /Connect Shopify/i })).toHaveCount(0);
     await expect(page.getByRole("button", { name: /Import Products/i })).toHaveCount(0);
-    await expect(page.locator(".shop-input")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /Subscribe|Checking|Manage Subscription/i })).toBeVisible({
+      timeout: 8_000,
+    });
   });
 
   test("embedded handshake failure unblocks Subscribe without a Connect field", async ({ page }) => {
-    await page.goto("/?embedded=1&shop=gfd1cp-1y.myshopify.com");
-    await expect(page.getByRole("button", { name: /Subscribe|Manage Subscription/i })).toBeVisible({
+    await page.goto("/?embedded=1&shop=demo-store.myshopify.com");
+    await expect(page).not.toHaveURL(/admin\.shopify\.com|accounts\.shopify\.com/);
+    await expect(page.getByRole("button", { name: /Subscribe|Checking|Manage Subscription/i })).toBeVisible({
       timeout: 8_000,
     });
     await expect(page.getByRole("button", { name: /Connect Shopify/i })).toHaveCount(0);
+    await expect(page.getByTestId("embedded-open-admin")).toBeVisible();
   });
 
   test("Subscribe becomes Manage when the shop can manage billing", async ({ page }) => {

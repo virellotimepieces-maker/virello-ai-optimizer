@@ -8,6 +8,7 @@ import {
   ShopifyBillingError,
 } from "../../_lib/shopify-billing";
 import { getActiveSubscriberStatus } from "../../_lib/subscriber";
+import { publicErrorMessage } from "../../_lib/public-error";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -50,10 +51,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       {
         success: false,
-        error:
-          error instanceof Error
-            ? error.message
-            : "Unable to open Shopify subscription management.",
+        error: publicErrorMessage(
+          error,
+          "Unable to open Shopify subscription management."
+        ),
       },
       { status, headers: { "Cache-Control": "no-store" } }
     );

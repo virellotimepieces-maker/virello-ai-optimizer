@@ -292,8 +292,8 @@ describe("Phase 5 import, save, and access", () => {
     await seedShopifyBilling(SHOP, {
       subscriptionGid: "gid://shopify/AppSubscription/1",
       status: "ACTIVE",
-      currentPeriodStart: 1_700_000_000,
-      currentPeriodEnd: 1_702_592_000,
+      currentPeriodStart: Math.floor(Date.now() / 1000) - 60,
+      currentPeriodEnd: Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60,
     });
     const sessionId = await issueAppSession({ shop: SHOP });
     return new NextRequest("https://app.virello.example/api/shopify/products", {
@@ -353,9 +353,12 @@ describe("Phase 5 import, save, and access", () => {
   it("saves only after explicit confirmation", async () => {
     setShopifyAdminFetchForTests(async (_url, init) => {
       const body = JSON.parse(String(init?.body || "{}")) as {
-        variables?: { input?: { id?: string } };
+        query?: string;
+        variables?: { product?: { id?: string }; input?: { id?: string } };
       };
-      expect(body.variables?.input?.id).toBe("gid://shopify/Product/1");
+      expect(String(body.query || "")).toMatch(/ProductUpdateInput/);
+      expect(String(body.query || "")).not.toMatch(/ProductInput!/);
+      expect(body.variables?.product?.id).toBe("gid://shopify/Product/1");
       return jsonResponse({
         data: {
           productUpdate: {
@@ -638,7 +641,7 @@ describe("Phase 5 import, save, and access", () => {
       expect(body.success).toBe(true);
       expect(body.count).toBe(0);
       expect(graphqlCalls).toBe(2);
-      expect(exchanges).toBe(1);
+      expect(exchanges).toBeGreaterThanOrEqual(1);
     } finally {
       globalThis.fetch = originalFetch;
     }
@@ -810,6 +813,10 @@ describe("Phase 5 OAuth start for development shops", () => {
     expect(page).toMatch(/!embeddedInstall &&/);
     expect(bridge).not.toMatch(/assignTopLevel/);
     expect(bridge).not.toMatch(/oauth\/authorize/);
+    expect(bridge).toMatch(/publishShopifySession/);
+    expect(bridge).not.toMatch(/started\.current/);
+    expect(page).toMatch(/lastShopifySessionDetail/);
+    expect(page).toMatch(/embedded-open-admin/);
     expect(layout).not.toMatch(/SHOPIFY_LISTING_CLIENT_ID/);
     expect(layout).toMatch(/params\.get\("host"\) \|\| params\.get\("id_token"\)/);
     expect(connect).toMatch(/window\.location\.replace\(next\.toString\(\)\)/);

@@ -291,7 +291,7 @@ describe("Phase 9 shop-binding lifecycle", () => {
     );
     const location = response.headers.get("location") || "";
     expect(location).toMatch(/signature(\+|%20)is(\+|%20)invalid|does(\+|%20)not(\+|%20)match(\+|%20)this(\+|%20)Shopify(\+|%20)app/i);
-    expect(location).toMatch(/token=client|token%3Dclient/);
+    expect(location).not.toMatch(/oauth_diag=/);
     expect(location).toMatch(/shop=bcya1v-xp\.myshopify\.com|shop%3Dbcya1v-xp/);
     expect(await isShopifyInstallationActive(SHOP_NEXT)).toBe(false);
   });

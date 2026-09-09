@@ -17,6 +17,7 @@ import {
   ShopifyProductError,
 } from "../../_lib/shopify-products";
 import { assertRateLimit, RateLimitError, tenantRateKey } from "../../_lib/rate-limit";
+import { publicErrorMessage } from "../../_lib/public-error";
 
 function errorResponse(message: string, status: number) {
   return NextResponse.json(
@@ -98,9 +99,7 @@ export async function GET(request: NextRequest) {
     return errorResponse(
       status >= 500
         ? "Unable to import Shopify products."
-        : error instanceof Error
-          ? error.message
-          : "Unable to import Shopify products.",
+        : publicErrorMessage(error, "Unable to import Shopify products."),
       status
     );
   }
@@ -143,9 +142,7 @@ export async function POST(request: NextRequest) {
     return errorResponse(
       status >= 500
         ? "Unable to save product to Shopify."
-        : error instanceof Error
-          ? error.message
-          : "Unable to save product to Shopify.",
+        : publicErrorMessage(error, "Unable to save product to Shopify."),
       status
     );
   }

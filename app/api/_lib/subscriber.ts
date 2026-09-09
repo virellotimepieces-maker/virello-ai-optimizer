@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { shopFromSessionCookie, clearSessionCookie } from "./app-session";
-import { authenticateShopifyRequest } from "./shopify-auth";
+import { authenticateShopifyRequest, storedAccessToken } from "./shopify-auth";
 import { getSessionBinding } from "./shop-binding";
 import { isShopifyInstallationActive } from "./shops";
 import { peekAiUsage, consumeAiUsage } from "./usage";
@@ -9,7 +9,7 @@ import {
   isPaidSubscriptionStatus,
   type ShopifySubscriptionStatus,
 } from "./billing-access";
-import { accessStateForShop, syncShopifyBillingFromAdmin, usagePeriodStart } from "./shopify-billing";
+import { accessStateForShop, billingForShop, billingPeriodIsStale, syncShopifyBillingFromAdmin, usagePeriodStart } from "./shopify-billing";
 import { requirePaidProductAccess } from "./product-access";
 
 class ApiError extends Error {
@@ -162,11 +162,19 @@ export async function getActiveSubscriberStatus(
     let shop = "";
     let accessToken = "";
     try {
-      const auth = await authenticateShopifyRequest(request, false);
+      const auth = await authenticateShopifyRequest(request, true);
       shop = auth.shop;
       accessToken = auth.accessToken;
     } catch {
-      shop = binding?.sessionShop || (await shopFromSessionCookie(request));
+      try {
+        const auth = await authenticateShopifyRequest(request, false);
+        shop = auth.shop;
+      } catch {
+        shop = binding?.sessionShop || (await shopFromSessionCookie(request));
+      }
+      if (shop) {
+        accessToken = await storedAccessToken(shop);
+      }
     }
 
     if (!shop) {
@@ -179,7 +187,14 @@ export async function getActiveSubscriberStatus(
 
     if (accessToken) {
       try {
-        await syncShopifyBillingFromAdmin(shop, accessToken);
+        const current = await billingForShop(shop);
+        if (
+          !current ||
+          !isPaidSubscriptionStatus(current.status) ||
+          billingPeriodIsStale(current)
+        ) {
+          await syncShopifyBillingFromAdmin(shop, accessToken);
+        }
       } catch {
         // Use stored billing when Shopify Admin is unreachable.
       }

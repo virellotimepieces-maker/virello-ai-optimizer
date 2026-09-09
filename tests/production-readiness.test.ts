@@ -14,8 +14,23 @@ import { dbQuery } from "../app/api/_lib/database";
 import { consumeAiUsage, peekAiUsage } from "../app/api/_lib/usage";
 import { upsertShop } from "../app/api/_lib/shops";
 import { createSignedOAuthState } from "../app/api/_lib/shopify-security";
+import {
+  setShopifyAdminFetchForTests,
+  setShopifyAdminWaitForTests,
+  shopifyAdminGraphql,
+} from "../app/api/_lib/shopify-admin";
+import { getActiveSubscriberStatus } from "../app/api/_lib/subscriber";
+import {
+  lastShopifySessionDetail,
+  publishShopifySession,
+  resetShopifySessionDetailForTests,
+} from "../app/shopify-session-events";
 import { clearTestDatabase, usePglite } from "./helpers/pglite";
-import { seedShopifyBilling, TEST_SUBSCRIPTION_GID } from "./helpers/shopify-billing";
+import {
+  mockShopifyBillingGraphql,
+  seedShopifyBilling,
+  TEST_SUBSCRIPTION_GID,
+} from "./helpers/shopify-billing";
 
 const SHOP = "store-alpha.myshopify.com";
 const SECRET = "shopify-client-secret-value";
@@ -75,6 +90,9 @@ describe("Production release readiness", () => {
     vi.unstubAllGlobals();
     globalThis.fetch = originalFetch;
     clearTestDatabase();
+    setShopifyAdminFetchForTests(null);
+    setShopifyAdminWaitForTests(null);
+    resetShopifySessionDetailForTests();
     delete process.env.DATABASE_URL;
     delete process.env.OPENAI_API_KEY;
     delete process.env.SHOPIFY_BILLING_TEST;
@@ -311,5 +329,104 @@ describe("Production release readiness", () => {
       })
     );
     expect(response.headers.get("location") || "").toMatch(/connected=1/);
+  });
+
+  it("remembers handshake results for listeners that mount after the event", () => {
+    resetShopifySessionDetailForTests();
+    publishShopifySession({ connected: false, authenticating: false, shop: SHOP });
+    expect(lastShopifySessionDetail()).toMatchObject({
+      connected: false,
+      authenticating: false,
+      shop: SHOP,
+    });
+  });
+
+  it("syncs ACTIVE billing on subscriber status from a stored offline token", async () => {
+    await saveShopifySession(SHOP, "offline-stored-token", "read_products,write_products", {
+      expiresIn: 3600,
+    });
+    const sessionId = await issueAppSession({ shop: SHOP });
+    mockShopifyBillingGraphql({
+      partnerDevelopment: false,
+      active: [
+        {
+          id: TEST_SUBSCRIPTION_GID,
+          name: "Virello AI Optimizer",
+          status: "ACTIVE",
+          test: true,
+          currentPeriodEnd: new Date(Date.now() + 20 * 24 * 60 * 60 * 1000).toISOString(),
+        },
+      ],
+    });
+    const status = await getActiveSubscriberStatus(
+      new NextRequest(`${ORIGIN}/api/subscriber/status`, {
+        headers: { cookie: `virello_sid=${sessionId}` },
+      })
+    );
+    expect(status.canManage).toBe(true);
+    expect(status.active).toBe(true);
+    expect(status.status).toBe("ACTIVE");
+    expect((await billingForShop(SHOP))?.status).toBe("ACTIVE");
+  });
+
+  it("keeps billing return successful when the stored subscription is already ACTIVE", async () => {
+    await seedShopifyBilling(SHOP, { status: "ACTIVE" });
+    const { GET } = await import("../app/api/billing/return/route");
+    const response = await GET(
+      new NextRequest(`${ORIGIN}/api/billing/return?shop=${SHOP}`)
+    );
+    expect(response.headers.get("location") || "").toMatch(/checkout=success/);
+  });
+
+  it("returns 429 from analyze when the paid-plan usage limit is reached", async () => {
+    await saveShopifySession(SHOP, "offline-stored-token", "read_products,write_products", {
+      expiresIn: 3600,
+    });
+    const billing = await seedShopifyBilling(SHOP, { status: "ACTIVE" });
+    process.env.AI_SUBSCRIBER_USAGE_LIMIT = "1";
+    await consumeAiUsage(SHOP, billing.subscriptionId, usagePeriodStart(billing));
+    const sessionId = await issueAppSession({ shop: SHOP });
+    const { POST } = await import("../app/api/ai/analyze/route");
+    const response = await POST(
+      new NextRequest(`${ORIGIN}/api/ai/analyze`, {
+        method: "POST",
+        headers: {
+          origin: ORIGIN,
+          cookie: `virello_sid=${sessionId}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          product: { title: "Steel watch", description: "Quartz movement" },
+        }),
+      })
+    );
+    expect(response.status).toBe(429);
+    const body = (await response.json()) as { error?: string };
+    expect(body.error).toMatch(/usage limit/i);
+  });
+
+  it("retries Admin GraphQL after a request timeout", async () => {
+    let attempts = 0;
+    setShopifyAdminWaitForTests(async () => undefined);
+    setShopifyAdminFetchForTests(async () => {
+      attempts += 1;
+      if (attempts === 1) {
+        const error = new Error("The operation was aborted");
+        error.name = "TimeoutError";
+        throw error;
+      }
+      return {
+        ok: true,
+        status: 200,
+        headers: { get: () => null },
+        async text() {
+          return JSON.stringify({ data: { ok: true } });
+        },
+      };
+    });
+    await expect(
+      shopifyAdminGraphql("store-alpha.myshopify.com", "token", "query { ok }")
+    ).resolves.toEqual({ ok: true });
+    expect(attempts).toBe(2);
   });
 });

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAppUrl } from "../../_lib/app-url";
 import { applySessionCookie, issueAppSession, readSessionId } from "../../_lib/app-session";
 import { isPaidSubscriptionStatus } from "../../_lib/billing-access";
-import { authenticateShopifyRequest } from "../../_lib/shopify-auth";
+import { authenticateShopifyRequest, storedAccessToken } from "../../_lib/shopify-auth";
 import { normalizeShop } from "../../_lib/shop-domain";
 import {
   billingForShop,
@@ -25,9 +25,15 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const { accessToken } = await authenticateShopifyRequest(request, true);
-    const billing =
-      (await syncShopifyBillingFromAdmin(shop, accessToken)) || (await billingForShop(shop));
+    let accessToken = "";
+    try {
+      accessToken = (await authenticateShopifyRequest(request, true)).accessToken;
+    } catch {
+      accessToken = await storedAccessToken(shop);
+    }
+    const billing = accessToken
+      ? (await syncShopifyBillingFromAdmin(shop, accessToken)) || (await billingForShop(shop))
+      : await billingForShop(shop);
     const sessionId = await issueAppSession({
       shop,
       previousSessionId: readSessionId(request),
@@ -41,7 +47,10 @@ export async function GET(request: NextRequest) {
     return response;
   } catch (error) {
     console.error("SHOPIFY_BILLING_RETURN_ERROR:", error);
-    const fallback = NextResponse.redirect(billingReturnAppUrl(shop, flow, "cancelled"));
+    const stored = await billingForShop(shop).catch(() => null);
+    const checkout =
+      stored && isPaidSubscriptionStatus(stored.status) ? "success" : "cancelled";
+    const fallback = NextResponse.redirect(billingReturnAppUrl(shop, flow, checkout));
     fallback.headers.set("Cache-Control", "no-store");
     return fallback;
   }

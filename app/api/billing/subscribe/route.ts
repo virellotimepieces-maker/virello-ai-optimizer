@@ -8,6 +8,7 @@ import {
   ShopifyBillingError,
 } from "../../_lib/shopify-billing";
 import { assertRateLimit, RateLimitError, tenantRateKey } from "../../_lib/rate-limit";
+import { publicErrorMessage } from "../../_lib/public-error";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -57,10 +58,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       {
         success: false,
-        error:
-          error instanceof Error
-            ? error.message
-            : "Unable to start Shopify billing.",
+        error: publicErrorMessage(error, "Unable to start Shopify billing."),
       },
       { status, headers: { "Cache-Control": "no-store" } }
     );

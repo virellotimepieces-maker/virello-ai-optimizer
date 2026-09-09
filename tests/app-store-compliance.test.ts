@@ -65,6 +65,7 @@ describe("Shopify App Store billing compliance", () => {
     expect(read("app/api/_lib/subscriber.ts")).toMatch(/authorizeSubscriberForAI/);
     expect(read("app/api/_lib/subscriber.ts")).not.toMatch(/stripe/i);
     expect(read("app/api/ai/analyze/route.ts")).toMatch(/authorizeSubscriberForAI/);
+    expect(read("app/api/_lib/shopify-products.ts")).toMatch(/ProductUpdateInput/);
     expect(read("app/api/shopify/products/route.ts")).toMatch(/requirePaidProductAccess/);
   });
 
