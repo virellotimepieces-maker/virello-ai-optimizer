@@ -50,6 +50,13 @@ describe("Retail copy quality", () => {
     expect(cleaned.title).not.toMatch(/\$19 \$19/);
     expect(cleaned.description || "").not.toMatch(/myshopify|welcome to our store/i);
     expect((cleaned.description || "").toLowerCase().split("sample watch").length - 1).toBeLessThanOrEqual(1);
+    expect(cleaned.vendor).toBe("");
+    expect(
+      sanitizeProductSource(
+        { title: "Sample Watch", vendor: "Virello", productType: "Watch" },
+        "virello-dev.myshopify.com"
+      ).vendor
+    ).toBe("Virello");
   });
 
   it("turns dropshipping Sample Watch output into restrained factual copy", () => {
