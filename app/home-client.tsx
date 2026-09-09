@@ -1062,6 +1062,7 @@ export default function Home({
                   <textarea
                     id="opt-description"
                     className="review-input tall"
+                    rows={8}
                     value={optimization.description}
                     onChange={(event) => setOptimization({ ...optimization, description: event.target.value })}
                   />
@@ -1104,7 +1105,8 @@ export default function Home({
                   </label>
                   <textarea
                     id="opt-seo-description"
-                    className="review-input"
+                    className="review-input tall"
+                    rows={4}
                     maxLength={META_DESCRIPTION_MAX}
                     value={optimization.metaDescription}
                     onChange={(event) =>
@@ -1133,7 +1135,8 @@ export default function Home({
                   <label className="input-label" htmlFor="opt-conversion">{copy.conversionCopy}</label>
                   <textarea
                     id="opt-conversion"
-                    className="review-input"
+                    className="review-input tall"
+                    rows={5}
                     value={optimization.conversionCopy}
                     onChange={(event) => setOptimization({ ...optimization, conversionCopy: event.target.value })}
                   />
