@@ -15,6 +15,7 @@ import {
 import { parseAppLocale } from "../../_lib/locales";
 import { assertRateLimit, RateLimitError, tenantRateKey } from "../../_lib/rate-limit";
 import { parseIdempotencyKey } from "../../_lib/usage";
+import { parseBrandVoice } from "../../_lib/brand-voice";
 
 export const runtime = "nodejs";
 
@@ -53,7 +54,8 @@ export async function POST(request: NextRequest) {
     };
 
     const outputLocale = parseAppLocale(body.outputLocale || body.output);
-    const result = await optimizeProduct(product, outputLocale, subscriber.shop);
+    const brandVoice = parseBrandVoice(body.brandVoice || body.voice);
+    const result = await optimizeProduct(product, outputLocale, subscriber.shop, brandVoice);
     const recorded = await recordSuccessfulAiOptimization(
       subscriber.shop,
       subscriber.subscription,

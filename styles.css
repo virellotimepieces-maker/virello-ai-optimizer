@@ -1661,12 +1661,14 @@ textarea {
 .save-dock {
   display: grid;
   gap: 10px;
-  padding: 12px 14px calc(12px + env(safe-area-inset-bottom, 0px));
+  margin: 20px 0 8px;
+  padding: 12px 14px calc(16px + env(safe-area-inset-bottom, 0px));
   border: 1px solid #e5e7eb;
   border-radius: 14px;
   background: rgba(255, 255, 255, 0.97);
   box-shadow: 0 10px 28px rgba(15, 23, 42, 0.12);
   max-width: 100%;
+  position: static;
 }
 
 .save-dock .approve-box {
@@ -1680,10 +1682,6 @@ textarea {
 
 .save-dock-spacer {
   display: none;
-}
-
-.has-save-dock .workspace {
-  padding-bottom: 32px;
 }
 
 .approve-box {
@@ -1756,32 +1754,27 @@ textarea {
 
 @media (max-width: 640px) {
   .save-dock {
-    position: fixed;
-    left: 8px;
-    right: 8px;
-    bottom: calc(10px + env(safe-area-inset-bottom, 0px));
-    z-index: 80;
-    max-height: min(42vh, 220px);
-    overflow: auto;
+    position: static;
+    left: auto;
+    right: auto;
+    bottom: auto;
+    z-index: auto;
+    max-height: none;
+    overflow: visible;
+    margin-top: 24px;
+    margin-bottom: 28px;
   }
 
   .save-dock-admin {
-    bottom: calc(72px + env(safe-area-inset-bottom, 0px));
+    bottom: auto;
   }
 
   .save-dock-spacer {
-    display: block;
-    height: calc(200px + env(safe-area-inset-bottom, 0px));
-    flex-shrink: 0;
-    pointer-events: none;
+    display: none;
   }
 
-  .has-save-dock .workspace {
-    padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px));
-  }
-
-  .has-save-dock-admin .save-dock-spacer {
-    height: calc(260px + env(safe-area-inset-bottom, 0px));
+  .review-card {
+    padding-bottom: 24px;
   }
 
   .review-card h2,

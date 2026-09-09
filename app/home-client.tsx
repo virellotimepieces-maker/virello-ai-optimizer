@@ -7,6 +7,12 @@ import { normalizeShop, isAllowedShopifyConnectUrl, resolveStoreBindingDisplay }
 import { assignTopLevel, isShopifyAdminIframe } from "./shopify-embed";
 import { buildShopifyDescriptionHtml, stripHtml } from "./api/_lib/listing-html";
 import { scoreListing, META_DESCRIPTION_MAX, SEO_TITLE_MAX, type ListingGrade } from "./api/_lib/listing-score";
+import {
+  BRAND_VOICES,
+  DEFAULT_BRAND_VOICE,
+  parseBrandVoice,
+  type BrandVoice,
+} from "./api/_lib/brand-voice";
 
 type Product = {
   id: string;
@@ -178,6 +184,7 @@ export default function Home({
   const [optimizing, setOptimizing] = useState(false);
   const [saving, setSaving] = useState(false);
   const optimizingLock = useRef(false);
+  const [brandVoice, setBrandVoice] = useState<BrandVoice>(DEFAULT_BRAND_VOICE);
 
   const [error, setError] = useState("");
   const [errorKind, setErrorKind] = useState<"" | "quota" | "payment" | "shopify" | "ai" | "validation">("");
@@ -506,6 +513,7 @@ export default function Home({
         body: JSON.stringify({
           outputLocale: "en",
           idempotencyKey,
+          brandVoice,
           product: {
             id: selected.id,
             title: selected.title,
@@ -641,13 +649,7 @@ export default function Home({
   }
 
   return (
-    <main
-      className={
-        optimization
-          ? `app-shell has-save-dock${adminIframe ? " has-save-dock-admin" : ""}`
-          : "app-shell"
-      }
-    >
+    <main className="app-shell">
       {embeddedInstall && !embeddedSessionReady ? (
         <>
           <header className="topbar">
@@ -825,6 +827,28 @@ export default function Home({
                 ))}
               </select>
             )}
+            <label className="input-label" htmlFor="brand-voice">{copy.brandVoice}</label>
+            <select
+              id="brand-voice"
+              className="shop-input"
+              data-testid="brand-voice"
+              value={brandVoice}
+              onChange={(event) => setBrandVoice(parseBrandVoice(event.target.value))}
+            >
+              {BRAND_VOICES.map((voice) => (
+                <option key={voice} value={voice}>
+                  {voice === "refined"
+                    ? copy.voiceRefined
+                    : voice === "minimal"
+                      ? copy.voiceMinimal
+                      : voice === "warm"
+                        ? copy.voiceWarm
+                        : voice === "bold"
+                          ? copy.voiceBold
+                          : copy.voiceValue}
+                </option>
+              ))}
+            </select>
             <button type="button" className="subscribe-button" onClick={optimizeSelected} disabled={optimizing || !selected || !productAccess}>
               {optimizing ? copy.optimizing : copy.optimize}
             </button>
@@ -874,13 +898,6 @@ export default function Home({
                   <div className="conversion-highlight" data-testid="conversion-highlight">
                     <div className="eyebrow">{copy.conversionHighlight}</div>
                     <p>{optimization.conversionCopy || copy.emptyReview}</p>
-                    {analysis.conversionOpportunities.length > 0 && (
-                      <ul>
-                        {analysis.conversionOpportunities.map((item) => (
-                          <li key={item}>{item}</li>
-                        ))}
-                      </ul>
-                    )}
                   </div>
                 </div>
               )}
@@ -989,8 +1006,10 @@ export default function Home({
                   />
                 </section>
               </div>
-              <div className="review-grid">
+              <div className="review-grid" data-testid="merchant-insights">
                 <section className="insight-block">
+                  <h3>{copy.merchantInsights}</h3>
+                  <p className="empty-copy">{copy.merchantInsightsHint}</p>
                   <label className="input-label" htmlFor="an-customer">{copy.targetCustomer}</label>
                   <textarea
                     id="an-customer"
@@ -1068,7 +1087,6 @@ export default function Home({
                   ))}
                 </section>
               </div>
-              <div className="save-dock-spacer" aria-hidden="true" />
               {renderSaveDock()}
             </>
           )}

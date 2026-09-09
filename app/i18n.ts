@@ -122,7 +122,15 @@ export type CopyKey =
   | "outOf100"
   | "liveBadge"
   | "testModeBanner"
-  | "sandboxBillingBanner";
+  | "sandboxBillingBanner"
+  | "brandVoice"
+  | "voiceRefined"
+  | "voiceMinimal"
+  | "voiceWarm"
+  | "voiceBold"
+  | "voiceValue"
+  | "merchantInsights"
+  | "merchantInsightsHint";
 
 export const COPY: Record<AppLocale, Record<CopyKey, string>> = {
   en: {
@@ -271,6 +279,14 @@ export const COPY: Record<AppLocale, Record<CopyKey, string>> = {
       "Shopify billing is in test mode. This store is not charged a real $29.99 until live charges are enabled.",
     sandboxBillingBanner:
       "Approve the Shopify $29.99/month app subscription from Shopify Admin to continue.",
+    brandVoice: "Brand voice",
+    voiceRefined: "Refined & premium",
+    voiceMinimal: "Clean & minimal",
+    voiceWarm: "Warm & approachable",
+    voiceBold: "Bold & modern",
+    voiceValue: "Value-focused",
+    merchantInsights: "Merchant insights",
+    merchantInsightsHint: "Advisory only. These notes are not saved to Shopify.",
   },
   fil: {
     brandSmall: "VIRELLO AI",
@@ -418,6 +434,14 @@ export const COPY: Record<AppLocale, Record<CopyKey, string>> = {
       "Test mode ang Shopify billing. Hindi totoo ang $29.99 charge hanggang i-enable ang live charges.",
     sandboxBillingBanner:
       "Aprubahan ang $29.99/month Shopify app subscription mula sa Shopify Admin para magpatuloy.",
+    brandVoice: "Brand voice",
+    voiceRefined: "Refined at premium",
+    voiceMinimal: "Clean at minimal",
+    voiceWarm: "Mainit at approachable",
+    voiceBold: "Bold at modern",
+    voiceValue: "Value-focused",
+    merchantInsights: "Mga insight para sa merchant",
+    merchantInsightsHint: "Payo lang. Hindi sine-save ang mga note na ito sa Shopify.",
   },
 };
 

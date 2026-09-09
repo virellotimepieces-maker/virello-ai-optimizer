@@ -217,7 +217,8 @@ describe("Phase 8 hardening", () => {
     expect(home).toMatch(/save-dock/);
     expect(home.match(/data-testid="save-dock"/g)).toHaveLength(1);
     expect(home).not.toMatch(/save-dock-top/);
-    expect(home).toMatch(/save-dock-spacer/);
+    expect(home).toMatch(/brand-voice/);
+    expect(home).toMatch(/merchant-insights/);
     expect(home).toMatch(/Idempotency-Key/);
     expect(home).toMatch(/SEO_TITLE_MAX/);
     expect(home).toMatch(/META_DESCRIPTION_MAX/);
