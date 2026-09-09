@@ -112,8 +112,10 @@ describe("Conversion-focused AI listing output", () => {
     expect(recovered.optimization.conversionCopy).toBeTruthy();
     expect(recovered.optimization.seoTitle.length).toBeLessThanOrEqual(60);
     expect(recovered.optimization.metaDescription.length).toBeLessThanOrEqual(160);
-    expect(recovered.analysis.strongestFeatures.length).toBeGreaterThanOrEqual(3);
-    expect(recovered.optimization.benefitBullets.length).toBeGreaterThanOrEqual(3);
+    expect(recovered.analysis.strongestFeatures.length).toBeGreaterThanOrEqual(2);
+    expect(recovered.optimization.benefitBullets.length).toBeGreaterThanOrEqual(2);
+    expect(recovered.analysis.strongestFeatures.join("\n")).not.toMatch(/^Pagani Design$/m);
+    expect(recovered.analysis.strongestFeatures.join("\n")).not.toMatch(/^Watch$/m);
     expect(recovered.optimization.callToAction).toBeTruthy();
     expect(recovered.scores.overall).toBeGreaterThan(0);
   });

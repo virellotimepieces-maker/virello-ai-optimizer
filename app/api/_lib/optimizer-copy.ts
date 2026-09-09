@@ -487,15 +487,27 @@ function listedAsLine(type: string): string {
   return `Listed as ${withArticle(kind)}`;
 }
 
+function isBarePlural(noun: string): boolean {
+  const last = cleanCopyText(noun).split(/\s+/).pop() || "";
+  return /s$/i.test(last) && !/^(glass|brass|canvas|watch|dress|bus|plus|lens|gas)$/i.test(last);
+}
+
 function withArticle(noun: string): string {
   const text = cleanCopyText(noun).toLowerCase();
   if (!text) return "";
-  const last = text.split(/\s+/).pop() || text;
-  if (/s$/i.test(last) && !/^(glass|brass|canvas|watch|dress|bus|plus|lens|gas)$/i.test(last)) {
-    return text;
-  }
+  if (isBarePlural(text)) return text;
   const first = text.split(/\s+/)[0] || text;
   return `${/^[aeiou]/i.test(first) ? "an" : "a"} ${text}`;
+}
+
+function stripArticleBeforePluralType(text: string, type?: string): string {
+  const kind = cleanCopyText(type || "");
+  if (!kind || !isBarePlural(kind)) return text;
+  const escaped = kind.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const listed = kind.toLowerCase();
+  return text
+    .replace(new RegExp(`\\bis\\s+(?:a|an)\\s+${escaped}\\b`, "gi"), `is listed as ${listed}`)
+    .replace(new RegExp(`\\b(?:a|an)\\s+${escaped}\\b`, "gi"), listed);
 }
 
 function joinList(items: string[]): string {
@@ -586,10 +598,24 @@ function skipVendorAndType(product?: OptimizerProduct, shop?: string, facts: str
   });
 }
 
-function skipVendorName(product?: OptimizerProduct, shop?: string, facts: string[] = []): string[] {
+function looksLikeVendorOrTypeInsight(
+  value: string,
+  product?: OptimizerProduct,
+  shop?: string
+): boolean {
+  const lower = cleanCopyText(value)
+    .toLowerCase()
+    .replace(/[.!?]+$/g, "")
+    .trim();
+  if (!lower) return true;
   const vendor = listedVendorName(product?.vendor || "", shop).toLowerCase();
-  if (!vendor) return facts;
-  return facts.filter((item) => item.toLowerCase() !== vendor);
+  const type = cleanCopyText(product?.productType || "").toLowerCase();
+  const include = (item: string) =>
+    lower === item ||
+    lower === `the listed facts include ${item}` ||
+    lower === `listed as ${withArticle(item)}` ||
+    lower === `listed as ${item}`;
+  return Boolean((vendor && include(vendor)) || (type && include(type)));
 }
 
 export function sanitizeProductSource(
@@ -758,12 +784,16 @@ function composeVerifiedCopy(
   const water = cleanFact("waterResistance");
   const warranty = cleanFact("warranty");
   const intendedUse = cleanFact("intendedUse");
+  const fromVendor =
+    vendor && !title.toLowerCase().includes(vendor.toLowerCase()) ? ` from ${vendor}` : "";
 
   const sentences: string[] = [];
-  if (vendor && typePhrase && !title.toLowerCase().includes(vendor.toLowerCase())) {
-    sentences.push(`${title} is ${typePhrase} from ${vendor}.`);
-  } else if (typePhrase) {
-    sentences.push(`${title} is ${typePhrase}.`);
+  if (typePhrase) {
+    sentences.push(
+      isBarePlural(type)
+        ? `${title} is listed as ${typePhrase}${fromVendor}.`
+        : `${title} is ${typePhrase}${fromVendor}.`
+    );
   } else {
     sentences.push(`${title} is the product named on this listing.`);
   }
@@ -1086,27 +1116,31 @@ export function applyCopyGuards(
   }
 
   const bullets = uniqueTexts(
-    result.optimization.benefitBullets
-      .map((item) => normalizeGeneratedText(item, source, shop))
-      .map((item) => repairCopyQuality(item).text)
-      .map((item) => item.replace(/\b(with|and|for|the|a|an|of|from|to|in|on)\s*$/i, "").trim())
-      .map((item) => (isTypeOnlyFact(item, source) ? listedAsLine(source?.productType || item) : item))
-      .filter((item) => item.length >= 4)
-      .filter((item) => includePrice || !looksLikePrice(item))
-      .filter((item) => !looksLikeRemnant(item))
-      .filter((item) => repairCopyQuality(item).issues.length === 0)
-      .filter(
-        (item) =>
-          !hasDropshippingLanguage(item) &&
-          !hasCheapLanguage(item) &&
-          !hasValueHypeLanguage(item) &&
-          (includePrice || !hasPriceLeadLanguage(item))
-      )
+    skipVendorAndType(
+      source,
+      shop,
+      result.optimization.benefitBullets
+        .map((item) => normalizeGeneratedText(item, source, shop))
+        .map((item) => repairCopyQuality(item).text)
+        .map((item) => item.replace(/\b(with|and|for|the|a|an|of|from|to|in|on)\s*$/i, "").trim())
+        .map((item) => (isTypeOnlyFact(item, source) ? listedAsLine(source?.productType || item) : item))
+        .filter((item) => item.length >= 4)
+        .filter((item) => includePrice || !looksLikePrice(item))
+        .filter((item) => !looksLikeRemnant(item))
+        .filter((item) => repairCopyQuality(item).issues.length === 0)
+        .filter(
+          (item) =>
+            !hasDropshippingLanguage(item) &&
+            !hasCheapLanguage(item) &&
+            !hasValueHypeLanguage(item) &&
+            (includePrice || !hasPriceLeadLanguage(item))
+        )
+    )
   ).slice(0, 8);
   if (!bullets.length) {
     bullets.push(
       ...uniqueTexts(
-        facts
+        skipVendorAndType(source, shop, facts)
           .filter((item) => includePrice || !looksLikePrice(item))
           .map((item) => (isTypeOnlyFact(item, source) ? listedAsLine(source?.productType || item) : item))
           .filter((item) => !looksLikeRemnant(item))
@@ -1263,20 +1297,27 @@ export function applyCopyGuards(
     source,
     shop
   );
-  if (!result.analysis.purchaseMotivation) {
+  if (
+    !result.analysis.purchaseMotivation ||
+    looksLikeVendorOrTypeInsight(result.analysis.purchaseMotivation, source, shop)
+  ) {
     const notable = skipVendorAndType(source, shop, facts);
     result.analysis.purchaseMotivation = notable[0]
       ? `The listed facts include ${notable[0]}.`
       : "Only the product name is listed, so the copy stays factual.";
   }
   result.analysis.strongestFeatures = uniqueTexts(
-    result.analysis.strongestFeatures
-      .map((item) => neutralizeAnalysisLine(item, source, shop))
-      .filter(Boolean)
+    skipVendorAndType(
+      source,
+      shop,
+      result.analysis.strongestFeatures
+        .map((item) => neutralizeAnalysisLine(item, source, shop))
+        .filter(Boolean)
+    )
   ).slice(0, 8);
   if (!result.analysis.strongestFeatures.length) {
     const merchant = verifiedMerchantLines(source, shop);
-    const notable = skipVendorName(source, shop, facts);
+    const notable = skipVendorAndType(source, shop, facts);
     result.analysis.strongestFeatures = (merchant.length ? merchant : notable.length ? notable : facts).slice(0, 4);
   }
   result.analysis.weaknesses = uniqueTexts(
@@ -1320,6 +1361,24 @@ export function applyCopyGuards(
       },
     ];
   }
+
+  const productType = cleanCopyText(source?.productType || "");
+  result.optimization.description = stripArticleBeforePluralType(
+    result.optimization.description,
+    productType
+  );
+  result.optimization.conversionCopy = stripArticleBeforePluralType(
+    result.optimization.conversionCopy,
+    productType
+  );
+  result.optimization.seoTitle = stripArticleBeforePluralType(
+    result.optimization.seoTitle,
+    productType
+  );
+  result.optimization.metaDescription = stripArticleBeforePluralType(
+    result.optimization.metaDescription,
+    productType
+  );
 
   return result;
 }
