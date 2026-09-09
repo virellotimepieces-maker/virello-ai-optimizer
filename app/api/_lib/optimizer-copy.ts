@@ -125,12 +125,36 @@ export function shopContentLeakTokens(shop?: string): string[] {
   return [...tokens].filter((token) => token.length >= 3);
 }
 
+function exactShopIdentityTokens(shop?: string): string[] {
+  const tokens = new Set<string>(["myshopify", "myshopify.com", "virello-dev"]);
+  const normalized = normalizeShop(shop || "");
+  if (normalized) {
+    tokens.add(normalized);
+    const handle = normalized.replace(/\.myshopify\.com$/i, "");
+    if (handle) tokens.add(handle);
+  }
+  return [...tokens].filter((token) => token.length >= 3);
+}
+
+export function listedVendorName(value: string, shop?: string): string {
+  let text = cleanCopyText(value);
+  if (!text) return "";
+  text = text.replace(/\b[\w-]+\.myshopify\.com\b/gi, " ");
+  text = text.replace(/\.?myshopify\.com\b/gi, " ");
+  for (const token of exactShopIdentityTokens(shop)) {
+    const escaped = token.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    text = text.replace(new RegExp(`\\b${escaped}\\b`, "gi"), " ");
+  }
+  return text.replace(/\s+/g, " ").trim();
+}
+
 export function genuineProductHaystack(product?: OptimizerProduct): string {
   if (!product) return "";
   return [
     product.title,
     product.description,
     product.productType,
+    product.vendor,
     ...(product.tags || []),
     ...(product.options || []),
     ...(product.variants || []),
@@ -550,8 +574,10 @@ export function sanitizeProductSource(
   product: OptimizerProduct,
   shop?: string
 ): OptimizerProduct {
+  const vendor = listedVendorName(product.vendor || "", shop);
+  const source = { ...product, vendor };
   const cleanField = (value: unknown, kind: "plain" | "title" = "plain"): string => {
-    let text = stripShopLeaks(cleanCopyText(value), product, shop);
+    let text = stripShopLeaks(cleanCopyText(value), source, shop);
     text = text.replace(ROMAN_SLASH, " ");
     text = text.replace(TEMPLATE_JUNK, " ");
     text = dedupeRepeatedPrices(text);
@@ -577,7 +603,7 @@ export function sanitizeProductSource(
     title,
     description: cleanField(product.description),
     productType: cleanField(product.productType),
-    vendor: stripShopLeaks(cleanCopyText(product.vendor || ""), product, shop),
+    vendor,
     tags: uniqueTexts((product.tags || []).map((item) => cleanField(item)).filter(Boolean)),
     price: cleanCopyText(product.price || ""),
     handle: cleanCopyText(product.handle || ""),
@@ -610,9 +636,6 @@ function sparseMissingDetails(product?: OptimizerProduct): string[] {
   const hay = genuineProductHaystack(product);
   const facts = parseMerchantFacts(product.merchantFacts);
   const missing: string[] = [];
-  if (!cleanCopyText(product.vendor)) {
-    missing.push("Vendor name is not provided.");
-  }
   if (
     !hasMerchantFacts(product.merchantFacts) &&
     (!cleanCopyText(product.description) || cleanCopyText(product.description).length < 24)
@@ -806,11 +829,21 @@ export function factualConversionCopy(
   const water = cleanFact("waterResistance");
   const warranty = cleanFact("warranty");
   const intendedUse = cleanFact("intendedUse");
+  const vendor = listedVendorName(
+    stripShopLeaks(cleanCopyText(product?.vendor || ""), product, shop),
+    shop
+  );
+  const named =
+    vendor && !title.toLowerCase().includes(vendor.toLowerCase()) ? `${title} from ${vendor}` : title;
   const sentences: string[] = [];
   if (physical.length) {
-    sentences.push(`${title} is ${listedWithFacts(physical)}.`);
+    sentences.push(`${named} is ${listedWithFacts(physical)}.`);
   } else if (type) {
-    sentences.push(`${title} is listed as ${withArticle(type)}.`);
+    sentences.push(
+      vendor && !title.toLowerCase().includes(vendor.toLowerCase())
+        ? `${title} is listed as ${withArticle(type)} from ${vendor}.`
+        : `${title} is listed as ${withArticle(type)}.`
+    );
   }
   if (water) {
     sentences.push(`Water resistance is listed as ${embedFactValue(water)}.`);
@@ -887,6 +920,11 @@ function sharesSentence(left: string, right: string): boolean {
   if (a.length >= 18 && b.includes(a)) return true;
   if (b.length >= 18 && a.includes(b)) return true;
   return false;
+}
+
+function canonicalAnalysisLine(value: string): string {
+  const text = cleanCopyText(value).replace(/[.]+$/g, "").trim();
+  return text ? `${text}.` : "";
 }
 
 function neutralizeAnalysisLine(value: string, product?: OptimizerProduct, shop?: string): string {
@@ -1142,6 +1180,7 @@ export function applyCopyGuards(
   const missing = uniqueTexts([
     ...result.analysis.missingInformation
       .map((item) => neutralizeAnalysisLine(item, source, shop))
+      .map((item) => canonicalAnalysisLine(item))
       .filter((item) => !isNonScoringListingGap(item, source)),
     ...sparseMissingDetails(source),
   ]).filter(Boolean);
@@ -1149,6 +1188,7 @@ export function applyCopyGuards(
   result.analysis.warnings = uniqueTexts(
     result.analysis.warnings
       .map((item) => neutralizeAnalysisLine(item, source, shop))
+      .map((item) => canonicalAnalysisLine(item))
       .filter(Boolean)
       .filter((item) => !isNonScoringListingGap(item, source))
       .filter((item) => !missing.some((gap) => item.toLowerCase().includes(gap.toLowerCase())))

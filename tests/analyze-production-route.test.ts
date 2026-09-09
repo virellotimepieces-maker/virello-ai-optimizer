@@ -9,8 +9,9 @@ import {
   runOptimizeProduct,
   setOptimizerFetchForTests,
   sourceFactText,
+  validateOptimizationResult,
 } from "../app/api/_lib/optimizer";
-import { listingFacts, publishableCopy } from "../app/api/_lib/optimizer-copy";
+import { listingFacts, publishableCopy, sanitizeProductSource } from "../app/api/_lib/optimizer-copy";
 import { merchantFactsMissingFromText, parseMerchantFacts } from "../app/api/_lib/merchant-facts";
 import { scoreLimitExplanation } from "../app/api/_lib/listing-score";
 import { clearTestDatabase, usePglite } from "./helpers/pglite";
@@ -181,6 +182,71 @@ describe("Production Optimize request path", () => {
     expect(result.scores.grade).not.toBe("strong");
     expect(result.scores.grade).not.toBe("excellent");
     expect(result.scores.overall).toBeLessThan(80);
+  });
+
+  it("keeps an imported Virello vendor on the virello-dev shop instead of treating it as missing", () => {
+    expect(
+      sanitizeProductSource(
+        { title: "Sample Watch: for Everyday Style", vendor: "Virello" },
+        "virello-dev.myshopify.com"
+      ).vendor
+    ).toBe("Virello");
+    expect(
+      sanitizeProductSource(
+        { title: "Sample Watch: for Everyday Style", vendor: "virello-dev" },
+        "virello-dev.myshopify.com"
+      ).vendor
+    ).toBe("");
+    const result = buildSafeFallbackResult(
+      {
+        title: "Sample Watch: for Everyday Style",
+        description: "Introducing the product.",
+        productType: "Watch",
+        vendor: "Virello",
+        merchantFacts: PRODUCTION_FACTS,
+      },
+      "virello-dev.myshopify.com"
+    );
+    const gaps = [
+      ...result.analysis.missingInformation,
+      ...scoreLimitExplanation(result.analysis.missingInformation),
+    ].join(" ");
+    expect(result.optimization.conversionCopy).toMatch(/from Virello/i);
+    expect(result.optimization.description).toMatch(/Virello/i);
+    expect(gaps).not.toMatch(/vendor name is not provided/i);
+    expect(scoreLimitExplanation(result.analysis.missingInformation).filter((item) => /vendor/i.test(item))).toEqual(
+      []
+    );
+  });
+
+  it("does not duplicate a vendor-missing score cap when the model repeats the same gap", () => {
+    const result = validateOptimizationResult(
+      {
+        analysis: {
+          missingInformation: ["Vendor name is not provided", "Vendor name is not provided."],
+          warnings: ["Listing score is limited by the lack of a vendor name and missing style options"],
+        },
+        optimization: {
+          title: "Sample Watch: for Everyday Style",
+          description:
+            "Sample Watch: for Everyday Style from Virello is listed with a stainless steel case with genuine leather strap, 40 mm case diameter, and Japanese quartz movement. Water resistance is listed as 3 ATM / 30 metres, splash resistant only. It is listed for everyday wear, office, casual outings, and formal occasions, and includes 1-year limited manufacturer warranty.",
+          conversionCopy:
+            "Sample Watch: for Everyday Style from Virello is listed with a stainless steel case with genuine leather strap, 40 mm case diameter, and Japanese quartz movement.",
+        },
+      },
+      {
+        title: "Sample Watch: for Everyday Style",
+        productType: "Watch",
+        vendor: "Virello",
+        merchantFacts: PRODUCTION_FACTS,
+      },
+      "virello-dev.myshopify.com"
+    );
+    const vendorGaps = result.analysis.missingInformation.filter((item) => /vendor name is not provided/i.test(item));
+    expect(vendorGaps).toEqual([]);
+    expect(scoreLimitExplanation(result.analysis.missingInformation).join(" ")).not.toMatch(
+      /vendor name is not provided/i
+    );
   });
 
   it(
