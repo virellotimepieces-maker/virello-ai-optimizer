@@ -112,7 +112,8 @@ export function merchantFactsMissingFromText(
     const wordTokens = [...new Set(tokens.filter((token) => token.length >= 4 && !/^\d/.test(token)))];
     if (wordTokens.length) {
       const hits = wordTokens.filter((token) => hay.includes(token)).length;
-      if (hits < Math.min(2, wordTokens.length)) missing.push(field);
+      const needed = numbers.length ? 1 : Math.min(2, wordTokens.length);
+      if (hits < needed) missing.push(field);
       continue;
     }
     if (!numbers.length && !tokens.some((token) => hay.includes(token))) {
