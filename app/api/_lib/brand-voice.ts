@@ -48,6 +48,6 @@ export function brandVoiceInstruction(voice: BrandVoice): string {
     case "value":
       return "Brand voice: Value-focused. You may mention a listed price once as a practical detail. Never call the product cheap, budget, or low-quality, and never make price the only benefit.";
     default:
-      return "Brand voice: Refined & premium. Calm, precise, unhurried specialty-retail tone. Do not call the product premium, luxury, or high-end unless those words are in the source.";
+      return "Brand voice: Refined & premium. Calm, precise, unhurried specialty-retail tone. Do not call the product premium, luxury, high-end, affordable, or elegant unless those words are in the source. Never lead with price or use phrases such as affordable elegance, budget-friendly, or priced at just.";
   }
 }

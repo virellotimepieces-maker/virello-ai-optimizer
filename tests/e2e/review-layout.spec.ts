@@ -29,6 +29,7 @@ test.describe("review approval layout", () => {
     await page.goto("/?e2eReview=1");
 
     await expect(page.getByTestId("brand-voice")).toHaveValue("refined");
+    await expect(page.getByTestId("product-facts")).toBeVisible();
     await expect(page.getByTestId("save-dock")).toHaveCount(1);
     await expect(page.getByTestId("save-shopify")).toHaveCount(1);
     const save = page.getByTestId("save-shopify");

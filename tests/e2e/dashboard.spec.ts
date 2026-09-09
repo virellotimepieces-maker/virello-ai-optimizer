@@ -10,6 +10,7 @@ test.describe("Virello dashboard", () => {
     await expect(page.locator("body")).not.toContainText(/content clinic|Framer|prompt clinic/i);
     await expect(page.getByRole("heading", { name: /Optimize Shopify products with AI/i })).toBeVisible();
     await expect(page.getByTestId("brand-voice")).toHaveValue("refined");
+    await expect(page.getByTestId("product-facts")).toBeVisible();
   });
 
   test("connect page is reachable from standalone", async ({ page }) => {

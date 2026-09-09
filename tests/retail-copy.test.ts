@@ -11,6 +11,7 @@ import {
   hasCheapLanguage,
   hasDropshippingLanguage,
   hasReviewSuggestion,
+  hasValueHypeLanguage,
   publishableCopy,
   sanitizeProductSource,
 } from "../app/api/_lib/optimizer-copy";
@@ -18,6 +19,7 @@ import { DEFAULT_BRAND_VOICE, parseBrandVoice } from "../app/api/_lib/brand-voic
 import { buildShopifyDescriptionHtml } from "../app/api/_lib/listing-html";
 import { parseSaveProductInput } from "../app/api/_lib/shopify-products";
 import { COPY } from "../app/i18n";
+import { gradeForScore, scoreListing, scoreLimitExplanation } from "../app/api/_lib/listing-score";
 
 const sampleWatch = {
   title: "Sample Watch",
@@ -82,11 +84,11 @@ describe("Retail copy quality", () => {
     expect(hasDropshippingLanguage(pub)).toBe(false);
     expect(hasCheapLanguage(pub)).toBe(false);
     expect(hasReviewSuggestion(pub)).toBe(false);
-    expect(pub).not.toMatch(/shop now|buy now|must-have|game changer|elevate your/i);
+    expect(pub).not.toMatch(/shop now|buy now|must-have|game changer|elevate your|affordable elegance|priced at just/i);
     expect(pub).not.toMatch(/\bcheap\b|low-quality|lacking durability/i);
     expect(result.optimization.title).toMatch(/Sample Watch/i);
     expect(result.optimization.description).toMatch(/watch/i);
-    expect(result.optimization.description).toMatch(/not provided|not listed|listed as/i);
+    expect(result.optimization.description).toMatch(/not provided|not listed|listed as|no further specifications/i);
     expect(result.optimization.description).not.toMatch(/^this is\.|with this|watch watch/i);
     expect(result.optimization.callToAction).toMatch(/listed details|Sample Watch/i);
     expect(result.optimization.seoTitle).not.toMatch(/watch watch/i);
@@ -223,7 +225,118 @@ describe("Retail copy quality", () => {
     const pub = publishableCopy(result);
     expect(hasDropshippingLanguage(pub)).toBe(false);
     expect(result.optimization.title).toMatch(/Sample Watch/i);
-    expect(result.optimization.description).toMatch(/listed as a watch|not provided/i);
+    expect(result.optimization.description).toMatch(/is a watch|listed as a watch|not provided/i);
     setOptimizerFetchForTests(null);
+  });
+
+  const dropshippingPayload = {
+    analysis: {
+      weaknesses: ["This cheap watch is low-quality and lacking durability."],
+      conversionOpportunities: ["Display customer reviews and 5-star ratings."],
+    },
+    optimization: {
+      title: "Sample Watch — elevate your look, your new favorite must-have",
+      description:
+        "This affordable elegance game changer is budget-friendly and priced at just $19. Perfect for everyone. Shop now.",
+      benefitBullets: ["Elevate your game", "Must-have daily wear", "Cheap everyday wear"],
+      seoTitle: "Buy now Sample Watch game changer",
+      metaDescription: "Shop now for this budget-friendly must-have. Affordable elegance.",
+      tags: ["must-have", "cheap"],
+      keywords: ["elevate your look"],
+      callToAction: "Shop now",
+      conversionCopy: "Affordable elegance with this game changer.",
+    },
+  };
+
+  const pagani = {
+    title: "Pagani Design PD-1701 Chronograph",
+    description: "Stainless steel case. Japanese quartz movement. Sapphire crystal.",
+    productType: "Watch",
+    vendor: "Pagani Design",
+    tags: ["watch", "chronograph", "quartz"],
+    price: "89.00",
+    options: ["Color: Silver"],
+    variants: ["Silver · 89.00"],
+  };
+
+  it("rejects affordable elegance and other price-led hype for refined voice", () => {
+    const result = validateOptimizationResult(dropshippingPayload, sampleWatch, "", "refined");
+    const pub = publishableCopy(result);
+    expect(hasValueHypeLanguage(pub)).toBe(false);
+    expect(pub).not.toMatch(/affordable elegance|budget-friendly|priced at just|affordable luxury/i);
+    expect(result.optimization.description).toMatch(/Sample Watch is a watch/i);
+    expect(result.optimization.description).toMatch(/no further specifications/i);
+    expect(result.optimization.metaDescription).not.toBe(result.optimization.description);
+    expect(result.scores).toEqual(
+      scoreListing({
+        sourceTitle: sampleWatch.title,
+        title: result.optimization.title,
+        description: result.optimization.description,
+        benefitBullets: result.optimization.benefitBullets,
+        seoTitle: result.optimization.seoTitle,
+        metaDescription: result.optimization.metaDescription,
+        tags: result.optimization.tags,
+        callToAction: result.optimization.callToAction,
+        conversionCopy: result.optimization.conversionCopy,
+        conversionOpportunities: result.analysis.conversionOpportunities,
+        objections: result.analysis.objections.length,
+        targetCustomer: result.analysis.targetCustomer,
+        missingInformation: result.analysis.missingInformation.length,
+      })
+    );
+    expect(result.scores.grade).toBe("needs_work");
+    expect(scoreLimitExplanation(result.analysis.missingInformation).join(" ")).toMatch(
+      /limited by missing product facts/i
+    );
+  });
+
+  it("uses merchant-entered facts and never invents the rest", () => {
+    const result = validateOptimizationResult(dropshippingPayload, {
+      ...sampleWatch,
+      merchantFacts: {
+        material: "stainless steel",
+        movement: "Japanese quartz",
+      },
+    });
+    expect(result.optimization.description).toMatch(/stainless steel/i);
+    expect(result.optimization.description).toMatch(/Japanese quartz/i);
+    expect(result.optimization.description).not.toMatch(/sapphire|waterproof|warranty included/i);
+    expect(result.optimization.description).not.toMatch(/affordable elegance/i);
+    expect(() =>
+      assertGroundedResult(
+        { ...sampleWatch, merchantFacts: { material: "stainless steel", movement: "Japanese quartz" } },
+        result
+      )
+    ).not.toThrow();
+  });
+
+  it("scores a detailed product higher than sparse Sample Watch without forcing 90+", () => {
+    const sparse = validateOptimizationResult(dropshippingPayload, sampleWatch);
+    const detailed = validateOptimizationResult(
+      {
+        optimization: {
+          title: "Pagani Design PD-1701 Chronograph",
+          description:
+            "This affordable elegance watch is budget-friendly. Pagani Design PD-1701 with stainless steel case.",
+          benefitBullets: ["Must-have daily wear"],
+          seoTitle: "Affordable elegance chronograph",
+          metaDescription: "Priced at just $89. Shop now.",
+        },
+      },
+      pagani,
+      "",
+      "refined"
+    );
+    expect(detailed.optimization.description).toMatch(/stainless steel|quartz|sapphire/i);
+    expect(detailed.optimization.description).toMatch(/Pagani Design/i);
+    expect(detailed.optimization.description).not.toMatch(/affordable elegance|priced at just/i);
+    expect(publishableCopy(detailed)).not.toMatch(/\$89|89\.00/);
+    expect(detailed.optimization.metaDescription).not.toBe(detailed.optimization.description);
+    expect(detailed.optimization.seoTitle).not.toBe(detailed.optimization.description);
+    expect(detailed.scores.overall).toBeGreaterThan(sparse.scores.overall);
+    expect(sparse.scores.grade).toBe("needs_work");
+    expect(detailed.scores.overall).toBeLessThan(90);
+    expect(gradeForScore(62)).toBe("needs_work");
+    expect(COPY.en.gradeGood).not.toMatch(/Ready to convert/i);
   });
 });

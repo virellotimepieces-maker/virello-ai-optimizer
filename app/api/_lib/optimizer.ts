@@ -7,12 +7,18 @@ import {
   hasCheapLanguage,
   hasDropshippingLanguage,
   hasReviewSuggestion,
+  hasValueHypeLanguage,
   listingFacts,
   publishableCopy,
   sanitizeProductSource,
   shopContentLeakTokens,
   stripShopLeaks,
 } from "./optimizer-copy";
+import {
+  merchantFactHaystack,
+  parseMerchantFacts,
+  type MerchantFacts,
+} from "./merchant-facts";
 import {
   brandVoiceInstruction,
   DEFAULT_BRAND_VOICE,
@@ -37,6 +43,7 @@ export type OptimizerProduct = {
   handle?: string;
   options?: string[];
   variants?: string[];
+  merchantFacts?: MerchantFacts;
 };
 
 export type ObjectionResponse = {
@@ -108,7 +115,7 @@ function recordOf(value: unknown): Record<string, unknown> {
 }
 
 const GENERIC_SEO =
-  /\b(best|premium|amazing|quality|stunning|exclusive|must[- ]have|perfect gift|top rated|shop now|buy now|deal of|hot sale|luxury lifestyle|elevate your|game changer|budget[- ]friendly)\b/i;
+  /\b(best|premium|amazing|quality|stunning|exclusive|must[- ]have|perfect gift|top rated|shop now|buy now|deal of|hot sale|luxury lifestyle|elevate your|game changer|budget[- ]friendly|affordable elegance|affordable luxury|priced at just)\b/i;
 
 function clipAtLimit(value: string, max: number): string {
   const text = cleanText(value);
@@ -182,22 +189,25 @@ function specificMetaDescription(
   shop?: string
 ): string {
   const preferred = clipAtLimit(candidate, META_DESCRIPTION_MAX);
-  if (preferred && !looksGenericSeo(preferred, product, shop) && preferred.length >= 70) {
+  const preferredWords = preferred.split(/\s+/).filter(Boolean).length;
+  if (preferred && !looksGenericSeo(preferred, product, shop) && preferredWords >= 8) {
     return preferred;
   }
-  return clipAtLimit(
-    [
-      listingTitle,
-      description,
-      listingVendor(product, shop),
-      product?.productType,
-      product?.price,
-    ]
+  if (preferred && preferredWords >= 8 && preferred.length >= 40) {
+    return preferred;
+  }
+  const fallback = clipAtLimit(
+    [listingTitle, listingVendor(product, shop), product?.productType]
       .map((item) => cleanText(item))
       .filter(Boolean)
-      .join(". "),
+      .join(" "),
     META_DESCRIPTION_MAX
   );
+  return preferredWords >= wordCountSafe(fallback) ? preferred || fallback : fallback || preferred;
+}
+
+function wordCountSafe(value: string): number {
+  return value.split(/\s+/).filter(Boolean).length;
 }
 
 function ensureHighConversionFields(
@@ -264,6 +274,7 @@ function fallbackDescription(product?: OptimizerProduct): string {
     product.vendor ? `${product.vendor}` : "",
     product.productType,
     product.price ? `${product.price}` : "",
+    merchantFactHaystack(product.merchantFacts),
     ...(product.options ?? []).slice(0, 4),
     ...(product.variants ?? []).slice(0, 3),
   ].filter(Boolean);
@@ -317,6 +328,7 @@ export function sourceFactText(product: OptimizerProduct): string {
     ...(product.tags ?? []),
     ...(product.options ?? []),
     ...(product.variants ?? []),
+    merchantFactHaystack(product.merchantFacts),
   ]
     .filter(Boolean)
     .join(" \n ")
@@ -533,6 +545,9 @@ export function assertGroundedResult(
   if (hasReviewSuggestion(generated) && !/\breview/i.test(source)) {
     issues.push("Review suggestion without review data");
   }
+  if (hasValueHypeLanguage(generated)) {
+    issues.push("Generic value-hype language");
+  }
   const hay = genuineProductHaystack(product);
   for (const token of shopContentLeakTokens(shop)) {
     const leak = new RegExp(token.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
@@ -561,23 +576,24 @@ export function buildOptimizerMessages(
 ): { system: string; user: string } {
   return {
     system: `You are Virello AI Optimizer, writing customer-facing copy for an established specialty retailer.
-Optimize only the supplied Shopify product. Use only facts present in the product title, description, type, vendor, tags, price, options, and variants.
+Optimize only the supplied Shopify product. Use every valid fact in the product title, description, type, vendor, tags, price, options, variants, and merchantFacts. Never invent a fact that is not in that source.
 Default to polished, credible, brand-neutral retail English. Never sound like dropshipping, marketplace spam, or hype ads.
 ${brandVoiceInstruction(voice)}
 Never invent materials, specifications, discounts, prices, reviews, guarantees, shipping times, stock scarcity, certifications, medical claims, lifestyle uses, quality judgments, or fake urgency.
 Never describe the product as cheap, low-quality, questionable, lacking durability, or similar. Merchant objections must be neutral notes about missing facts, never insults to the product.
 Do not make low price the main benefit unless the brand voice is value-focused, and even then mention a listed price at most once.
+For refined, minimal, warm, or bold voice, never use price-led or generic value phrasing, including affordable elegance, affordable luxury, budget-friendly, priced at just, and close variants.
 Never suggest displaying customer reviews or ratings unless review data is in the source.
 If a shopper-facing claim is not in the source, omit it and list it under missingInformation and warnings.
-Do not fill sparse listings with invented color. Write concise factual copy and identify missing details.
-Never use a Shopify shop domain, a *.myshopify.com handle, or "virello-dev" as a brand, feature, benefit, CTA, tag, or keyword unless that exact text appears in the product title, description, type, tags, options, or variants.
-Banned phrases and close variants include: elevate your game/look, your new favorite, must-have, game changer, affordable luxury, budget-friendly, without breaking the bank, perfect for everyone, shop now, buy now.
+If the listing is sparse, write concise factual copy, name the missing details in analysis.missingInformation, and warn that the listing score is limited by those gaps. Do not pad copy to inflate scores.
+Never use a Shopify shop domain, a *.myshopify.com handle, or "virello-dev" as a brand, feature, benefit, CTA, tag, or keyword unless that exact text appears in the product title, description, type, tags, options, variants, or merchantFacts.
+Banned phrases and close variants include: elevate your game/look, your new favorite, must-have, game changer, affordable elegance, affordable luxury, budget-friendly, priced at just, without breaking the bank, perfect for everyone, shop now, buy now.
 Do not emit malformed fragments (for example roman-numeral slash phrases like "II/Affordable"), duplicated sentences, truncated titles, or copy pasted into the wrong field.
 Write optimization.title, description, benefitBullets, callToAction, seoTitle, metaDescription, tags, and keywords independently. Do not copy the same sentence across those fields.
 analysis.* fields are internal merchant notes only and must never be repeated in optimization.* customer copy.
 Fill optimization.tags and optimization.keywords with useful terms from stated product facts. Do not leave them empty when the product has a title, vendor, type, tags, options, or variants.
-SEO title: 50-60 characters, HARD MAX 60. Include the brand or model plus one stated spec. Never generic.
-SEO meta description: 140-160 characters, HARD MAX 160. Include two stated facts. No fake urgency and no shop now/buy now.
+SEO title: HARD MAX 60 characters. Prefer 50-60 only when enough stated facts exist. Never pad with generic words.
+SEO meta description: HARD MAX 160 characters. Prefer 140-160 only when two stated facts exist. Never invent or pad.
 optimization.callToAction must be restrained (for example "Review the listed details") and must not use shop now or buy now.
 ${languageInstruction(outputLocale)}
 Return JSON only with:
@@ -658,7 +674,10 @@ export async function optimizeProduct(
   }
   const locale = parseAppLocale(outputLocale);
   const voice = parseBrandVoice(brandVoice);
-  const cleaned = sanitizeProductSource(product, shop);
+  const cleaned = sanitizeProductSource(
+    { ...product, merchantFacts: parseMerchantFacts(product.merchantFacts) },
+    shop
+  );
   if (!cleanText(cleaned.title)) {
     throw new OptimizerError("Product title is required for AI optimization.", 400);
   }

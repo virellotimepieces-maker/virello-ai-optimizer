@@ -178,7 +178,10 @@ describe("Phase 8 hardening", () => {
     expect(COPY.fil.alreadyBilledHelp).toMatch(/Shopify Admin/);
     expect(COPY.en.emptyReview).toMatch(/conversion scores/);
     expect(COPY.fil.emptyReview).toMatch(/conversion scores/);
-    expect(COPY.en.gradeHigh).toBe("High conversion");
+    expect(COPY.en.gradeNeedsWork).toBe("Needs work");
+    expect(COPY.en.gradeGood).toBe("Good foundation");
+    expect(COPY.en.gradeStrong).toBe("Strong");
+    expect(COPY.en.gradeExcellent).toBe("Excellent");
     expect(COPY.en.differentCustomerHelp).toMatch(/one store/);
     expect(COPY.fil.differentCustomerHelp).toMatch(/isang store/);
     expect(COPY.en.billedStore).toMatch(/\$29\.99/);
@@ -219,6 +222,8 @@ describe("Phase 8 hardening", () => {
     expect(home).not.toMatch(/save-dock-top/);
     expect(home).toMatch(/brand-voice/);
     expect(home).toMatch(/merchant-insights/);
+    expect(home).toMatch(/product-facts/);
+    expect(home).toMatch(/score-limit/);
     expect(home).toMatch(/Idempotency-Key/);
     expect(home).toMatch(/SEO_TITLE_MAX/);
     expect(home).toMatch(/META_DESCRIPTION_MAX/);

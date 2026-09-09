@@ -6,13 +6,18 @@ import { COPY } from "./i18n";
 import { normalizeShop, isAllowedShopifyConnectUrl, resolveStoreBindingDisplay } from "./api/_lib/shop-domain";
 import { assignTopLevel, isShopifyAdminIframe } from "./shopify-embed";
 import { buildShopifyDescriptionHtml, stripHtml } from "./api/_lib/listing-html";
-import { scoreListing, META_DESCRIPTION_MAX, SEO_TITLE_MAX, type ListingGrade } from "./api/_lib/listing-score";
+import { scoreListing, scoreLimitExplanation, META_DESCRIPTION_MAX, SEO_TITLE_MAX, type ListingGrade } from "./api/_lib/listing-score";
 import {
   BRAND_VOICES,
   DEFAULT_BRAND_VOICE,
   parseBrandVoice,
   type BrandVoice,
 } from "./api/_lib/brand-voice";
+import {
+  MERCHANT_FACT_FIELDS,
+  parseMerchantFacts,
+  type MerchantFactField,
+} from "./api/_lib/merchant-facts";
 
 type Product = {
   id: string;
@@ -79,10 +84,29 @@ function normalizeShopInput(value: string) {
 }
 
 function gradeCopy(copy: (typeof COPY)["en"], grade: ListingGrade) {
-  if (grade === "high") return copy.gradeHigh;
+  if (grade === "excellent") return copy.gradeExcellent;
+  if (grade === "strong") return copy.gradeStrong;
   if (grade === "good") return copy.gradeGood;
   return copy.gradeNeedsWork;
 }
+
+const EMPTY_MERCHANT_FACTS: Record<MerchantFactField, string> = {
+  material: "",
+  dimensions: "",
+  movement: "",
+  waterResistance: "",
+  warranty: "",
+  intendedUse: "",
+};
+
+const FACT_COPY_KEYS: Record<MerchantFactField, "factMaterial" | "factDimensions" | "factMovement" | "factWaterResistance" | "factWarranty" | "factIntendedUse"> = {
+  material: "factMaterial",
+  dimensions: "factDimensions",
+  movement: "factMovement",
+  waterResistance: "factWaterResistance",
+  warranty: "factWarranty",
+  intendedUse: "factIntendedUse",
+};
 
 const REVIEW_FIXTURE_PRODUCT: Product = {
   id: "gid://shopify/Product/e2e-review",
@@ -185,6 +209,7 @@ export default function Home({
   const [saving, setSaving] = useState(false);
   const optimizingLock = useRef(false);
   const [brandVoice, setBrandVoice] = useState<BrandVoice>(DEFAULT_BRAND_VOICE);
+  const [merchantFacts, setMerchantFacts] = useState(EMPTY_MERCHANT_FACTS);
 
   const [error, setError] = useState("");
   const [errorKind, setErrorKind] = useState<"" | "quota" | "payment" | "shopify" | "ai" | "validation">("");
@@ -514,6 +539,7 @@ export default function Home({
           outputLocale: "en",
           idempotencyKey,
           brandVoice,
+          merchantFacts: parseMerchantFacts(merchantFacts),
           product: {
             id: selected.id,
             title: selected.title,
@@ -817,6 +843,7 @@ export default function Home({
                   setOptimization(null);
                   setAnalysis(null);
                   setApproved(false);
+                  setMerchantFacts(EMPTY_MERCHANT_FACTS);
                 }}
               >
                 <option value="">{copy.selectProduct}</option>
@@ -849,6 +876,23 @@ export default function Home({
                 </option>
               ))}
             </select>
+            <div data-testid="product-facts">
+              <label className="input-label">{copy.productFacts}</label>
+              <p className="empty-copy">{copy.productFactsHint}</p>
+              {MERCHANT_FACT_FIELDS.map((field) => (
+                <label className="input-label" htmlFor={`fact-${field}`} key={field}>
+                  {copy[FACT_COPY_KEYS[field]]}
+                  <input
+                    id={`fact-${field}`}
+                    className="shop-input"
+                    value={merchantFacts[field]}
+                    onChange={(event) =>
+                      setMerchantFacts({ ...merchantFacts, [field]: event.target.value })
+                    }
+                  />
+                </label>
+              ))}
+            </div>
             <button type="button" className="subscribe-button" onClick={optimizeSelected} disabled={optimizing || !selected || !productAccess}>
               {optimizing ? copy.optimizing : copy.optimize}
             </button>
@@ -895,6 +939,13 @@ export default function Home({
                       </div>
                     ))}
                   </div>
+                  {scoreLimitExplanation(analysis.missingInformation).length > 0 && (
+                    <ul className="warning-list" data-testid="score-limit">
+                      {scoreLimitExplanation(analysis.missingInformation).map((item) => (
+                        <li key={item}>{item}</li>
+                      ))}
+                    </ul>
+                  )}
                   <div className="conversion-highlight" data-testid="conversion-highlight">
                     <div className="eyebrow">{copy.conversionHighlight}</div>
                     <p>{optimization.conversionCopy || copy.emptyReview}</p>

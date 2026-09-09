@@ -3,6 +3,8 @@ import { normalizeShop } from "./shop-domain";
 import type { BrandVoice } from "./brand-voice";
 import { DEFAULT_BRAND_VOICE } from "./brand-voice";
 import type { OptimizationResult, OptimizerProduct } from "./optimizer";
+import { merchantFactHaystack, merchantFactLines, parseMerchantFacts } from "./merchant-facts";
+import { scoreLimitExplanation } from "./listing-score";
 
 const STOP_WORDS = new Set([
   "with",
@@ -34,7 +36,13 @@ const STOP_WORDS = new Set([
 ]);
 
 export const DROPSHIPPING_LANGUAGE =
-  /\b(elevate your (?:game|look|style|wardrobe|everyday)|your new favorite|must[- ]have|game[- ]changer|affordable luxury|budget[- ]friendly|without breaking the bank|won'?t break the bank|perfect for everyone|perfect for any(?:one|body| occasion)|shop now|buy now|order now|hot deal|unbeatable(?: price| value)?|steal of a deal|to the next level|next[- ]level|trust us|don'?t miss|wow factor|amazing deal|best quality|premium quality|high[- ]end|world[- ]class|ultimate|stunning|exclusive deal)\b/gi;
+  /\b(elevate your (?:game|look|style|wardrobe|everyday)|your new favorite|must[- ]have|game[- ]changer|affordable luxury|affordable elegance|budget[- ]friendly|without breaking the bank|won'?t break the bank|perfect for everyone|perfect for any(?:one|body| occasion)|shop now|buy now|order now|hot deal|unbeatable(?: price| value)?|steal of a deal|to the next level|next[- ]level|trust us|don'?t miss|wow factor|amazing deal|best quality|premium quality|high[- ]end|world[- ]class|ultimate|stunning|exclusive deal)\b/gi;
+
+export const VALUE_HYPE_LANGUAGE =
+  /\b(affordable elegance|affordable luxury|affordable style|affordable look|affordable timepiece|budget[- ]friendly|priced at just|priced at only|luxury for less|elegance at (?:an? )?price|value for money|bargain price)\b/gi;
+
+export const PRICE_LEAD_LANGUAGE =
+  /\b(affordable|budget[- ]friendly|budget|priced at|price of just|only \$\d|just \$\d|bargain)\b/gi;
 
 export const CHEAP_LANGUAGE =
   /\b(cheap(?:ly)?|low[- ]quality|poor quality|questionable|lacking durability|flimsy|knock[- ]?off|replica|bargain bin|poorly made|cheaply made|inferior|not durable|won'?t last|low[- ]grade)\b/gi;
@@ -46,7 +54,7 @@ export const LIFESTYLE_FILLER =
   /\b(everyday wear|daily wear|date night|weekend wear|office (?:or|and) weekend|perfect gift|gift for (?:him|her|them)|any occasion|gym (?:or|and) street|workout)\b/gi;
 
 const GENERIC_FILLER =
-  /\b(best|premium|amazing|quality|stunning|exclusive|must[- ]have|perfect gift|top rated|shop now|buy now|deal of|hot sale|luxury(?: lifestyle)?|affordable|high[- ]end|unbeatable|world[- ]class|ultimate)\b/gi;
+  /\b(best|premium|amazing|quality|stunning|exclusive|must[- ]have|perfect gift|top rated|shop now|buy now|deal of|hot sale|luxury(?: lifestyle)?|affordable|high[- ]end|unbeatable|world[- ]class|ultimate|elegance|sophistication)\b/gi;
 
 const ROMAN_SLASH = /\b[ivxlcdm]{1,6}\/[a-z][\w-]*/gi;
 const INCOMPLETE_TAIL = /\b(with|and|for|the|a|an|of|from|to|in|on)\s*$/i;
@@ -84,6 +92,7 @@ export function genuineProductHaystack(product?: OptimizerProduct): string {
     ...(product.tags || []),
     ...(product.options || []),
     ...(product.variants || []),
+    merchantFactHaystack(product.merchantFacts),
   ]
     .map((item) => cleanCopyText(item))
     .filter(Boolean)
@@ -171,13 +180,23 @@ export function hasReviewSuggestion(value: string): boolean {
   return matches(REVIEW_SUGGESTION, value);
 }
 
+export function hasValueHypeLanguage(value: string): boolean {
+  return matches(VALUE_HYPE_LANGUAGE, value) || matches(DROPSHIPPING_LANGUAGE, value);
+}
+
+export function hasPriceLeadLanguage(value: string): boolean {
+  return matches(PRICE_LEAD_LANGUAGE, value);
+}
+
 function stripBannedRetail(value: string, product?: OptimizerProduct): string {
   let text = value;
+  text = stripPattern(text, VALUE_HYPE_LANGUAGE, product);
   text = stripPattern(text, DROPSHIPPING_LANGUAGE, product);
   text = stripPattern(text, CHEAP_LANGUAGE, product);
   text = stripPattern(text, REVIEW_SUGGESTION, product);
   text = stripPattern(text, LIFESTYLE_FILLER, product);
   text = stripPattern(text, GENERIC_FILLER, product);
+  text = stripPattern(text, PRICE_LEAD_LANGUAGE, product);
   return text.replace(/\s+/g, " ").trim();
 }
 
@@ -228,6 +247,7 @@ function productTokens(product?: OptimizerProduct, shop?: string): string[] {
     ...(product.tags || []),
     ...(product.options || []),
     ...(product.variants || []),
+    merchantFactHaystack(product.merchantFacts),
   ]
     .flatMap((item) => cleanCopyText(item).split(/[^a-zA-Z0-9]+/))
     .map((token) => token.trim())
@@ -257,6 +277,7 @@ export function tagsAndKeywordsFromProduct(
       [cleanCopyText(product.vendor), type].filter(Boolean).join(" "),
       ...(product.tags || []).map((item) => cleanCopyText(item)),
       ...(product.options || []).map((item) => cleanCopyText(item)),
+      ...merchantFactLines(product.merchantFacts),
     ]
       .map((item) => stripShopLeaks(item, product, shop))
       .filter((item) => item.length >= 3 && item.length <= 40 && !item.includes("."))
@@ -337,6 +358,36 @@ function listedAsLine(type: string): string {
   return `Listed as ${kind.toLowerCase() === "watch" ? "a watch" : kind}`;
 }
 
+function withArticle(noun: string): string {
+  const text = cleanCopyText(noun);
+  if (!text) return "";
+  const first = text.split(/\s+/)[0] || text;
+  return `${/^[aeiou]/i.test(first) ? "an" : "a"} ${text}`;
+}
+
+function joinList(items: string[]): string {
+  if (items.length === 1) return items[0];
+  if (items.length === 2) return `${items[0]} and ${items[1]}`;
+  return `${items.slice(0, -1).join(", ")}, and ${items[items.length - 1]}`;
+}
+
+function naturalizeFact(item: string): string {
+  const labeled = item.match(/^([^:]{2,32}):\s*(.+)$/);
+  if (labeled?.[1] && labeled[2]) {
+    return `${labeled[2].trim()} ${labeled[1].trim().toLowerCase()}`;
+  }
+  return item.replace(/\s+[·|]\s+/g, " ").trim();
+}
+
+function withoutPriceTokens(value: string, includePrice: boolean): string {
+  if (includePrice) return value;
+  return value
+    .replace(/(?:php|usd|\$|€|₱)\s?\d[\d,]*(?:\.\d+)?/gi, " ")
+    .replace(/\s+[·|]\s+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 export function listingFacts(
   product?: OptimizerProduct,
   shop?: string,
@@ -353,15 +404,17 @@ export function listingFacts(
       stripShopLeaks(cleanCopyText(product.productType || ""), product, shop),
       includePrice ? cleanCopyText(product.price || "") : "",
       ...sentences.map((item) => stripShopLeaks(item, product, shop)),
+      ...merchantFactLines(product.merchantFacts).map((item) => stripShopLeaks(item, product, shop)),
       ...(product.options || []).map((item) => stripShopLeaks(cleanCopyText(item), product, shop)),
       ...(product.tags || []).map((item) => stripShopLeaks(cleanCopyText(item), product, shop)),
       ...(product.variants || [])
-        .slice(0, 4)
+        .slice(0, 6)
         .map((item) => stripShopLeaks(cleanCopyText(item), product, shop)),
     ]
-      .map((item) => item.replace(ROMAN_SLASH, " ").replace(TEMPLATE_JUNK, " ").trim())
+      .map((item) => withoutPriceTokens(item.replace(ROMAN_SLASH, " ").replace(TEMPLATE_JUNK, " ").trim(), includePrice))
+      .map((item) => naturalizeFact(item))
       .filter((item) => item.length >= 3 && (includePrice || !looksLikePrice(item)))
-  ).slice(0, 8);
+  ).slice(0, 12);
 }
 
 export function sanitizeProductSource(
@@ -398,6 +451,7 @@ export function sanitizeProductSource(
     handle: cleanCopyText(product.handle || ""),
     options: uniqueTexts((product.options || []).map((item) => cleanField(item)).filter(Boolean)),
     variants: uniqueTexts((product.variants || []).map((item) => cleanField(item)).filter(Boolean)),
+    merchantFacts: parseMerchantFacts(product.merchantFacts),
   };
 }
 
@@ -423,19 +477,35 @@ function sparseMissingDetails(product?: OptimizerProduct): string[] {
   if (!/\b(warranty|guarantee)\b/i.test(hay)) {
     missing.push("Warranty terms are not listed.");
   }
-  return missing.slice(0, 6);
+  if (!cleanCopyText(product.merchantFacts?.intendedUse) && !/\b(intended use|everyday|daily wear|dress|sport|dive)\b/i.test(hay)) {
+    missing.push("Intended use is not listed.");
+  }
+  return missing.slice(0, 7);
+}
+
+function extraFacts(
+  product?: OptimizerProduct,
+  shop?: string,
+  voice: BrandVoice = DEFAULT_BRAND_VOICE
+): string[] {
+  const title = stripShopLeaks(cleanCopyText(product?.title || ""), product, shop).toLowerCase();
+  const type = stripShopLeaks(cleanCopyText(product?.productType || ""), product, shop).toLowerCase();
+  const vendor = stripShopLeaks(cleanCopyText(product?.vendor || ""), product, shop).toLowerCase();
+  return listingFacts(product, shop, voice === "value").filter((item) => {
+    const lower = item.toLowerCase();
+    return lower !== title && lower !== type && lower !== vendor;
+  });
 }
 
 function factualTitle(product?: OptimizerProduct, shop?: string): string {
   const title = stripShopLeaks(cleanCopyText(product?.title || ""), product, shop);
   const type = stripShopLeaks(cleanCopyText(product?.productType || ""), product, shop);
   const vendor = stripShopLeaks(cleanCopyText(product?.vendor || ""), product, shop);
+  if (vendor && title && !title.toLowerCase().includes(vendor.toLowerCase())) {
+    return `${vendor} ${title}`.slice(0, 120).trim();
+  }
   if (title && type && !title.toLowerCase().includes(type.toLowerCase())) {
-    return [vendor && !title.toLowerCase().includes(vendor.toLowerCase()) ? vendor : "", title, type]
-      .filter(Boolean)
-      .join(" ")
-      .slice(0, 120)
-      .trim();
+    return `${title} ${type}`.slice(0, 120).trim();
   }
   return (title || type || "Product").slice(0, 120);
 }
@@ -447,18 +517,25 @@ function factualDescription(
 ): string {
   const title = stripShopLeaks(cleanCopyText(product?.title || "This product"), product, shop);
   const type = stripShopLeaks(cleanCopyText(product?.productType || ""), product, shop);
-  const facts = listingFacts(product, shop, voice === "value").filter(
-    (item) =>
-      item.toLowerCase() !== title.toLowerCase() &&
-      item.toLowerCase() !== type.toLowerCase()
-  );
-  const named = facts;
-  if (!named.length) {
-    const asType = type ? ` listed as ${type.toLowerCase() === "watch" ? "a watch" : type}` : "";
-    return `${title} is${asType}. Further specifications are not provided on this listing.`;
+  const vendor = stripShopLeaks(cleanCopyText(product?.vendor || ""), product, shop);
+  const named = extraFacts(product, shop, voice);
+  const typePhrase = type
+    ? withArticle(type.toLowerCase() === "watch" ? "watch" : type)
+    : "";
+  const sentences: string[] = [];
+  if (vendor && typePhrase && !title.toLowerCase().includes(vendor.toLowerCase())) {
+    sentences.push(`${title} is ${typePhrase} from ${vendor}.`);
+  } else if (typePhrase) {
+    sentences.push(`${title} is ${typePhrase}.`);
+  } else {
+    sentences.push(`${title} is the product named on this listing.`);
   }
-  const lead = type ? `${title} is listed as ${type.toLowerCase() === "watch" ? "a watch" : type}` : title;
-  return `${lead}, with ${named.slice(0, 3).join(", ")}. Details beyond these listed facts are not provided.`;
+  if (named.length) {
+    sentences.push(`The listing specifies ${joinList(named.slice(0, 6))}.`);
+  } else {
+    sentences.push("No further specifications are provided on this listing.");
+  }
+  return sentences.join(" ");
 }
 
 function factualCta(product?: OptimizerProduct, shop?: string): string {
@@ -473,20 +550,29 @@ function factualMeta(
 ): string {
   const title = stripShopLeaks(cleanCopyText(product?.title || "This product"), product, shop);
   const type = stripShopLeaks(cleanCopyText(product?.productType || ""), product, shop);
-  const facts = listingFacts(product, shop, voice === "value").filter(
-    (item) =>
-      item.toLowerCase() !== title.toLowerCase() &&
-      item.toLowerCase() !== type.toLowerCase()
-  );
-  const body = facts.length
-    ? `${title}${type ? ` is listed as ${type}` : ""}. ${facts.slice(0, 2).join(". ")}.`
-    : `${title}${type ? ` is listed as ${type.toLowerCase() === "watch" ? "a watch" : type}` : ""}. Specifications beyond the product name are not provided.`;
-  return body.slice(0, 160);
+  const vendor = stripShopLeaks(cleanCopyText(product?.vendor || ""), product, shop);
+  const named = extraFacts(product, shop, voice);
+  if (!named.length) {
+    const kind = type ? withArticle(type.toLowerCase() === "watch" ? "watch" : type) : "a listed product";
+    return `${title} appears as ${kind} on this product page, with no further specifications.`.slice(0, 160);
+  }
+  const lead = vendor && !title.toLowerCase().includes(vendor.toLowerCase()) ? `${title} from ${vendor}` : title;
+  return `${lead}, with ${joinList(named.slice(0, 2))}.`.slice(0, 160);
 }
 
 function factualSeoTitle(product?: OptimizerProduct, shop?: string): string {
-  const title = factualTitle(product, shop);
-  return title.slice(0, 60);
+  const base = factualTitle(product, shop).slice(0, 60);
+  const named = extraFacts(product, shop, "refined");
+  const spec = named.find((item) => {
+    const short = item.split(/\s+/).slice(0, 3).join(" ");
+    return short.length >= 4 && !base.toLowerCase().includes(short.toLowerCase());
+  });
+  if (spec && base.length < 50) {
+    const short = spec.split(/\s+/).slice(0, 3).join(" ");
+    const combined = `${base} ${short}`.slice(0, 60).trim();
+    if (combined.toLowerCase() !== base.toLowerCase()) return combined;
+  }
+  return base;
 }
 
 function sentenceKey(value: string): string {
@@ -538,12 +624,21 @@ export function applyCopyGuards(
   const includePrice = voice === "value";
   const facts = listingFacts(source, shop, includePrice);
   const inferred = tagsAndKeywordsFromProduct(source, shop);
+  const rawTitle = cleanCopyText(result.optimization.title);
+  const rawDescription = cleanCopyText(result.optimization.description);
 
   let title = normalizeGeneratedText(result.optimization.title, source, shop, "title").slice(0, 120);
   if (!includePrice) {
     title = title.replace(/(?:php|usd|\$|€|₱)\s?\d[\d,]*(?:\.\d+)?/gi, " ").replace(/\s+/g, " ").trim();
   }
-  if (!title || hasDropshippingLanguage(title) || hasCheapLanguage(title)) {
+  if (
+    !title ||
+    hasDropshippingLanguage(title) ||
+    hasCheapLanguage(title) ||
+    hasValueHypeLanguage(title) ||
+    hasValueHypeLanguage(rawTitle) ||
+    (!includePrice && (hasPriceLeadLanguage(title) || hasPriceLeadLanguage(rawTitle)))
+  ) {
     title = factualTitle(source, shop);
   }
 
@@ -560,7 +655,10 @@ export function applyCopyGuards(
     description.toLowerCase() === title.toLowerCase() ||
     hasDropshippingLanguage(description) ||
     hasCheapLanguage(description) ||
-    hasReviewSuggestion(description)
+    hasReviewSuggestion(description) ||
+    hasValueHypeLanguage(description) ||
+    hasValueHypeLanguage(rawDescription) ||
+    (!includePrice && (hasPriceLeadLanguage(description) || hasPriceLeadLanguage(rawDescription)))
   ) {
     description = factualDescription(source, shop, voice);
   }
@@ -576,7 +674,13 @@ export function applyCopyGuards(
       .filter((item) => item.length >= 4)
       .filter((item) => includePrice || !looksLikePrice(item))
       .filter((item) => !looksLikeRemnant(item))
-      .filter((item) => !hasDropshippingLanguage(item) && !hasCheapLanguage(item))
+      .filter(
+        (item) =>
+          !hasDropshippingLanguage(item) &&
+          !hasCheapLanguage(item) &&
+          !hasValueHypeLanguage(item) &&
+          (includePrice || !hasPriceLeadLanguage(item))
+      )
   ).slice(0, 8);
   if (!bullets.length) {
     bullets.push(
@@ -612,24 +716,26 @@ export function applyCopyGuards(
     looksLikeRemnant(callToAction) ||
     sharesSentence(callToAction, description) ||
     hasDropshippingLanguage(callToAction) ||
+    hasValueHypeLanguage(callToAction) ||
     /\b(shop now|buy now)\b/i.test(callToAction) ||
     callToAction.length > 160
   ) {
     callToAction = factualCta(source, shop);
   }
 
-  const extraFacts = facts.filter((item) => !isTypeOnlyFact(item, source));
+  const usableFacts = facts.filter((item) => !isTypeOnlyFact(item, source));
   let conversionCopy = normalizeGeneratedText(result.optimization.conversionCopy, source, shop);
   if (
     !conversionCopy ||
     looksLikeRemnant(conversionCopy) ||
     sharesSentence(conversionCopy, title) ||
     sharesSentence(conversionCopy, description) ||
-    hasDropshippingLanguage(conversionCopy)
+    hasDropshippingLanguage(conversionCopy) ||
+    hasValueHypeLanguage(conversionCopy)
   ) {
-    conversionCopy = extraFacts.length
-      ? `Keep the listing factual: ${extraFacts.slice(0, 2).join("; ")}.`
-      : `Keep the listing factual: ${title} has no further listed specifications.`;
+    conversionCopy = usableFacts.length
+      ? `Use these listed facts in the customer copy: ${usableFacts.slice(0, 3).join("; ")}.`
+      : "This score is limited because only the product name and type are listed. Add material, movement, dimensions, water resistance, coverage period, or intended use.";
   }
 
   let seoTitle = normalizeGeneratedText(result.optimization.seoTitle, source, shop, "title").slice(0, 60);
@@ -637,6 +743,8 @@ export function applyCopyGuards(
     !seoTitle ||
     looksLikeRemnant(seoTitle) ||
     hasDropshippingLanguage(seoTitle) ||
+    hasValueHypeLanguage(seoTitle) ||
+    (!includePrice && hasPriceLeadLanguage(seoTitle)) ||
     (sharesSentence(seoTitle, title) && seoTitle.length < 18)
   ) {
     seoTitle = factualSeoTitle(source, shop);
@@ -656,12 +764,17 @@ export function applyCopyGuards(
     source,
     shop
   ).slice(0, 160);
+  const descKey = sentenceKey(description).slice(0, 36);
   if (
     !metaDescription ||
     looksLikeRemnant(metaDescription) ||
+    wordCount(metaDescription) < 12 ||
     sharesSentence(metaDescription, description) ||
+    (descKey.length >= 18 && sentenceKey(metaDescription).includes(descKey)) ||
     hasDropshippingLanguage(metaDescription) ||
-    hasReviewSuggestion(metaDescription)
+    hasReviewSuggestion(metaDescription) ||
+    hasValueHypeLanguage(metaDescription) ||
+    (!includePrice && hasPriceLeadLanguage(metaDescription))
   ) {
     metaDescription = factualMeta(source, shop, voice);
   }
@@ -682,9 +795,10 @@ export function applyCopyGuards(
   ]).filter(Boolean);
   result.analysis.missingInformation = missing.slice(0, 8);
   result.analysis.warnings = uniqueTexts([
+    ...scoreLimitExplanation(missing),
     ...result.analysis.warnings.map((item) => neutralizeAnalysisLine(item, source, shop)),
     ...missing.map((item) => `Missing product information: ${item}`),
-  ]).filter(Boolean).slice(0, 12);
+  ]).filter(Boolean).slice(0, 14);
   result.analysis.targetCustomer = neutralizeAnalysisLine(
     result.analysis.targetCustomer,
     source,

@@ -16,6 +16,7 @@ import { parseAppLocale } from "../../_lib/locales";
 import { assertRateLimit, RateLimitError, tenantRateKey } from "../../_lib/rate-limit";
 import { parseIdempotencyKey } from "../../_lib/usage";
 import { parseBrandVoice } from "../../_lib/brand-voice";
+import { parseMerchantFacts } from "../../_lib/merchant-facts";
 
 export const runtime = "nodejs";
 
@@ -51,6 +52,7 @@ export async function POST(request: NextRequest) {
       variants: Array.isArray(source.variants)
         ? source.variants.filter((item: unknown): item is string => typeof item === "string")
         : [],
+      merchantFacts: parseMerchantFacts(body.merchantFacts || source.merchantFacts),
     };
 
     const outputLocale = parseAppLocale(body.outputLocale || body.output);

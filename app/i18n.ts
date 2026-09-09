@@ -115,7 +115,8 @@ export type CopyKey =
   | "scoreDescription"
   | "scoreSeo"
   | "scoreConversion"
-  | "gradeHigh"
+  | "gradeExcellent"
+  | "gradeStrong"
   | "gradeGood"
   | "gradeNeedsWork"
   | "conversionHighlight"
@@ -130,7 +131,15 @@ export type CopyKey =
   | "voiceBold"
   | "voiceValue"
   | "merchantInsights"
-  | "merchantInsightsHint";
+  | "merchantInsightsHint"
+  | "productFacts"
+  | "productFactsHint"
+  | "factMaterial"
+  | "factDimensions"
+  | "factMovement"
+  | "factWaterResistance"
+  | "factWarranty"
+  | "factIntendedUse";
 
 export const COPY: Record<AppLocale, Record<CopyKey, string>> = {
   en: {
@@ -269,9 +278,10 @@ export const COPY: Record<AppLocale, Record<CopyKey, string>> = {
     scoreDescription: "Description",
     scoreSeo: "SEO",
     scoreConversion: "Conversion",
-    gradeHigh: "High conversion",
-    gradeGood: "Ready to convert",
-    gradeNeedsWork: "Needs stronger copy",
+    gradeExcellent: "Excellent",
+    gradeStrong: "Strong",
+    gradeGood: "Good foundation",
+    gradeNeedsWork: "Needs work",
     conversionHighlight: "High-conversion copy",
     outOf100: "/ 100",
     liveBadge: "Live",
@@ -287,6 +297,15 @@ export const COPY: Record<AppLocale, Record<CopyKey, string>> = {
     voiceValue: "Value-focused",
     merchantInsights: "Merchant insights",
     merchantInsightsHint: "Advisory only. These notes are not saved to Shopify.",
+    productFacts: "Product facts",
+    productFactsHint:
+      "Optional. Add only verified details. These facts are used in the copy and are never invented.",
+    factMaterial: "Material",
+    factDimensions: "Dimensions",
+    factMovement: "Movement",
+    factWaterResistance: "Water resistance",
+    factWarranty: "Warranty",
+    factIntendedUse: "Intended use",
   },
   fil: {
     brandSmall: "VIRELLO AI",
@@ -424,9 +443,10 @@ export const COPY: Record<AppLocale, Record<CopyKey, string>> = {
     scoreDescription: "Description",
     scoreSeo: "SEO",
     scoreConversion: "Conversion",
-    gradeHigh: "High conversion",
-    gradeGood: "Handang mag-convert",
-    gradeNeedsWork: "Kailangan pa ng mas malakas na copy",
+    gradeExcellent: "Excellent",
+    gradeStrong: "Malakas",
+    gradeGood: "May magandang simula",
+    gradeNeedsWork: "Kailangan pa ng gawa",
     conversionHighlight: "High-conversion copy",
     outOf100: "/ 100",
     liveBadge: "Live",
@@ -442,6 +462,15 @@ export const COPY: Record<AppLocale, Record<CopyKey, string>> = {
     voiceValue: "Value-focused",
     merchantInsights: "Mga insight para sa merchant",
     merchantInsightsHint: "Payo lang. Hindi sine-save ang mga note na ito sa Shopify.",
+    productFacts: "Mga detalye ng product",
+    productFactsHint:
+      "Opsyonal. Ilagay lang ang beripikadong detalye. Ginagamit ang mga ito sa copy at hindi inimbento.",
+    factMaterial: "Material",
+    factDimensions: "Sukat",
+    factMovement: "Movement",
+    factWaterResistance: "Water resistance",
+    factWarranty: "Warranty",
+    factIntendedUse: "Intended use",
   },
 };
 
