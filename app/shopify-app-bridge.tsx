@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useRef } from "react";
-import { copyEmbedQuery, isShopifyAdminIframe } from "./shopify-embed";
+import { useEffect } from "react";
+import { copyEmbedQuery } from "./shopify-embed";
+import { publishShopifySession } from "./shopify-session-events";
 import { normalizeShop, shopFromShopifyHostParam } from "./api/_lib/shop-domain";
 
 function decodeJwtPayload(token: string): { aud?: string; dest?: string } {
@@ -26,36 +27,22 @@ function embeddedShop(token = ""): string {
 }
 
 export default function ShopifyAppBridge() {
-  const started = useRef(false);
-
   useEffect(() => {
-    if (started.current) return;
-    started.current = true;
-
     let cancelled = false;
 
     async function handshake() {
       const params = new URLSearchParams(window.location.search);
-      const embedded =
-        params.get("embedded") === "1" ||
-        Boolean(params.get("host")) ||
-        Boolean(params.get("id_token")) ||
-        isShopifyAdminIframe();
-
-      const deadline = Date.now() + 8000;
-      while (!window.shopify?.idToken && Date.now() < deadline) {
-        await new Promise((resolve) => window.setTimeout(resolve, 50));
+      const hasShopifyRuntime = Boolean(params.get("host") || params.get("id_token"));
+      if (hasShopifyRuntime) {
+        const deadline = Date.now() + 8000;
+        while (!window.shopify?.idToken && Date.now() < deadline) {
+          await new Promise((resolve) => window.setTimeout(resolve, 50));
+        }
       }
       if (cancelled) return;
 
       if (!window.shopify?.idToken) {
-        if (embedded) {
-          window.dispatchEvent(
-            new CustomEvent("virello-shopify-session", {
-              detail: { connected: false, authenticating: true },
-            })
-          );
-        }
+        publishShopifySession({ connected: false, authenticating: false });
         return;
       }
 
@@ -82,11 +69,7 @@ export default function ShopifyAppBridge() {
         } | null;
 
         if (response.ok && data?.success && data.connected) {
-          window.dispatchEvent(
-            new CustomEvent("virello-shopify-session", {
-              detail: { connected: true, shop: data.shop || lastShop },
-            })
-          );
+          publishShopifySession({ connected: true, shop: data.shop || lastShop });
 
           const path = window.location.pathname;
           if (path === "/connect" || path.startsWith("/connect/")) {
@@ -104,17 +87,19 @@ export default function ShopifyAppBridge() {
         await new Promise((resolve) => window.setTimeout(resolve, 400));
       }
 
-      if (embedded) {
-        window.dispatchEvent(
-          new CustomEvent("virello-shopify-session", {
-            detail: { connected: false, authenticating: true, shop: lastShop },
-          })
-        );
-      }
+      if (cancelled) return;
+      publishShopifySession({
+        connected: false,
+        authenticating: false,
+        shop: lastShop,
+      });
     }
 
     handshake().catch((error) => {
       console.error("SHOPIFY_SESSION_HANDSHAKE_ERROR", error);
+      if (!cancelled) {
+        publishShopifySession({ connected: false, authenticating: false });
+      }
     });
 
     return () => {

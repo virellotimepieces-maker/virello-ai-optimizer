@@ -3,8 +3,9 @@
 import { useEffect, useRef, useState } from "react";
 import { shopifyFetch } from "./shopify-fetch";
 import { COPY } from "./i18n";
-import { normalizeShop, isAllowedShopifyConnectUrl, resolveStoreBindingDisplay } from "./api/_lib/shop-domain";
+import { normalizeShop, isAllowedShopifyConnectUrl, resolveStoreBindingDisplay, shopifyAdminAppHref } from "./api/_lib/shop-domain";
 import { assignTopLevel, isShopifyAdminIframe } from "./shopify-embed";
+import { lastShopifySessionDetail } from "./shopify-session-events";
 import { buildShopifyDescriptionHtml, stripHtml } from "./api/_lib/listing-html";
 import { scoreListing, scoreLimitExplanation, META_DESCRIPTION_MAX, SEO_TITLE_MAX, type ListingGrade } from "./api/_lib/listing-score";
 import {
@@ -18,6 +19,7 @@ import {
   parseMerchantFacts,
   type MerchantFactField,
 } from "./api/_lib/merchant-facts";
+import { productAccessDeniedMessage } from "./api/_lib/billing-access";
 
 type Product = {
   id: string;
@@ -172,6 +174,7 @@ export default function Home({
 
   const [canManage, setCanManage] = useState(false);
   const [productAccess, setProductAccess] = useState(false);
+  const [accessReason, setAccessReason] = useState("");
   const [shopInstalled, setShopInstalled] = useState(false);
   const [pendingShop, setPendingShop] = useState("");
   const [billedShop, setBilledShop] = useState("");
@@ -252,27 +255,45 @@ export default function Home({
   }
 
   useEffect(() => {
-    function onSession(event: Event) {
-      const detail = (event as CustomEvent<{
-        connected?: boolean;
-        shop?: string;
-        authenticating?: boolean;
-      }>).detail;
-      if (detail?.shop) {
+    function applySession(detail: {
+      connected?: boolean;
+      shop?: string;
+      authenticating?: boolean;
+    }) {
+      if (detail.shop) {
         setShop(detail.shop);
         setShopInput(detail.shop);
       }
-      if (detail?.connected) {
+      if (detail.connected) {
         setShopInstalled(true);
         setEmbeddedSessionReady(true);
         return;
       }
-      if (embeddedInstall && !detail?.authenticating) {
+      if (embeddedInstall && detail.authenticating !== true) {
         setEmbeddedSessionReady(true);
       }
     }
+
+    const queued = lastShopifySessionDetail();
+    if (queued) applySession(queued);
+
+    function onSession(event: Event) {
+      applySession(
+        (event as CustomEvent<{
+          connected?: boolean;
+          shop?: string;
+          authenticating?: boolean;
+        }>).detail || {}
+      );
+    }
     window.addEventListener("virello-shopify-session", onSession);
-    return () => window.removeEventListener("virello-shopify-session", onSession);
+    const timeout = window.setTimeout(() => {
+      if (embeddedInstall) setEmbeddedSessionReady(true);
+    }, 8500);
+    return () => {
+      window.clearTimeout(timeout);
+      window.removeEventListener("virello-shopify-session", onSession);
+    };
   }, [embeddedInstall]);
 
   useEffect(() => {
@@ -292,6 +313,7 @@ export default function Home({
         setCanManage(Boolean(status?.canManage));
         setBillingTest(Boolean(status?.billingTest));
         setProductAccess(Boolean(status?.active));
+        setAccessReason(typeof status?.reason === "string" ? status.reason : "");
         setShopInstalled(Boolean(status?.shopInstalled));
         setPendingShop(typeof status?.pendingShop === "string" ? status.pendingShop : "");
         setBilledShop(typeof status?.billedShop === "string" ? status.billedShop : "");
@@ -363,6 +385,7 @@ export default function Home({
     } catch (err) {
       const message = err instanceof Error ? err.message : copy.portalError;
       showError("payment", message);
+    } finally {
       setPortalLoading(false);
     }
   }
@@ -475,6 +498,13 @@ export default function Home({
       setPendingShop("");
       setCanReplaceShop(true);
       setProductAccess(false);
+      setAccessReason("not_installed");
+      setProducts([]);
+      setSelectedId("");
+      setOptimization(null);
+      setAnalysis(null);
+      setApproved(false);
+      setUsage(null);
       setMessage(copy.disconnectSuccess);
     } catch (err) {
       showError("shopify", err instanceof Error ? err.message : copy.shopifyError);
@@ -694,7 +724,7 @@ export default function Home({
               <div className="brand-small">
                 {copy.brandSmall}
                 <span className="live-badge" data-testid="live-badge">
-                  {copy.liveBadge}
+                  {billingTest ? copy.testBadge : copy.liveBadge}
                 </span>
               </div>
               <div className="brand-name">{copy.brand}</div>
@@ -715,7 +745,7 @@ export default function Home({
           <div className="brand-small">
             {copy.brandSmall}
             <span className="live-badge" data-testid="live-badge">
-              {copy.liveBadge}
+              {billingTest ? copy.testBadge : copy.liveBadge}
             </span>
           </div>
           <div className="brand-name">{copy.brand}</div>
@@ -726,7 +756,7 @@ export default function Home({
               {portalLoading ? copy.opening : copy.manage}
             </button>
           ) : (
-            <button type="button" className="subscribe-button" onClick={startCheckout} disabled={checking || checkoutLoading}>
+            <button type="button" className="subscribe-button" onClick={startCheckout} disabled={checking || checkoutLoading || !shopInstalled}>
               {checking ? copy.checking : checkoutLoading ? copy.opening : copy.subscribe}
             </button>
           )}
@@ -819,6 +849,19 @@ export default function Home({
               {connecting ? copy.connecting : shopInstalled ? copy.reconnect : copy.connectShopify}
             </button>
             )}
+            {embeddedInstall && !shopInstalled && (
+              <a
+                className="subscribe-button"
+                data-testid="embedded-open-admin"
+                href={
+                  shopifyAdminAppHref(shopInput || shop) || "https://admin.shopify.com"
+                }
+                target="_top"
+                rel="noreferrer"
+              >
+                {copy.openInShopifyAdmin}
+              </a>
+            )}
             {showChangeStore && (
               <button
                 type="button"
@@ -833,8 +876,17 @@ export default function Home({
           </article>
 
           <article className="content-card">
-            <h2>{copy.outputLanguage}</h2>
+            <h2>{copy.importAndUsage}</h2>
             <p>{copy.usage}: {usage ? `${usage.used} / ${usage.limit}` : "0 / 1000"}</p>
+            {!productAccess && (
+              <p className="empty-copy" data-testid="product-access-hint">
+                {accessReason
+                  ? productAccessDeniedMessage(
+                      accessReason as Parameters<typeof productAccessDeniedMessage>[0]
+                    )
+                  : copy.needSubscription}
+              </p>
+            )}
             <button type="button" className="subscribe-button" onClick={() => importProducts()} disabled={importing || !productAccess}>
               {importing ? copy.importing : copy.importProducts}
             </button>
@@ -1158,6 +1210,9 @@ export default function Home({
           )}
         </article>
       </section>
+      <footer className="app-footer">
+        <a href="/privacy">{copy.privacyPolicy}</a>
+      </footer>
         </>
       )}
     </main>

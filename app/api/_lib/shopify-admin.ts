@@ -22,7 +22,13 @@ export class ShopifyTokenExpiredError extends ShopifyAuthError {
 
 type FetchLike = (
   input: string,
-  init?: { method?: string; headers?: Record<string, string>; body?: string; cache?: RequestCache }
+  init?: {
+    method?: string;
+    headers?: Record<string, string>;
+    body?: string;
+    cache?: RequestCache;
+    signal?: AbortSignal;
+  }
 ) => Promise<{
   ok: boolean;
   status: number;
@@ -41,12 +47,19 @@ export function setShopifyAdminWaitForTests(fn: ((ms: number) => Promise<unknown
   waitImpl = fn ?? ((ms: number) => new Promise((resolve) => setTimeout(resolve, ms)));
 }
 
+const ADMIN_REQUEST_TIMEOUT_MS = 15_000;
+
 function retryAfterMs(headers: { get(name: string): string | null }): number {
   const retryAfter = Number(headers.get("retry-after"));
   if (Number.isFinite(retryAfter) && retryAfter >= 0) {
     return Math.min(MAX_RETRY_WAIT_MS, Math.max(0, retryAfter * 1000));
   }
   return 400;
+}
+
+function isRetryableAbort(error: unknown): boolean {
+  const name = (error as { name?: string } | null)?.name;
+  return name === "AbortError" || name === "TimeoutError";
 }
 
 export async function shopifyAdminGraphql<T>(
@@ -58,18 +71,28 @@ export async function shopifyAdminGraphql<T>(
   let lastStatus = 0;
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt += 1) {
-    const response = await shopifyFetchImpl(
-      `https://${shop}/admin/api/${SHOPIFY_API_VERSION}/graphql.json`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Shopify-Access-Token": accessToken,
-        },
-        body: JSON.stringify({ query, variables }),
-        cache: "no-store",
+    let response: Awaited<ReturnType<FetchLike>>;
+    try {
+      response = await shopifyFetchImpl(
+        `https://${shop}/admin/api/${SHOPIFY_API_VERSION}/graphql.json`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Shopify-Access-Token": accessToken,
+          },
+          body: JSON.stringify({ query, variables }),
+          cache: "no-store",
+          signal: AbortSignal.timeout(ADMIN_REQUEST_TIMEOUT_MS),
+        }
+      );
+    } catch (error) {
+      if (isRetryableAbort(error) && attempt < MAX_RETRIES) {
+        await waitImpl(retryAfterMs({ get: () => null }));
+        continue;
       }
-    );
+      throw error;
+    }
 
     lastStatus = response.status;
 
@@ -94,7 +117,8 @@ export async function shopifyAdminGraphql<T>(
       throw new Error(`Shopify returned a non-JSON response (${response.status}).`);
     }
 
-    const throttle = payload.errors?.some(
+    const graphqlErrors = Array.isArray(payload.errors) ? payload.errors : [];
+    const throttle = graphqlErrors.some(
       (error) => error.extensions?.code === "THROTTLED"
     );
     if (throttle) {
@@ -105,13 +129,13 @@ export async function shopifyAdminGraphql<T>(
 
     if (!response.ok) {
       throw new Error(
-        payload.errors?.[0]?.message || `Shopify API request failed (${response.status}).`
+        graphqlErrors[0]?.message || `Shopify API request failed (${response.status}).`
       );
     }
 
-    if (payload.errors?.length) {
+    if (graphqlErrors.length) {
       throw new Error(
-        payload.errors.map((error) => error.message || "Shopify GraphQL error.").join("; ")
+        graphqlErrors.map((error) => error.message || "Shopify GraphQL error.").join("; ")
       );
     }
 

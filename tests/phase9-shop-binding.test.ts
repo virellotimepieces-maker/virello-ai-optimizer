@@ -255,7 +255,7 @@ describe("Phase 9 shop-binding lifecycle", () => {
     expect(await isShopifyInstallationActive(SHOP_NEXT)).toBe(true);
   });
 
-  it("completes installation from Shopify token exchange even when OAuth state is invalid", async () => {
+  it("does not install from a forged HMAC callback without a pending shop binding", async () => {
     const { GET: callback } = await import("../app/api/auth/shopify/callback/route");
     const params = new URLSearchParams({
       code: "auth-code",
@@ -266,8 +266,9 @@ describe("Phase 9 shop-binding lifecycle", () => {
     const response = await callback(
       new NextRequest(`${ORIGIN}/api/auth/shopify/callback?${params}`)
     );
-    expect(response.headers.get("location") || "").toMatch(/connected=1/);
-    expect(await isShopifyInstallationActive(SHOP_NEXT)).toBe(true);
+    expect(response.headers.get("location") || "").toMatch(/signature.+invalid|Client.+secret/i);
+    expect(response.headers.get("location") || "").not.toMatch(/connected=1/);
+    expect(await isShopifyInstallationActive(SHOP_NEXT)).toBe(false);
   });
 
   it("keeps the store disconnected when HMAC and Shopify token exchange both fail", async () => {
@@ -290,7 +291,7 @@ describe("Phase 9 shop-binding lifecycle", () => {
     );
     const location = response.headers.get("location") || "";
     expect(location).toMatch(/signature(\+|%20)is(\+|%20)invalid|does(\+|%20)not(\+|%20)match(\+|%20)this(\+|%20)Shopify(\+|%20)app/i);
-    expect(location).toMatch(/token=client|token%3Dclient/);
+    expect(location).not.toMatch(/oauth_diag=/);
     expect(location).toMatch(/shop=bcya1v-xp\.myshopify\.com|shop%3Dbcya1v-xp/);
     expect(await isShopifyInstallationActive(SHOP_NEXT)).toBe(false);
   });

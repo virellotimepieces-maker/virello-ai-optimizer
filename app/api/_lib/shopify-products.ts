@@ -75,8 +75,8 @@ const LIST_QUERY = `
 `;
 
 const UPDATE_MUTATION = `
-  mutation UpdateProduct($input: ProductInput!) {
-    productUpdate(input: $input) {
+  mutation UpdateProduct($product: ProductUpdateInput!) {
+    productUpdate(product: $product) {
       product {
         id
         title
@@ -255,7 +255,7 @@ export async function saveReviewedProduct(
       product?: unknown;
       userErrors?: Array<{ message?: string }>;
     };
-  }>(shop, accessToken, UPDATE_MUTATION, { input: productInput });
+  }>(shop, accessToken, UPDATE_MUTATION, { product: productInput });
 
   const result = data.productUpdate;
   if (!result) {

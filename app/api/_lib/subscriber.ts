@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { shopFromSessionCookie, clearSessionCookie } from "./app-session";
-import { authenticateShopifyRequest } from "./shopify-auth";
+import { authenticateShopifyRequest, storedAccessToken } from "./shopify-auth";
 import { getSessionBinding } from "./shop-binding";
 import { isShopifyInstallationActive } from "./shops";
 import { peekAiUsage, consumeAiUsage } from "./usage";
@@ -9,7 +9,7 @@ import {
   isPaidSubscriptionStatus,
   type ShopifySubscriptionStatus,
 } from "./billing-access";
-import { accessStateForShop, syncShopifyBillingFromAdmin } from "./shopify-billing";
+import { accessStateForShop, billingForShop, billingPeriodIsStale, syncShopifyBillingFromAdmin, usagePeriodStart } from "./shopify-billing";
 import { requirePaidProductAccess } from "./product-access";
 
 class ApiError extends Error {
@@ -57,11 +57,8 @@ export async function authorizeSubscriberForAI(
   usage: SubscriberUsage;
 }> {
   const { shop, billing } = await requirePaidProductAccess(request);
-  const usage = await peekAiUsage(
-    shop,
-    billing.subscriptionId,
-    billing.currentPeriodStart
-  );
+  const periodStart = usagePeriodStart(billing);
+  const usage = await peekAiUsage(shop, billing.subscriptionId, periodStart);
   if (usage.remaining <= 0) {
     throw new ApiError(
       "You have reached your AI usage limit for the current billing period.",
@@ -73,7 +70,7 @@ export async function authorizeSubscriberForAI(
     subscription: {
       subscriptionId: billing.subscriptionId,
       status: billing.status,
-      currentPeriodStart: billing.currentPeriodStart,
+      currentPeriodStart: periodStart,
       currentPeriodEnd: billing.currentPeriodEnd,
       test: billing.test,
     },
@@ -122,7 +119,11 @@ export async function storedSubscriberStatus(
   const { access, billing } = await accessStateForShop(shop, shopInstalled);
   let usage = null;
   if (billing) {
-    usage = await peekAiUsage(shop, billing.subscriptionId, billing.currentPeriodStart);
+    usage = await peekAiUsage(
+      shop,
+      billing.subscriptionId,
+      usagePeriodStart(billing)
+    );
   }
   return {
     active: access.productAccess,
@@ -161,11 +162,19 @@ export async function getActiveSubscriberStatus(
     let shop = "";
     let accessToken = "";
     try {
-      const auth = await authenticateShopifyRequest(request, false);
+      const auth = await authenticateShopifyRequest(request, true);
       shop = auth.shop;
       accessToken = auth.accessToken;
     } catch {
-      shop = binding?.sessionShop || (await shopFromSessionCookie(request));
+      try {
+        const auth = await authenticateShopifyRequest(request, false);
+        shop = auth.shop;
+      } catch {
+        shop = binding?.sessionShop || (await shopFromSessionCookie(request));
+      }
+      if (shop) {
+        accessToken = await storedAccessToken(shop);
+      }
     }
 
     if (!shop) {
@@ -178,7 +187,14 @@ export async function getActiveSubscriberStatus(
 
     if (accessToken) {
       try {
-        await syncShopifyBillingFromAdmin(shop, accessToken);
+        const current = await billingForShop(shop);
+        if (
+          !current ||
+          !isPaidSubscriptionStatus(current.status) ||
+          billingPeriodIsStale(current)
+        ) {
+          await syncShopifyBillingFromAdmin(shop, accessToken);
+        }
       } catch {
         // Use stored billing when Shopify Admin is unreachable.
       }

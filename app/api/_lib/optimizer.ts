@@ -633,7 +633,7 @@ function parseModelText(text: string): unknown {
 async function callModel(system: string, user: string): Promise<string> {
   const apiKey = process.env.OPENAI_API_KEY?.trim();
   if (!apiKey) {
-    throw new OptimizerError("OPENAI_API_KEY is not configured.", 500);
+    throw new OptimizerError("AI optimization is not configured.", 500);
   }
   const model = process.env.OPENAI_MODEL?.trim() || "gpt-4o-mini";
   const response = await optimizerFetch("https://api.openai.com/v1/chat/completions", {

@@ -17,6 +17,7 @@ import { assertRateLimit, RateLimitError, tenantRateKey } from "../../_lib/rate-
 import { parseIdempotencyKey } from "../../_lib/usage";
 import { parseBrandVoice } from "../../_lib/brand-voice";
 import { parseMerchantFacts } from "../../_lib/merchant-facts";
+import { publicErrorMessage } from "../../_lib/public-error";
 
 export const runtime = "nodejs";
 
@@ -87,14 +88,11 @@ export async function POST(request: NextRequest) {
     const status = (error as { status?: number }).status;
     if (status === 429 || status === 402) {
       return errorResponse(
-        error instanceof Error ? error.message : "Request could not be authorized.",
+        publicErrorMessage(error, "Request could not be authorized."),
         status
       );
     }
     console.error("AI_ANALYZE_ERROR:", error);
-    return errorResponse(
-      error instanceof Error ? error.message : "Unable to optimize this product.",
-      500
-    );
+    return errorResponse("Unable to optimize this product.", 500);
   }
 }

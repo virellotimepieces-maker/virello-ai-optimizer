@@ -542,6 +542,7 @@ describe("Phase 3 cookie settings", () => {
     expect(embedded.sameSite).toBe("none");
     expect(embedded.path).toBe("/");
     expect(embedded.partitioned).toBe(true);
+    expect(standalone.sameSite).toBe("lax");
     expect(standalone.partitioned).toBe(false);
     expect(isSessionIdShape(newSessionId())).toBe(true);
     expect(isSessionIdShape("not-a-session")).toBe(false);

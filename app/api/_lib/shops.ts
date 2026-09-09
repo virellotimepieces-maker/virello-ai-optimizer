@@ -63,6 +63,27 @@ export async function isShopifyInstallationActive(shop: string): Promise<boolean
   return rows.length > 0;
 }
 
+export async function redactShopifyShopData(shop: string): Promise<void> {
+  const normalized = normalizeShop(shop);
+  if (!normalized) return;
+
+  await revokeShopifyInstallation(normalized);
+
+  await dbQuery(`DELETE FROM subscriber_usage_events WHERE shop = $1`, [normalized]);
+  await dbQuery(`DELETE FROM subscriber_usage WHERE shop = $1`, [normalized]);
+  await dbQuery(`DELETE FROM shopify_app_subscriptions WHERE shop = $1`, [normalized]);
+  await dbQuery(`DELETE FROM webhook_events WHERE shop = $1`, [normalized]);
+  await dbQuery(`DELETE FROM app_sessions WHERE shop = $1`, [normalized]);
+  await dbQuery(`DELETE FROM shopify_sessions WHERE shop = $1`, [normalized]);
+  await dbQuery(`DELETE FROM shop_subscriptions WHERE shop = $1`, [normalized]).catch(
+    () => undefined
+  );
+  await dbQuery(`DELETE FROM stripe_webhook_events WHERE shop = $1`, [normalized]).catch(
+    () => undefined
+  );
+  await dbQuery(`DELETE FROM shops WHERE shop = $1`, [normalized]);
+}
+
 export async function revokeShopifyInstallation(
   shop: string,
   options: { revokeAppSessions?: boolean; exceptSessionId?: string } = {}

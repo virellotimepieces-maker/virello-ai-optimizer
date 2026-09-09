@@ -23,6 +23,7 @@ import {
   verifyShopifySessionToken,
 } from "../../../_lib/shopify-security";
 import { assertRateLimit, RateLimitError, tenantRateKey } from "../../../_lib/rate-limit";
+import { publicErrorMessage } from "../../../_lib/public-error";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -64,7 +65,7 @@ export async function POST(request: NextRequest) {
     const sessionId = await issueAppSession({
       shop,
       previousSessionId: readSessionId(request),
-      revokeShopSessions: true,
+      revokeShopSessions: false,
     });
 
     const response = NextResponse.json(
@@ -85,10 +86,7 @@ export async function POST(request: NextRequest) {
       {
         success: false,
         connected: false,
-        error:
-          error instanceof Error
-            ? error.message
-            : "Unable to complete Shopify Admin session.",
+        error: publicErrorMessage(error, "Unable to complete Shopify Admin session."),
       },
       { status, headers: { "Cache-Control": "no-store" } }
     );

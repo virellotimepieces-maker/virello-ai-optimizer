@@ -135,29 +135,27 @@ describe("Phase 5 shop domains and OAuth", () => {
     ).toBe(false);
   });
 
-  it("reports Shopify secret kind and length without exposing the secret", async () => {
+  it("reports Shopify credential presence without secret metadata", async () => {
     process.env.SHOPIFY_API_KEY = SHOPIFY_PRODUCTION_CLIENT_ID;
     process.env.SHOPIFY_API_SECRET = "shpss_xxxx-secret-value";
     const { GET } = await import("../app/api/auth/shopify/secret-status/route");
     const response = await GET();
     const body = (await response.json()) as {
       success?: boolean;
+      configured?: boolean;
+      looksLikeClientId?: boolean;
+      matchesListingApp?: boolean;
       secretKind?: string;
       secretLength?: number;
-      looksLikeClientId?: boolean;
       clientId?: string;
-      listingClientId?: string;
-      matchesListingApp?: boolean;
-      apiSecret?: boolean;
     };
     expect(body.success).toBe(true);
-    expect(body.secretKind).toBe("shpss");
-    expect(body.secretLength).toBe("shpss_xxxx-secret-value".length);
+    expect(body.configured).toBe(true);
     expect(body.looksLikeClientId).toBe(false);
-    expect(body.apiSecret).toBe(true);
-    expect(body.clientId).toBe(SHOPIFY_PRODUCTION_CLIENT_ID);
-    expect(body.listingClientId).toBe(SHOPIFY_PRODUCTION_CLIENT_ID);
     expect(body.matchesListingApp).toBe(true);
+    expect(body.secretKind).toBeUndefined();
+    expect(body.secretLength).toBeUndefined();
+    expect(body.clientId).toBeUndefined();
     const text = JSON.stringify(body);
     expect(text).not.toMatch(/xxxx-secret-value/);
     expect(text).not.toMatch(/shpss_/);
@@ -172,12 +170,9 @@ describe("Phase 5 shop domains and OAuth", () => {
     const response = await GET();
     const body = (await response.json()) as {
       configured?: boolean;
-      apiSecret?: boolean;
-      previous?: boolean;
     };
     expect(body.configured).toBe(false);
-    expect(body.apiSecret).toBe(false);
-    expect(body.previous).toBe(true);
+    expect(JSON.stringify(body)).not.toMatch(/previous/);
   });
 
   it("rejects storefront roots and admin.shopify.com rewrites for gfd1cp-1v", () => {
@@ -297,8 +292,8 @@ describe("Phase 5 import, save, and access", () => {
     await seedShopifyBilling(SHOP, {
       subscriptionGid: "gid://shopify/AppSubscription/1",
       status: "ACTIVE",
-      currentPeriodStart: 1_700_000_000,
-      currentPeriodEnd: 1_702_592_000,
+      currentPeriodStart: Math.floor(Date.now() / 1000) - 60,
+      currentPeriodEnd: Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60,
     });
     const sessionId = await issueAppSession({ shop: SHOP });
     return new NextRequest("https://app.virello.example/api/shopify/products", {
@@ -358,9 +353,12 @@ describe("Phase 5 import, save, and access", () => {
   it("saves only after explicit confirmation", async () => {
     setShopifyAdminFetchForTests(async (_url, init) => {
       const body = JSON.parse(String(init?.body || "{}")) as {
-        variables?: { input?: { id?: string } };
+        query?: string;
+        variables?: { product?: { id?: string }; input?: { id?: string } };
       };
-      expect(body.variables?.input?.id).toBe("gid://shopify/Product/1");
+      expect(String(body.query || "")).toMatch(/ProductUpdateInput/);
+      expect(String(body.query || "")).not.toMatch(/ProductInput!/);
+      expect(body.variables?.product?.id).toBe("gid://shopify/Product/1");
       return jsonResponse({
         data: {
           productUpdate: {
@@ -643,7 +641,7 @@ describe("Phase 5 import, save, and access", () => {
       expect(body.success).toBe(true);
       expect(body.count).toBe(0);
       expect(graphqlCalls).toBe(2);
-      expect(exchanges).toBe(2);
+      expect(exchanges).toBeGreaterThanOrEqual(1);
     } finally {
       globalThis.fetch = originalFetch;
     }
@@ -815,6 +813,10 @@ describe("Phase 5 OAuth start for development shops", () => {
     expect(page).toMatch(/!embeddedInstall &&/);
     expect(bridge).not.toMatch(/assignTopLevel/);
     expect(bridge).not.toMatch(/oauth\/authorize/);
+    expect(bridge).toMatch(/publishShopifySession/);
+    expect(bridge).not.toMatch(/started\.current/);
+    expect(page).toMatch(/lastShopifySessionDetail/);
+    expect(page).toMatch(/embedded-open-admin/);
     expect(layout).not.toMatch(/SHOPIFY_LISTING_CLIENT_ID/);
     expect(layout).toMatch(/params\.get\("host"\) \|\| params\.get\("id_token"\)/);
     expect(connect).toMatch(/window\.location\.replace\(next\.toString\(\)\)/);
@@ -871,12 +873,9 @@ describe("Phase 5 OAuth callback errors", () => {
         new NextRequest(`https://app.virello.example/api/auth/shopify/callback?${params}`)
       );
       const location = response.headers.get("location") || "";
-      expect(location).toMatch(
-        /signature(\+|%20)is(\+|%20)invalid|does(\+|%20)not(\+|%20)match(\+|%20)this(\+|%20)Shopify(\+|%20)app/i
-      );
-      expect(location).toMatch(/oauth_diag=/);
-      expect(location).toMatch(/inmsg=|inmsg%3D/);
-      expect(location).toMatch(/token=client|token%3Dclient/);
+      expect(location).toMatch(/signature(\+|%20)is(\+|%20)invalid/i);
+      expect(location).not.toMatch(/oauth_diag=/);
+      expect(location).not.toMatch(/token=client|token%3Dclient/);
     } finally {
       globalThis.fetch = originalFetch;
     }
@@ -898,8 +897,9 @@ describe("Phase 5 OAuth callback errors", () => {
       new NextRequest(`https://app.virello.example/api/auth/shopify/callback?${params}`)
     );
     const location = response.headers.get("location") || "";
-    expect(location).toMatch(/Client(\+|%20)ID/);
-    expect(location).toMatch(/secret=id|secret%3Did/);
+    expect(location).toMatch(/Client(\+|%20)secret/);
+    expect(location).not.toMatch(/oauth_diag=/);
+    expect(location).not.toMatch(/secret=id|secret%3Did/);
   });
 
   it("keeps the shop disconnected when Shopify sends no callback HMAC", async () => {

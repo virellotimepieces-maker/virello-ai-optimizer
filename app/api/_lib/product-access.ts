@@ -6,7 +6,7 @@ import {
   productAccessDeniedMessage,
   type ProductAccessDecision,
 } from "./billing-access";
-import { accessStateForShop, type ShopifyBillingSnapshot } from "./shopify-billing";
+import { accessStateForShop, billingPeriodIsStale, syncShopifyBillingFromAdmin, type ShopifyBillingSnapshot } from "./shopify-billing";
 
 export class ProductAccessError extends Error {
   status: number;
@@ -28,7 +28,17 @@ export async function requirePaidProductAccess(request: NextRequest): Promise<{
 }> {
   const { shop, accessToken } = await authenticateShopifyRequest(request, true);
   const shopInstalled = await isShopifyInstallationActive(shop);
-  const { access, billing } = await accessStateForShop(shop, shopInstalled);
+  let { access, billing } = await accessStateForShop(shop, shopInstalled);
+  if (accessToken && billing && billingPeriodIsStale(billing)) {
+    try {
+      billing = (await syncShopifyBillingFromAdmin(shop, accessToken)) || billing;
+      const refreshed = await accessStateForShop(shop, shopInstalled);
+      access = refreshed.access;
+      billing = refreshed.billing || billing;
+    } catch {
+      // Use stored billing when Shopify Admin is unreachable.
+    }
+  }
 
   if (!shopInstalled || !access.productAccess || !billing) {
     throw new ProductAccessError(

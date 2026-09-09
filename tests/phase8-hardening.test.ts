@@ -166,14 +166,14 @@ describe("Phase 8 hardening", () => {
     expect(COPY.en.checkoutNeedShop).toMatch(/myshopify\.com/);
     expect(COPY.en.invalidAuthorizeUrl).toMatch(/Shopify Admin/);
     expect(COPY.fil.invalidAuthorizeUrl).toMatch(/Shopify Admin/);
-    expect(COPY.en.oauthHmacHelp).toMatch(/Client ID 059b113acaba78d855be9bc9500e421a/);
-    expect(COPY.fil.oauthHmacHelp).toMatch(/Client ID 059b113acaba78d855be9bc9500e421a/);
+    expect(COPY.en.oauthHmacHelp).toMatch(/Shopify Admin/);
+    expect(COPY.fil.oauthHmacHelp).toMatch(/Shopify Admin/);
     expect(COPY.en.openInShopifyAdmin).toMatch(/Shopify Admin/);
     expect(COPY.fil.openInShopifyAdmin).toMatch(/Shopify Admin/);
     expect(COPY.en.hmacRetryNow).toMatch(/Shopify Admin/);
     expect(COPY.fil.hmacRetryNow).toMatch(/Shopify Admin/);
-    expect(COPY.en.secretStatusMissing).toMatch(/Production-only/);
-    expect(COPY.fil.secretStatusMissing).toMatch(/Production-only/);
+    expect(COPY.en.secretStatusMissing).toMatch(/not configured/i);
+    expect(COPY.fil.secretStatusMissing).toMatch(/Hindi naka-configure/i);
     expect(COPY.en.alreadyBilledHelp).toMatch(/Shopify subscription/);
     expect(COPY.fil.alreadyBilledHelp).toMatch(/Shopify Admin/);
     expect(COPY.en.emptyReview).toMatch(/conversion scores/);
@@ -189,6 +189,7 @@ describe("Phase 8 hardening", () => {
     expect(COPY.en.domainHint).toMatch(/myshopify\.com/);
     expect(COPY.fil.domainHint).toMatch(/myshopify\.com/);
     expect(COPY.en.liveBadge).toBe("Live");
+    expect(COPY.en.testBadge).toBe("Test");
     expect(COPY.fil.liveBadge).toBe("Live");
     expect(COPY.en.sandboxBillingBanner).toMatch(/Approve the Shopify/);
     expect(COPY.fil.sandboxBillingBanner).toMatch(/Aprubahan/);
