@@ -6,6 +6,7 @@ import { saveShopifySession } from "../app/api/_lib/shopify-auth";
 import {
   buildSafeFallbackResult,
   inventedClaimsIn,
+  runOptimizeProduct,
   setOptimizerFetchForTests,
   sourceFactText,
 } from "../app/api/_lib/optimizer";
@@ -107,6 +108,7 @@ describe("Production Optimize request path", () => {
     expect(home).toMatch(/merchantFacts: parseMerchantFacts\(merchantFacts\)/);
     expect(home).toMatch(/product: \{[\s\S]*merchantFacts: parseMerchantFacts\(merchantFacts\)/);
     expect(home).toMatch(/capFallbackScores/);
+    expect(home).toMatch(/invented details\|invented claim/);
     expect(readFileSync("app/api/_lib/optimizer-copy.ts", "utf8")).not.toMatch(/\$\{[^}]*\}\s*lists\s*\$\{/);
     expect(readFileSync("app/api/_lib/optimizer.ts", "utf8")).not.toMatch(/\$\{[^}]*\}\s*lists\s*\$\{/);
   });
@@ -264,6 +266,66 @@ describe("Production Optimize request path", () => {
   },
   20_000
 );
+
+  it("does not fail Optimize when the model invents durable on a virello-dev shop", async () => {
+    process.env.OPENAI_API_KEY = "test-openai-key";
+    setOptimizerFetchForTests(async () =>
+      modelReply({
+        analysis: { warnings: [], missingInformation: [] },
+        optimization: {
+          title: "Sample Watch: for Everyday Style",
+          description:
+            "A durable watch for everyday wear with a stainless steel case and genuine leather strap.",
+          conversionCopy: "Durable everyday style for any occasion.",
+        },
+      })
+    );
+    const outcome = await runOptimizeProduct(
+      {
+        ...productionUiPayload.product,
+        merchantFacts: PRODUCTION_FACTS,
+      },
+      "en",
+      "virello-dev.myshopify.com"
+    );
+    expect(outcome.chargeUsage).toBe(false);
+    const pub = publishableCopy(outcome.result);
+    expect(pub).not.toMatch(/\bdurable\b/i);
+    expect(pub).toMatch(/stainless steel/i);
+    expect(outcome.result.analysis.warnings.join(" ")).toMatch(/factual draft from listed product data/i);
+  });
+
+  it(
+    "returns fallback from /api/ai/analyze instead of an invented-durable error",
+    async () => {
+      setOptimizerFetchForTests(async () =>
+        modelReply({
+          analysis: { warnings: [], missingInformation: [] },
+          optimization: {
+            title: "Sample Watch: for Everyday Style",
+            description: "A durable timepiece with waterproof titanium and everyday wear.",
+            conversionCopy: "Durable and waterproof.",
+          },
+        })
+      );
+      const response = await postAnalyze(productionUiPayload);
+      expect(response.status).toBe(200);
+      const body = (await response.json()) as {
+        success?: boolean;
+        error?: string;
+        result?: {
+          analysis?: { warnings?: string[] };
+          optimization?: { description?: string; conversionCopy?: string };
+        };
+      };
+      expect(body.success).toBe(true);
+      expect(body.error || "").not.toMatch(/invented claim: durable/i);
+      expect(JSON.stringify(body.result)).not.toMatch(/\bdurable\b/i);
+      expect(body.result?.optimization?.description).toMatch(/stainless steel/i);
+      expect(body.result?.analysis?.warnings?.join(" ") || "").toMatch(/factual draft from listed product data/i);
+    },
+    20_000
+  );
 
   it("accepts a grounded model response that paraphrases listed water resistance", async () => {
     setOptimizerFetchForTests(async () =>

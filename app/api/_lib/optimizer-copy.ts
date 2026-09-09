@@ -50,6 +50,9 @@ export const VALUE_HYPE_LANGUAGE =
 export const PRICE_LEAD_LANGUAGE =
   /\b(affordable|budget[- ]friendly|budget|priced at|price of just|only \$\d|just \$\d|bargain)\b/gi;
 
+export const UNVERIFIED_QUALITY =
+  /\b(durable|durability|built to last|indestructible|unbreakable|heavy[- ]duty)\b/gi;
+
 export const CHEAP_LANGUAGE =
   /\b(cheap(?:ly)?|low[- ]quality|poor quality|questionable|lacking durability|flimsy|knock[- ]?off|replica|bargain bin|poorly made|cheaply made|inferior|not durable|won'?t last|low[- ]grade)\b/gi;
 
@@ -275,6 +278,7 @@ export function stripDirtyMarketing(value: string, product?: OptimizerProduct): 
   text = stripPattern(text, LIFESTYLE_FILLER, product, lifestyleAllowedInProduct);
   text = stripAlways(text, GENERIC_FILLER);
   text = stripAlways(text, PRICE_LEAD_LANGUAGE);
+  text = stripPattern(text, UNVERIFIED_QUALITY, product, lifestyleAllowedInProduct);
   text = text.replace(/[|]{2,}/g, " ");
   text = text.replace(/\s+/g, " ").replace(/\s+\./g, ".").trim();
   text = text.replace(INCOMPLETE_TAIL, "").replace(TRAILING_JUNK, "").trim();
@@ -290,6 +294,7 @@ function stripBannedRetail(value: string, product?: OptimizerProduct): string {
   text = stripPattern(text, LIFESTYLE_FILLER, product, lifestyleAllowedInProduct);
   text = stripAlways(text, GENERIC_FILLER);
   text = stripAlways(text, PRICE_LEAD_LANGUAGE);
+  text = stripPattern(text, UNVERIFIED_QUALITY, product, lifestyleAllowedInProduct);
   return text.replace(/\s+/g, " ").trim();
 }
 
