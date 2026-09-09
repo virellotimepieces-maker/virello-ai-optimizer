@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { shopifyFetch } from "./shopify-fetch";
 import { COPY } from "./i18n";
 import { normalizeShop, isAllowedShopifyConnectUrl, resolveStoreBindingDisplay } from "./api/_lib/shop-domain";
@@ -78,10 +78,65 @@ function gradeCopy(copy: (typeof COPY)["en"], grade: ListingGrade) {
   return copy.gradeNeedsWork;
 }
 
+const REVIEW_FIXTURE_PRODUCT: Product = {
+  id: "gid://shopify/Product/e2e-review",
+  title:
+    "Pagani Design PD-1701 Stainless Steel Quartz Chronograph Watch With Sapphire Crystal And A Very Long Title For Mobile Wrapping",
+  description: "Stainless steel case. Japanese quartz movement. Sapphire crystal.",
+  productType: "Watch",
+  vendor: "Pagani Design",
+  price: "89.00",
+  tags: ["watch", "chronograph"],
+  handle: "pagani-design-pd-1701",
+  options: ["Color: Silver"],
+  variants: ["Silver · 89.00"],
+};
+
+const REVIEW_FIXTURE_OPTIMIZATION: Optimization = {
+  title: REVIEW_FIXTURE_PRODUCT.title,
+  description:
+    "A Pagani Design PD-1701 chronograph with a stainless steel case, Japanese quartz movement, and sapphire crystal. Choose the listed facts on this product page.",
+  benefitBullets: [
+    "Stainless steel case",
+    "Japanese quartz movement",
+    "Sapphire crystal",
+  ],
+  seoTitle: "Pagani Design PD-1701 Quartz Chronograph",
+  metaDescription:
+    "Pagani Design PD-1701 stainless steel quartz chronograph with sapphire crystal. Review the listed specs before you choose this watch.",
+  tags: ["watch", "chronograph", "pagani", "quartz"],
+  keywords: ["pagani design watch", "quartz chronograph", "sapphire crystal"],
+  callToAction: "Choose this Pagani Design chronograph from the listed specs.",
+  conversionCopy:
+    "Lead with the stainless steel case, quartz movement, and sapphire crystal from the listing.",
+};
+
+const REVIEW_FIXTURE_ANALYSIS: Analysis = {
+  targetCustomer: "Watch buyers who want a quartz chronograph",
+  purchaseMotivation: "Stainless steel case and sapphire crystal for daily wear",
+  strongestFeatures: [
+    "Stainless steel case",
+    "Japanese quartz movement",
+    "Sapphire crystal",
+  ],
+  weaknesses: ["Water resistance is not listed"],
+  missingInformation: ["Water resistance is not listed"],
+  objections: [
+    {
+      objection: "Is it waterproof?",
+      response: "Water resistance is not listed on this product.",
+    },
+  ],
+  conversionOpportunities: ["Lead with sapphire crystal", "Name the quartz chronograph"],
+  warnings: ["Missing product information: Water resistance is not listed"],
+};
+
 export default function Home({
   embeddedInstall = false,
+  reviewFixture = false,
 }: {
   embeddedInstall?: boolean;
+  reviewFixture?: boolean;
 }) {
   const copy = COPY.en;
 
@@ -93,16 +148,22 @@ export default function Home({
   const [canReplaceShop, setCanReplaceShop] = useState(true);
   const [shop, setShop] = useState("");
   const [usage, setUsage] = useState<{ used: number; limit: number; remaining: number } | null>(null);
-  const [checking, setChecking] = useState(true);
+  const [checking, setChecking] = useState(!reviewFixture);
 
   const [shopInput, setShopInput] = useState("");
   const [canonicalUrl, setCanonicalUrl] = useState("");
-  const [products, setProducts] = useState<Product[]>([]);
+  const [products, setProducts] = useState<Product[]>(
+    reviewFixture ? [REVIEW_FIXTURE_PRODUCT] : []
+  );
   const [cursor, setCursor] = useState<string | null>(null);
   const [hasNextPage, setHasNextPage] = useState(false);
-  const [selectedId, setSelectedId] = useState("");
-  const [optimization, setOptimization] = useState<Optimization | null>(null);
-  const [analysis, setAnalysis] = useState<Analysis | null>(null);
+  const [selectedId, setSelectedId] = useState(reviewFixture ? REVIEW_FIXTURE_PRODUCT.id : "");
+  const [optimization, setOptimization] = useState<Optimization | null>(
+    reviewFixture ? REVIEW_FIXTURE_OPTIMIZATION : null
+  );
+  const [analysis, setAnalysis] = useState<Analysis | null>(
+    reviewFixture ? REVIEW_FIXTURE_ANALYSIS : null
+  );
   const [missing, setMissing] = useState<string[]>([]);
   const [approved, setApproved] = useState(false);
   const [adminIframe, setAdminIframe] = useState(false);
@@ -116,6 +177,7 @@ export default function Home({
   const [importing, setImporting] = useState(false);
   const [optimizing, setOptimizing] = useState(false);
   const [saving, setSaving] = useState(false);
+  const optimizingLock = useRef(false);
 
   const [error, setError] = useState("");
   const [errorKind, setErrorKind] = useState<"" | "quota" | "payment" | "shopify" | "ai" | "validation">("");
@@ -426,15 +488,24 @@ export default function Home({
       showError("validation", copy.selectProduct);
       return;
     }
+    if (optimizingLock.current) return;
+    optimizingLock.current = true;
+    const idempotencyKey =
+      globalThis.crypto?.randomUUID?.() ||
+      `opt-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
     setOptimizing(true);
     setApproved(false);
     setError("");
     try {
       const response = await shopifyFetch("/api/ai/analyze", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "Idempotency-Key": idempotencyKey,
+        },
         body: JSON.stringify({
           outputLocale: "en",
+          idempotencyKey,
           product: {
             id: selected.id,
             title: selected.title,
@@ -493,6 +564,7 @@ export default function Home({
     } catch {
       showError("ai", copy.aiError);
     } finally {
+      optimizingLock.current = false;
       setOptimizing(false);
     }
   }
@@ -540,19 +612,16 @@ export default function Home({
     }
   }
 
-  function renderSaveDock(placement: "top" | "sticky") {
+  function renderSaveDock() {
     return (
       <div
-        className={
-          placement === "sticky"
-            ? `save-dock${adminIframe ? " save-dock-admin" : ""}`
-            : "save-dock save-dock-inline"
-        }
-        data-testid={placement === "sticky" ? "save-dock" : "save-dock-top"}
+        className={`save-dock${adminIframe ? " save-dock-admin" : ""}`}
+        data-testid="save-dock"
       >
         <label className="approve-box">
           <input
             type="checkbox"
+            data-testid="approve-save"
             checked={approved}
             onChange={(event) => setApproved(event.target.checked)}
           />
@@ -561,7 +630,7 @@ export default function Home({
         <button
           type="button"
           className="subscribe-button"
-          data-testid={placement === "sticky" ? "save-shopify" : "save-shopify-top"}
+          data-testid="save-shopify"
           onClick={saveProduct}
           disabled={saving || !approved}
         >
@@ -572,7 +641,13 @@ export default function Home({
   }
 
   return (
-    <main className={optimization ? "app-shell has-save-dock" : "app-shell"}>
+    <main
+      className={
+        optimization
+          ? `app-shell has-save-dock${adminIframe ? " has-save-dock-admin" : ""}`
+          : "app-shell"
+      }
+    >
       {embeddedInstall && !embeddedSessionReady ? (
         <>
           <header className="topbar">
@@ -807,7 +882,6 @@ export default function Home({
                       </ul>
                     )}
                   </div>
-                  {renderSaveDock("top")}
                 </div>
               )}
               {(analysis.warnings.length > 0 || missing.length > 0) && (
@@ -828,9 +902,10 @@ export default function Home({
                 <section>
                   <h3>{copy.proposed}</h3>
                   <label className="input-label" htmlFor="opt-title">{copy.fieldTitle}</label>
-                  <input
+                  <textarea
                     id="opt-title"
                     className="review-input"
+                    rows={2}
                     value={optimization.title}
                     onChange={(event) => setOptimization({ ...optimization, title: event.target.value })}
                   />
@@ -852,9 +927,10 @@ export default function Home({
                     }
                   />
                   <label className="input-label" htmlFor="opt-cta">{copy.callToAction}</label>
-                  <input
+                  <textarea
                     id="opt-cta"
                     className="review-input"
+                    rows={2}
                     value={optimization.callToAction}
                     onChange={(event) => setOptimization({ ...optimization, callToAction: event.target.value })}
                   />
@@ -992,7 +1068,8 @@ export default function Home({
                   ))}
                 </section>
               </div>
-              {renderSaveDock("sticky")}
+              <div className="save-dock-spacer" aria-hidden="true" />
+              {renderSaveDock()}
             </>
           )}
         </article>

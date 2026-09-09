@@ -1,6 +1,12 @@
 import { parseAppLocale, type AppLocale } from "./locales";
 import { stripHtml } from "./listing-html";
 import { scoreListing, META_DESCRIPTION_MAX, SEO_TITLE_MAX, type ListingScores } from "./listing-score";
+import {
+  applyCopyGuards,
+  genuineProductHaystack,
+  shopContentLeakTokens,
+  stripShopLeaks,
+} from "./optimizer-copy";
 
 export { buildShopifyDescriptionHtml } from "./listing-html";
 export type { ListingScores } from "./listing-score";
@@ -101,20 +107,29 @@ function clipAtLimit(value: string, max: number): string {
   return sliced.replace(/[,:;.-]+$/, "").trim();
 }
 
-function sourceTokens(product?: OptimizerProduct): string[] {
+function sourceTokens(product?: OptimizerProduct, shop?: string): string[] {
   if (!product) return [];
+  const leaks = new Set(shopContentLeakTokens(shop).map((item) => item.toLowerCase()));
   return uniqueTexts(
     [product.vendor, product.title, product.productType, ...(product.tags || [])]
       .flatMap((item) => cleanText(item).split(/[^a-zA-Z0-9]+/))
-      .filter((token) => token.length >= 4)
+      .filter((token) => token.length >= 4 && !leaks.has(token.toLowerCase()))
   );
 }
 
-function looksGenericSeo(value: string, product?: OptimizerProduct): boolean {
+function listingVendor(product?: OptimizerProduct, shop?: string): string {
+  return stripShopLeaks(cleanText(product?.vendor || ""), product, shop);
+}
+
+function looksGenericSeo(
+  value: string,
+  product?: OptimizerProduct,
+  shop?: string
+): boolean {
   const text = cleanText(value);
   if (!text) return true;
   if (GENERIC_SEO.test(text)) return true;
-  const tokens = sourceTokens(product);
+  const tokens = sourceTokens(product, shop);
   if (!tokens.length) return false;
   const lower = text.toLowerCase();
   return !tokens.some((token) => lower.includes(token.toLowerCase()));
@@ -144,14 +159,15 @@ function productFactLines(product?: OptimizerProduct): string[] {
 function specificSeoTitle(
   candidate: string,
   listingTitle: string,
-  product?: OptimizerProduct
+  product?: OptimizerProduct,
+  shop?: string
 ): string {
   const preferred = clipAtLimit(candidate, SEO_TITLE_MAX);
-  if (preferred && !looksGenericSeo(preferred, product) && preferred.length >= 18) {
+  if (preferred && !looksGenericSeo(preferred, product, shop) && preferred.length >= 18) {
     return preferred;
   }
   return clipAtLimit(
-    [product?.vendor, listingTitle || product?.title, product?.productType]
+    [listingVendor(product, shop), listingTitle || product?.title, product?.productType]
       .map((item) => cleanText(item))
       .filter(Boolean)
       .join(" "),
@@ -163,14 +179,21 @@ function specificMetaDescription(
   candidate: string,
   listingTitle: string,
   description: string,
-  product?: OptimizerProduct
+  product?: OptimizerProduct,
+  shop?: string
 ): string {
   const preferred = clipAtLimit(candidate, META_DESCRIPTION_MAX);
-  if (preferred && !looksGenericSeo(preferred, product) && preferred.length >= 70) {
+  if (preferred && !looksGenericSeo(preferred, product, shop) && preferred.length >= 70) {
     return preferred;
   }
   return clipAtLimit(
-    [listingTitle, description, product?.vendor, product?.productType, product?.price]
+    [
+      listingTitle,
+      description,
+      listingVendor(product, shop),
+      product?.productType,
+      product?.price,
+    ]
       .map((item) => cleanText(item))
       .filter(Boolean)
       .join(". "),
@@ -180,7 +203,8 @@ function specificMetaDescription(
 
 function ensureHighConversionFields(
   result: OptimizationResult,
-  source?: OptimizerProduct
+  source?: OptimizerProduct,
+  shop?: string
 ): void {
   const facts = productFactLines(source);
   if (result.analysis.strongestFeatures.length === 0 && facts.length) {
@@ -217,7 +241,11 @@ function ensureHighConversionFields(
   }
   if (!result.optimization.callToAction) {
     result.optimization.callToAction = clipAtLimit(
-      ["Choose", source?.vendor || source?.title || "this product", "from the facts on this listing."].join(" "),
+      [
+        "Choose",
+        listingVendor(source, shop) || source?.title || "this product",
+        "from the facts on this listing.",
+      ].join(" "),
       120
     );
   }
@@ -309,16 +337,30 @@ const INVENTED_CLAIM =
   /\b(certified|certification|warranty|guarantee|guaranteed|fda|iso\s*\d+|clinically|award[- ]winning|best[- ]seller|#1|star review|verified review|doctor[- ]recommended|medical|clinically proven|money[- ]back|lifetime)\b/i;
 const URGENCY_CLAIM =
   /\b(limited time|hurry|act now|while supplies last|only \d+ left|selling fast|in high demand|free shipping|ships today|arrives tomorrow|in stock|low stock|scarce|24[- ]hour)\b/i;
+const DURABILITY_CLAIM =
+  /\b(durable|durability|scratch[- ]proof|waterproof|water[- ]resistant|rust[- ]proof|unbreakable|built to last|heavy[- ]duty|indestructible)\b/i;
+const REVIEW_CLAIM =
+  /\b(\d+\s*[- ]star|customers love|highly rated|top rated|bestseller|best seller|reviews? say)\b/i;
+const MATERIAL_CLAIM =
+  /\b(titanium|ceramic|carbon fiber|platinum|sterling silver|genuine leather|solid gold|18k|14k|sapphire crystal|mineral glass|stainless steel|brass|bronze|nylon|silicone|gold plated)\b/i;
 const PRICE_CLAIM = /(?:php|usd|\$|€|₱)\s?\d[\d,]*(?:\.\d+)?/gi;
 
 export function inventedClaimsIn(source: string, generated: string): string[] {
   const issues: string[] = [];
   const sourceLower = source.toLowerCase();
   const generatedLower = generated.toLowerCase();
-  for (const pattern of [INVENTED_CLAIM, URGENCY_CLAIM]) {
-    const claim = generatedLower.match(pattern);
-    if (claim && !sourceLower.includes(claim[0].toLowerCase())) {
-      issues.push(`Invented claim: ${claim[0]}`);
+  for (const pattern of [
+    INVENTED_CLAIM,
+    URGENCY_CLAIM,
+    DURABILITY_CLAIM,
+    REVIEW_CLAIM,
+    MATERIAL_CLAIM,
+  ]) {
+    const matches = generatedLower.match(new RegExp(pattern, "gi")) || [];
+    for (const claim of matches) {
+      if (!sourceLower.includes(claim.toLowerCase())) {
+        issues.push(`Invented claim: ${claim}`);
+      }
     }
   }
   const prices = generated.match(PRICE_CLAIM) || [];
@@ -327,12 +369,13 @@ export function inventedClaimsIn(source: string, generated: string): string[] {
       issues.push(`Invented price: ${price}`);
     }
   }
-  return issues;
+  return uniqueTexts(issues);
 }
 
 export function validateOptimizationResult(
   raw: unknown,
-  source?: OptimizerProduct
+  source?: OptimizerProduct,
+  shop?: string
 ): OptimizationResult {
   const data = recordOf(raw);
   const analysis = recordOf(data.analysis);
@@ -379,13 +422,15 @@ export function validateOptimizationResult(
   const seoTitle = specificSeoTitle(
     pickText(optimization.seoTitle, data.seoTitle, title),
     title,
-    source
+    source,
+    shop
   );
   const metaDescription = specificMetaDescription(
     pickText(optimization.metaDescription, data.metaDescription, description),
     title,
     description,
-    source
+    source,
+    shop
   );
   const callToAction = pickText(optimization.callToAction, data.callToAction);
   const conversionCopy = pickText(
@@ -434,17 +479,21 @@ export function validateOptimizationResult(
   if (!result.optimization.title || !result.optimization.description) {
     throw new OptimizerError("AI result is missing a product title or description.", 502);
   }
-  ensureHighConversionFields(result, source);
+  applyCopyGuards(result, source, shop);
+  ensureHighConversionFields(result, source, shop);
+  applyCopyGuards(result, source, shop);
   result.optimization.seoTitle = specificSeoTitle(
     result.optimization.seoTitle,
     result.optimization.title,
-    source
+    source,
+    shop
   );
   result.optimization.metaDescription = specificMetaDescription(
     result.optimization.metaDescription,
     result.optimization.title,
     result.optimization.description,
-    source
+    source,
+    shop
   );
   result.scores = scoreListing({
     sourceTitle: source?.title || result.optimization.title,
@@ -478,7 +527,8 @@ function uniqueTexts(values: string[]): string[] {
 
 export function assertGroundedResult(
   product: OptimizerProduct,
-  result: OptimizationResult
+  result: OptimizationResult,
+  shop?: string
 ): void {
   const source = sourceFactText(product);
   const generated = [
@@ -494,11 +544,17 @@ export function assertGroundedResult(
     result.analysis.strongestFeatures.join(" "),
     result.analysis.targetCustomer,
     result.analysis.purchaseMotivation,
-    result.analysis.weaknesses.join(" "),
     result.analysis.conversionOpportunities.join(" "),
-    result.analysis.objections.map((row) => `${row.objection} ${row.response}`).join(" "),
+    result.analysis.objections.map((row) => row.response).join(" "),
   ].join(" \n ");
   const issues = inventedClaimsIn(source, generated);
+  const hay = genuineProductHaystack(product);
+  for (const token of shopContentLeakTokens(shop)) {
+    const leak = new RegExp(token.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
+    if (leak.test(generated) && !hay.includes(token.toLowerCase())) {
+      issues.push(`Invented claim: ${token}`);
+    }
+  }
   if (issues.length) {
     throw new OptimizerError(
       `The AI invented details that are not in the product data: ${issues.join("; ")}`,
@@ -524,7 +580,10 @@ Never invent materials, specifications, discounts, prices, reviews, guarantees, 
 If a shopper-facing claim is not in the source, omit it and list it under missingInformation and warnings.
 Translate stated features into customer benefits without adding new specs.
 Preserve vendor, brand names, and important variant facts.
-Avoid generic filler such as "best quality", "premium watch", "amazing deal", or "shop now".
+Avoid generic filler such as "best quality", "premium watch", "amazing deal", "affordable", or "shop now".
+Never use a Shopify shop domain, a *.myshopify.com handle, or "virello-dev" as a brand, feature, benefit, CTA, tag, or keyword unless that exact text appears in the product title, description, type, tags, options, or variants.
+Do not emit malformed fragments (for example roman-numeral slash phrases like "II/Affordable"), duplicated sentences, truncated titles, or copy pasted into the wrong field.
+Fill optimization.tags and optimization.keywords with useful terms from stated product facts. Do not leave them empty when the product has a title, vendor, type, tags, options, or variants.
 SEO title: 50-60 characters, HARD MAX 60. Include the brand or model plus one stated spec. Never generic.
 SEO meta description: 140-160 characters, HARD MAX 160. Include two stated facts and a specific CTA with no fake urgency.
 analysis.strongestFeatures and optimization.benefitBullets: at least 3 non-empty items from stated facts. Never return empty feature fields when the product has a title, vendor, type, tags, options, or variants.
@@ -599,7 +658,8 @@ async function callModel(system: string, user: string): Promise<string> {
 
 export async function optimizeProduct(
   product: OptimizerProduct,
-  outputLocale: AppLocale = "en"
+  outputLocale: AppLocale = "en",
+  shop = ""
 ): Promise<OptimizationResult> {
   if (!cleanText(product.title)) {
     throw new OptimizerError("Product title is required for AI optimization.", 400);
@@ -614,8 +674,8 @@ export async function optimizeProduct(
         attempt === 0 ? system : `${system}\nRetry: return valid JSON and do not invent facts.`,
         user
       );
-      const result = validateOptimizationResult(parseModelText(content), product);
-      assertGroundedResult(product, result);
+      const result = validateOptimizationResult(parseModelText(content), product, shop);
+      assertGroundedResult(product, result, shop);
       return result;
     } catch (error) {
       lastError = error;

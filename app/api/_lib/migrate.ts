@@ -139,3 +139,7 @@ export async function rollbackPhase9ShopBinding(exec: SqlExec): Promise<void> {
 export async function rollbackPhase10ShopifyBilling(exec: SqlExec): Promise<void> {
   await rollbackSqlFile(exec, "010_shopify_billing.down.sql");
 }
+
+export async function rollbackUsageIdempotency(exec: SqlExec): Promise<void> {
+  await rollbackSqlFile(exec, "011_usage_idempotency.down.sql");
+}

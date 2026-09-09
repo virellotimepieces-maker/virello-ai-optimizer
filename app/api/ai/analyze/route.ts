@@ -14,6 +14,7 @@ import {
 } from "../../_lib/optimizer";
 import { parseAppLocale } from "../../_lib/locales";
 import { assertRateLimit, RateLimitError, tenantRateKey } from "../../_lib/rate-limit";
+import { parseIdempotencyKey } from "../../_lib/usage";
 
 export const runtime = "nodejs";
 
@@ -30,6 +31,9 @@ export async function POST(request: NextRequest) {
     const subscriber = await authorizeSubscriberForAI(request);
     await assertRateLimit(tenantRateKey(request, "ai", subscriber.shop), 20);
     const body = await request.json().catch(() => ({}));
+    const idempotencyKey = parseIdempotencyKey(
+      request.headers.get("Idempotency-Key") || body?.idempotencyKey
+    );
     const source = body?.product && typeof body.product === "object" ? body.product : body;
     const product: OptimizerProduct = {
       id: typeof source.id === "string" ? source.id : undefined,
@@ -49,10 +53,11 @@ export async function POST(request: NextRequest) {
     };
 
     const outputLocale = parseAppLocale(body.outputLocale || body.output);
-    const result = await optimizeProduct(product, outputLocale);
+    const result = await optimizeProduct(product, outputLocale, subscriber.shop);
     const recorded = await recordSuccessfulAiOptimization(
       subscriber.shop,
-      subscriber.subscription
+      subscriber.subscription,
+      idempotencyKey
     );
 
     return NextResponse.json({

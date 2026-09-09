@@ -83,13 +83,15 @@ export async function authorizeSubscriberForAI(
 
 export async function recordSuccessfulAiOptimization(
   shop: string,
-  subscription: SubscriptionSnapshot
+  subscription: SubscriptionSnapshot,
+  idempotencyKey?: string
 ): Promise<{ usage: SubscriberUsage }> {
   try {
     const usage = await consumeAiUsage(
       shop,
       subscription.subscriptionId,
-      subscription.currentPeriodStart
+      subscription.currentPeriodStart,
+      idempotencyKey
     );
     return { usage };
   } catch (error) {

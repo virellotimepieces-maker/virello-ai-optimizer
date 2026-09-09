@@ -16,6 +16,7 @@ export default defineConfig({
     env: {
       ...process.env,
       APP_URL: "http://127.0.0.1:43217",
+      E2E_REVIEW_FIXTURE: "1",
     },
   },
   projects: [

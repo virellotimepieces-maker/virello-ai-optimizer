@@ -11,5 +11,7 @@ export default async function Page() {
     params.get("embedded") === "1" ||
     Boolean(params.get("host")) ||
     Boolean(params.get("id_token"));
-  return <Home embeddedInstall={embeddedInstall} />;
+  const reviewFixture =
+    process.env.E2E_REVIEW_FIXTURE === "1" && params.get("e2eReview") === "1";
+  return <Home embeddedInstall={embeddedInstall} reviewFixture={reviewFixture} />;
 }

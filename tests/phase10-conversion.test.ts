@@ -36,6 +36,8 @@ describe("Conversion-focused AI listing output", () => {
     expect(system).toMatch(/objections/);
     expect(system).toMatch(/callToAction/);
     expect(system).toMatch(/Never invent/);
+    expect(system).toMatch(/virello-dev/);
+    expect(system).toMatch(/optimization\.tags/);
     expect(system).toMatch(/HARD MAX 60/);
     expect(system).toMatch(/HARD MAX 160/);
     expect(system).not.toMatch(/never over 70/);
@@ -182,5 +184,112 @@ describe("Conversion-focused AI listing output", () => {
   it("does not treat a save as confirmed unless confirmed is true", () => {
     expect(parseSaveProductInput({ productId: "gid://shopify/Product/9" }).confirmed).toBe(false);
     expect(parseSaveProductInput({ productId: "gid://shopify/Product/9", confirmed: true }).confirmed).toBe(true);
+  });
+
+  it("normalizes malformed and generic AI copy and fills tags and keywords from product facts", () => {
+    const result = validateOptimizationResult(
+      {
+        analysis: {
+          targetCustomer: "Shoppers",
+          purchaseMotivation: "Daily wear",
+        },
+        optimization: {
+          title: "II/Affordable Gold Watch with",
+          description:
+            "Stainless steel case. Stainless steel case. Japanese quartz movement. Japanese quartz movement.",
+          benefitBullets: ["II/Affordable daily wear", "Stainless steel case"],
+          seoTitle: "Best Premium Quality Watch",
+          metaDescription: "Shop now for amazing affordable deals.",
+          tags: ["This entire description sentence does not belong in tags."],
+          keywords: [],
+          callToAction:
+            "Stainless steel case. Stainless steel case. Japanese quartz movement. Japanese quartz movement.",
+          conversionCopy: "II/Affordable Gold Watch with",
+        },
+      },
+      product
+    );
+    expect(result.optimization.title).not.toMatch(/II\/Affordable/i);
+    expect(result.optimization.title).not.toMatch(/\bwith\s*$/i);
+    expect(result.optimization.title).toMatch(/Virello|Gold Watch/i);
+    expect(result.optimization.description.toLowerCase().split("stainless steel case").length - 1).toBe(1);
+    expect(result.optimization.tags.length).toBeGreaterThan(0);
+    expect(result.optimization.keywords.length).toBeGreaterThan(0);
+    expect(result.optimization.tags.join(" ")).toMatch(/watch|gold|virello|quartz|steel/i);
+    expect(result.optimization.keywords.join(" ")).toMatch(/watch|gold|virello|quartz|steel/i);
+    expect(result.optimization.tags.some((tag) => /entire description/i.test(tag))).toBe(false);
+    expect(result.optimization.callToAction).not.toBe(result.optimization.description);
+    expect(result.optimization.seoTitle).not.toMatch(/best premium|shop now|affordable/i);
+    expect(result.optimization.benefitBullets.join(" ")).not.toMatch(/II\/Affordable/i);
+  });
+
+  it("does not use the shop domain or virello-dev unless that text is in the listing", () => {
+    const listing = {
+      title: "Gold Chronograph Watch",
+      description: "Quartz movement. Stainless steel case.",
+      productType: "Watch",
+      vendor: "virello-dev",
+      tags: [] as string[],
+      options: ["Color: Gold"],
+      variants: ["Gold"],
+    };
+    const result = validateOptimizationResult(
+      {
+        optimization: {
+          title: "virello-dev Gold Chronograph Watch",
+          description: "Buy from virello-dev.myshopify.com. Quartz movement. Stainless steel case.",
+          benefitBullets: ["virello-dev exclusive quartz", "Stainless steel case"],
+          tags: ["virello-dev", "myshopify"],
+          keywords: ["virello-dev watch"],
+          callToAction: "Shop virello-dev now",
+          conversionCopy: "virello-dev is the brand to trust.",
+        },
+      },
+      listing,
+      "virello-dev.myshopify.com"
+    );
+    const blob = JSON.stringify(result);
+    expect(blob).not.toMatch(/virello-dev/i);
+    expect(blob).not.toMatch(/myshopify/i);
+    expect(result.optimization.tags.length).toBeGreaterThan(0);
+    expect(result.optimization.keywords.length).toBeGreaterThan(0);
+    expect(result.optimization.tags.join(" ")).toMatch(/watch|gold|quartz|steel|chronograph/i);
+    expect(() => assertGroundedResult(listing, result, "virello-dev.myshopify.com")).not.toThrow();
+  });
+
+  it("keeps virello-dev when that text is actually in the product title", () => {
+    const listing = {
+      title: "Virello-Dev Limited Strap",
+      description: "Leather strap sold as Virello-Dev.",
+      productType: "Strap",
+      vendor: "Virello",
+    };
+    const result = validateOptimizationResult(
+      {
+        optimization: {
+          title: "Virello-Dev Limited Strap",
+          description: "Leather strap sold as Virello-Dev.",
+          tags: ["Virello-Dev"],
+          keywords: ["Virello-Dev strap"],
+        },
+      },
+      listing,
+      "other-store.myshopify.com"
+    );
+    expect(result.optimization.title).toMatch(/Virello-Dev/i);
+    expect(result.optimization.tags.join(" ")).toMatch(/Virello-Dev/i);
+  });
+
+  it("rejects invented durability, reviews, and materials that are not in the product", () => {
+    const result = validateOptimizationResult(
+      {
+        optimization: {
+          title: "Virello Gold Watch",
+          description: "Stainless steel case. Japanese quartz movement. Waterproof titanium shell.",
+        },
+      },
+      product
+    );
+    expect(() => assertGroundedResult(product, result)).toThrow(/invented/i);
   });
 });

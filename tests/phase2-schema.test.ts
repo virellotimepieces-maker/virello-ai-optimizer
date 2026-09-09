@@ -80,6 +80,7 @@ describe("Phase 2 database behavior", () => {
         "stripe_invoices",
         "rate_limit_buckets",
         "shopify_app_subscriptions",
+        "subscriber_usage_events",
       ])
     );
 
@@ -97,6 +98,7 @@ describe("Phase 2 database behavior", () => {
       "008_shop_binding",
       "009_expiring_offline_tokens",
       "010_shopify_billing",
+      "011_usage_idempotency",
     ]);
   });
 
@@ -298,5 +300,41 @@ describe("Phase 2 database behavior", () => {
     expect(consumeAt).toBeGreaterThan(authorizeAt);
     expect(analyze.indexOf("optimizeProduct")).toBeGreaterThan(authorizeAt);
     expect(analyze.lastIndexOf("optimizeProduct")).toBeLessThan(consumeAt);
+    expect(analyze).toMatch(/parseIdempotencyKey/);
+    expect(analyze).toMatch(/Idempotency-Key/);
+  });
+
+  it("charges a repeated successful optimization only once when the idempotency key matches", async () => {
+    await upsertShop(SHOP_A);
+    const key = "opt-same-request-key";
+    const first = await consumeAiUsage(SHOP_A, "sub_idem", 100, key);
+    const second = await consumeAiUsage(SHOP_A, "sub_idem", 100, key);
+    const concurrent = await Promise.all([
+      consumeAiUsage(SHOP_A, "sub_idem", 100, key),
+      consumeAiUsage(SHOP_A, "sub_idem", 100, key),
+    ]);
+    expect(first.used).toBe(1);
+    expect(second.used).toBe(1);
+    expect(concurrent.map((item) => item.used)).toEqual([1, 1]);
+    expect((await peekAiUsage(SHOP_A, "sub_idem", 100)).used).toBe(1);
+
+    const other = await consumeAiUsage(SHOP_A, "sub_idem", 100, "opt-second-click-key");
+    expect(other.used).toBe(2);
+  });
+
+  it("does not increment usage from subscription, import, or status routes", () => {
+    const status = readFileSync("app/api/subscriber/status/route.ts", "utf8");
+    const products = readFileSync("app/api/shopify/products/route.ts", "utf8");
+    const subscribe = readFileSync("app/api/billing/subscribe/route.ts", "utf8");
+    const home = readFileSync("app/home-client.tsx", "utf8");
+    expect(status).not.toMatch(/consumeAiUsage|recordSuccessfulAiOptimization/);
+    expect(products).not.toMatch(/consumeAiUsage|recordSuccessfulAiOptimization/);
+    expect(subscribe).not.toMatch(/consumeAiUsage|recordSuccessfulAiOptimization/);
+    expect(readFileSync("app/api/_lib/optimizer.ts", "utf8")).not.toMatch(
+      /consumeAiUsage|recordSuccessfulAiOptimization/
+    );
+    expect(home).toMatch(/optimizingLock/);
+    expect(home).toMatch(/Idempotency-Key/);
+    expect(home.match(/data-testid="save-dock"/g)).toHaveLength(1);
   });
 });
