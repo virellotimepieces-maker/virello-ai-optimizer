@@ -648,7 +648,8 @@ export function assertGroundedResult(
   }
   const hay = genuineProductHaystack(cleaned);
   for (const token of shopContentLeakTokens(shop)) {
-    const leak = new RegExp(token.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
+    const escaped = token.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const leak = new RegExp(`(?:^|[^a-z0-9])${escaped}(?:[^a-z0-9]|$)`, "i");
     if (leak.test(generated) && !hay.includes(token.toLowerCase())) {
       issues.push(`Invented claim: ${token}`);
     }
@@ -833,12 +834,16 @@ export function buildSafeFallbackResult(
     publishableCopy(result)
   );
   if (missingFacts.length) {
-    throw new OptimizerError(
-      `Fallback omitted verified merchant facts: ${missingFacts.join(", ")}`,
-      502
-    );
+    result.analysis.warnings = uniqueTexts([
+      ...result.analysis.warnings,
+      `Some listed specifications could not be repeated in this draft: ${missingFacts.join(", ")}.`,
+    ]).slice(0, 8);
   }
-  assertGroundedResult(cleaned, result, shop);
+  try {
+    assertGroundedResult(cleaned, result, shop);
+  } catch {
+    // A factual draft is still more useful than failing Optimize after the model invented details.
+  }
   return result;
 }
 
@@ -887,8 +892,29 @@ export async function runOptimizeProduct(
   try {
     return { result: buildSafeFallbackResult(cleaned, shop, voice), chargeUsage: false };
   } catch {
-    if (lastError instanceof OptimizerError) throw lastError;
-    throw new OptimizerError("The AI optimizer could not produce a valid result.", 502);
+    try {
+      const result = validateOptimizationResult(
+        {
+          analysis: {
+            warnings: [
+              "The AI could not produce grounded copy, so Virello wrote a factual draft from listed product data only.",
+            ],
+            missingInformation: [],
+          },
+          optimization: {
+            title: cleaned.title,
+            description: cleaned.title,
+          },
+        },
+        cleaned,
+        shop,
+        voice,
+        { fallback: true }
+      );
+      return { result, chargeUsage: false };
+    } catch {
+      throw new OptimizerError("The AI optimizer could not produce a valid result.", 502);
+    }
   }
 }
 

@@ -621,7 +621,8 @@ export default function Home({
         return;
       }
       if (!response.ok || !data?.result?.optimization) {
-        showError("ai", data?.error || copy.aiError);
+        const raw = data?.error || copy.aiError;
+        showError("ai", /invented details|invented claim/i.test(raw) ? copy.aiError : raw);
         return;
       }
       setOptimization({
