@@ -79,6 +79,19 @@ export function merchantFactTokens(value: string): string[] {
     .filter((token) => token.length >= 3 || /^\d/.test(token));
 }
 
+function factNumberTokens(value: string): string[] {
+  return [...cleanFactValue(value).matchAll(/\d+(?:\.\d+)?/g)].map((match) => match[0]);
+}
+
+function escapeFactToken(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function haystackHasNumber(hay: string, num: string): boolean {
+  if (!num) return false;
+  return new RegExp(`(?:^|[^a-z0-9])${escapeFactToken(num)}(?:[^a-z0-9]|$)`, "i").test(hay);
+}
+
 export function merchantFactsMissingFromText(
   facts: MerchantFacts | undefined,
   text: string
@@ -91,8 +104,21 @@ export function merchantFactsMissingFromText(
     if (!value) continue;
     const tokens = merchantFactTokens(value);
     if (!tokens.length) continue;
-    const hits = tokens.filter((token) => hay.includes(token)).length;
-    if (hits < Math.min(2, tokens.length)) missing.push(field);
+    const numbers = factNumberTokens(value);
+    if (numbers.length && !numbers.some((num) => haystackHasNumber(hay, num))) {
+      missing.push(field);
+      continue;
+    }
+    const wordTokens = [...new Set(tokens.filter((token) => token.length >= 4 && !/^\d/.test(token)))];
+    if (wordTokens.length) {
+      const hits = wordTokens.filter((token) => hay.includes(token)).length;
+      const needed = numbers.length ? 1 : Math.min(2, wordTokens.length);
+      if (hits < needed) missing.push(field);
+      continue;
+    }
+    if (!numbers.length && !tokens.some((token) => hay.includes(token))) {
+      missing.push(field);
+    }
   }
   return missing;
 }

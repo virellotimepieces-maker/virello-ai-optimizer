@@ -29,7 +29,7 @@ const kettle = {
 };
 
 const brokenConversion =
-  "The North Kettle Electric Kettle features a versatile design and a stainless steel body with a genuine leather handle wrap. Ideal for and various occasions.";
+  "The North Kettle Electric Kettle features a versatile design and a stainless steel body with a genuine leather handle wrap for boiling water. Ideal for and various occasions.";
 
 const vagueBrandWarning =
   "Limited product details may affect purchasing decisions due to lack of comprehensive brand identity";
@@ -115,7 +115,7 @@ describe("Post-generation quality gate for all product categories", () => {
           description: brokenConversion,
           benefitBullets: ["Ideal for and various occasions", "Stainless steel body"],
           seoTitle: "North Kettle for and",
-          metaDescription: "Ideal for and various occasions with a stainless steel body.",
+          metaDescription: "North Kettle stainless steel body for boiling water.",
           tags: ["kettle", "steel"],
           keywords: ["electric kettle"],
           callToAction: "Review the listed details for and.",

@@ -60,7 +60,7 @@ export const REVIEW_SUGGESTION =
   /\b(customer reviews?|verified reviews?|display reviews?|add reviews?|show reviews?|social proof|\d+\s*[- ]stars?|star ratings?|leave a review|see (?:our|the) reviews|rated \d|customers love|highly rated|top rated)\b/gi;
 
 export const LIFESTYLE_FILLER =
-  /\b(everyday wear|daily wear|date night|weekend wear|office (?:or|and) weekend|perfect gift|gift for (?:him|her|them)|any occasion|various occasions|versatile design|transitions seamlessly|gym (?:or|and) street|workout)\b/gi;
+  /\b(everyday wear|daily wear|date night|weekend wear|office (?:or|and) weekend|perfect gift|gift for (?:him|her|them)|any occasion|various occasions|versatile design|transitions seamlessly|gym (?:or|and) street|workout|versatility(?:\s+and\s+style)?)\b/gi;
 
 const GENERIC_FILLER =
   /\b(best|premium|amazing|quality|stunning|exclusive|must[- ]have|perfect gift|top rated|shop now|buy now|deal of|hot sale|luxury(?: lifestyle)?|affordable|high[- ]end|unbeatable|world[- ]class|ultimate|elegance|sophistication)\b/gi;
@@ -587,11 +587,32 @@ export function sanitizeProductSource(
   };
 }
 
+function isOptionalVariantGap(line: string): boolean {
+  return /\b(?:style|color|colour)s?\s+options\b|\badditional\s+(?:style|color|colour|options)\b|\bvariant options\b|\bno additional style\b|\bmissing style options\b|\bcolor options listed\b|\bstyle or color\b|\bcolour or style\b/i.test(
+    line
+  );
+}
+
+function isFalseVendorGap(line: string, product?: OptimizerProduct): boolean {
+  if (!cleanCopyText(product?.vendor)) return false;
+  return (
+    /\b(?:vendor|brand name)\b/i.test(line) &&
+    /\b(not provided|not listed|lack of|missing)\b/i.test(line)
+  );
+}
+
+function isNonScoringListingGap(line: string, product?: OptimizerProduct): boolean {
+  return isOptionalVariantGap(line) || isFalseVendorGap(line, product);
+}
+
 function sparseMissingDetails(product?: OptimizerProduct): string[] {
   if (!product) return ["Product specifications are not listed."];
   const hay = genuineProductHaystack(product);
   const facts = parseMerchantFacts(product.merchantFacts);
   const missing: string[] = [];
+  if (!cleanCopyText(product.vendor)) {
+    missing.push("Vendor name is not provided.");
+  }
   if (
     !hasMerchantFacts(product.merchantFacts) &&
     (!cleanCopyText(product.description) || cleanCopyText(product.description).length < 24)
@@ -1119,7 +1140,9 @@ export function applyCopyGuards(
   }
 
   const missing = uniqueTexts([
-    ...result.analysis.missingInformation.map((item) => neutralizeAnalysisLine(item, source, shop)),
+    ...result.analysis.missingInformation
+      .map((item) => neutralizeAnalysisLine(item, source, shop))
+      .filter((item) => !isNonScoringListingGap(item, source)),
     ...sparseMissingDetails(source),
   ]).filter(Boolean);
   result.analysis.missingInformation = missing.slice(0, 8);
@@ -1127,6 +1150,7 @@ export function applyCopyGuards(
     result.analysis.warnings
       .map((item) => neutralizeAnalysisLine(item, source, shop))
       .filter(Boolean)
+      .filter((item) => !isNonScoringListingGap(item, source))
       .filter((item) => !missing.some((gap) => item.toLowerCase().includes(gap.toLowerCase())))
       .filter((item) => !/missing product information:/i.test(item))
       .filter((item) => !/limited by missing product facts/i.test(item))
