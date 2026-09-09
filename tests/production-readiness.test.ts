@@ -429,4 +429,18 @@ describe("Production release readiness", () => {
     ).resolves.toEqual({ ok: true });
     expect(attempts).toBe(2);
   });
+
+  it("does not throw when Shopify GraphQL errors is not an array", async () => {
+    setShopifyAdminFetchForTests(async () => ({
+      ok: false,
+      status: 502,
+      headers: { get: () => null },
+      async text() {
+        return JSON.stringify({ errors: "internal" });
+      },
+    }));
+    await expect(
+      shopifyAdminGraphql("store-alpha.myshopify.com", "token", "query { ok }")
+    ).rejects.toThrow(/Shopify API request failed \(502\)/);
+  });
 });

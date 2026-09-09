@@ -117,7 +117,8 @@ export async function shopifyAdminGraphql<T>(
       throw new Error(`Shopify returned a non-JSON response (${response.status}).`);
     }
 
-    const throttle = payload.errors?.some(
+    const graphqlErrors = Array.isArray(payload.errors) ? payload.errors : [];
+    const throttle = graphqlErrors.some(
       (error) => error.extensions?.code === "THROTTLED"
     );
     if (throttle) {
@@ -128,13 +129,13 @@ export async function shopifyAdminGraphql<T>(
 
     if (!response.ok) {
       throw new Error(
-        payload.errors?.[0]?.message || `Shopify API request failed (${response.status}).`
+        graphqlErrors[0]?.message || `Shopify API request failed (${response.status}).`
       );
     }
 
-    if (payload.errors?.length) {
+    if (graphqlErrors.length) {
       throw new Error(
-        payload.errors.map((error) => error.message || "Shopify GraphQL error.").join("; ")
+        graphqlErrors.map((error) => error.message || "Shopify GraphQL error.").join("; ")
       );
     }
 
