@@ -7,7 +7,7 @@ import { normalizeShop, isAllowedShopifyConnectUrl, resolveStoreBindingDisplay, 
 import { assignTopLevel, isShopifyAdminIframe } from "./shopify-embed";
 import { lastShopifySessionDetail } from "./shopify-session-events";
 import { buildShopifyDescriptionHtml, stripHtml } from "./api/_lib/listing-html";
-import { scoreListing, scoreLimitExplanation, META_DESCRIPTION_MAX, SEO_TITLE_MAX, type ListingGrade } from "./api/_lib/listing-score";
+import { scoreListing, scoreLimitExplanation, capFallbackScores, META_DESCRIPTION_MAX, SEO_TITLE_MAX, type ListingGrade } from "./api/_lib/listing-score";
 import {
   BRAND_VOICES,
   DEFAULT_BRAND_VOICE,
@@ -83,6 +83,32 @@ function fromLines(value: string): string[] {
 
 function normalizeShopInput(value: string) {
   return normalizeShop(value);
+}
+
+function scoreReviewListing(
+  sourceTitle: string,
+  optimization: Optimization,
+  analysis: Analysis
+) {
+  const scored = scoreListing({
+    sourceTitle,
+    title: optimization.title,
+    description: optimization.description,
+    benefitBullets: optimization.benefitBullets,
+    seoTitle: optimization.seoTitle,
+    metaDescription: optimization.metaDescription,
+    tags: optimization.tags,
+    callToAction: optimization.callToAction,
+    conversionCopy: optimization.conversionCopy,
+    conversionOpportunities: analysis.conversionOpportunities,
+    objections: analysis.objections.length,
+    targetCustomer: analysis.targetCustomer,
+    missingInformation: analysis.missingInformation.length,
+  });
+  const fallback = analysis.warnings.some((item) =>
+    /could not produce grounded copy/i.test(item)
+  );
+  return fallback ? capFallbackScores(scored, analysis.missingInformation.length) : scored;
 }
 
 function gradeCopy(copy: (typeof COPY)["en"], grade: ListingGrade) {
@@ -227,21 +253,7 @@ export default function Home({
   const showChangeStore = Boolean(canManage || shop || pendingShop || shopInstalled);
   const listingScores =
     selected && optimization && analysis
-      ? scoreListing({
-          sourceTitle: selected.title,
-          title: optimization.title,
-          description: optimization.description,
-          benefitBullets: optimization.benefitBullets,
-          seoTitle: optimization.seoTitle,
-          metaDescription: optimization.metaDescription,
-          tags: optimization.tags,
-          callToAction: optimization.callToAction,
-          conversionCopy: optimization.conversionCopy,
-          conversionOpportunities: analysis.conversionOpportunities,
-          objections: analysis.objections.length,
-          targetCustomer: analysis.targetCustomer,
-          missingInformation: analysis.missingInformation.length,
-        })
+      ? scoreReviewListing(selected.title, optimization, analysis)
       : null;
 
   function showError(kind: typeof errorKind, text: string) {
@@ -591,6 +603,7 @@ export default function Home({
             handle: selected.handle,
             options: selected.options,
             variants: selected.variants,
+            merchantFacts: parseMerchantFacts(merchantFacts),
           },
         }),
       });
