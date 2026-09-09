@@ -490,6 +490,10 @@ function listedAsLine(type: string): string {
 function withArticle(noun: string): string {
   const text = cleanCopyText(noun).toLowerCase();
   if (!text) return "";
+  const last = text.split(/\s+/).pop() || text;
+  if (/s$/i.test(last) && !/^(glass|brass|canvas|watch|dress|bus|plus|lens|gas)$/i.test(last)) {
+    return text;
+  }
   const first = text.split(/\s+/)[0] || text;
   return `${/^[aeiou]/i.test(first) ? "an" : "a"} ${text}`;
 }
@@ -569,6 +573,23 @@ export function listingFacts(
       ...rest,
     ].filter((item) => item.length >= 3)
   ).slice(0, 16);
+}
+
+function skipVendorAndType(product?: OptimizerProduct, shop?: string, facts: string[] = []): string[] {
+  const vendor = listedVendorName(product?.vendor || "", shop).toLowerCase();
+  const type = cleanCopyText(product?.productType || "").toLowerCase();
+  return facts.filter((item) => {
+    const lower = item.toLowerCase();
+    if (vendor && lower === vendor) return false;
+    if (type && (lower === type || lower === `listed as ${withArticle(type)}`)) return false;
+    return true;
+  });
+}
+
+function skipVendorName(product?: OptimizerProduct, shop?: string, facts: string[] = []): string[] {
+  const vendor = listedVendorName(product?.vendor || "", shop).toLowerCase();
+  if (!vendor) return facts;
+  return facts.filter((item) => item.toLowerCase() !== vendor);
 }
 
 export function sanitizeProductSource(
@@ -1243,8 +1264,9 @@ export function applyCopyGuards(
     shop
   );
   if (!result.analysis.purchaseMotivation) {
-    result.analysis.purchaseMotivation = facts[0]
-      ? `The listed facts include ${facts[0]}.`
+    const notable = skipVendorAndType(source, shop, facts);
+    result.analysis.purchaseMotivation = notable[0]
+      ? `The listed facts include ${notable[0]}.`
       : "Only the product name is listed, so the copy stays factual.";
   }
   result.analysis.strongestFeatures = uniqueTexts(
@@ -1253,7 +1275,9 @@ export function applyCopyGuards(
       .filter(Boolean)
   ).slice(0, 8);
   if (!result.analysis.strongestFeatures.length) {
-    result.analysis.strongestFeatures = facts.slice(0, 4);
+    const merchant = verifiedMerchantLines(source, shop);
+    const notable = skipVendorName(source, shop, facts);
+    result.analysis.strongestFeatures = (merchant.length ? merchant : notable.length ? notable : facts).slice(0, 4);
   }
   result.analysis.weaknesses = uniqueTexts(
     result.analysis.weaknesses

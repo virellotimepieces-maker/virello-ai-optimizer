@@ -213,6 +213,11 @@ describe("Production Optimize request path", () => {
     ].join(" ");
     expect(result.optimization.conversionCopy).toMatch(/from Virello/i);
     expect(result.optimization.description).toMatch(/Virello/i);
+    expect(result.optimization.description).not.toMatch(/\ba watches\b/i);
+    expect(result.optimization.description).toMatch(/water resistance is listed as/i);
+    expect(result.analysis.purchaseMotivation).not.toMatch(/include Virello\.?$/i);
+    expect(result.analysis.strongestFeatures.join(" ")).toMatch(/stainless steel|quartz|warranty|40 mm/i);
+    expect(result.analysis.strongestFeatures.join("\n")).not.toMatch(/^Virello$/m);
     expect(result.optimization.seoTitle.length).toBeLessThanOrEqual(60);
     expect(result.optimization.metaDescription.length).toBeLessThanOrEqual(160);
     expect(result.optimization.seoTitle).toMatch(/Sample Watch/i);
@@ -225,6 +230,21 @@ describe("Production Optimize request path", () => {
     expect(scoreLimitExplanation(result.analysis.missingInformation).filter((item) => /vendor/i.test(item))).toEqual(
       []
     );
+  });
+
+  it("does not write a watches when the Shopify type is plural", () => {
+    const result = buildSafeFallbackResult(
+      {
+        title: "Sample Watch: for Everyday Style",
+        productType: "Watches",
+        vendor: "Virello",
+        merchantFacts: PRODUCTION_FACTS,
+      },
+      "virello-dev.myshopify.com"
+    );
+    expect(result.optimization.description).not.toMatch(/\ba watches\b/i);
+    expect(result.optimization.description).toMatch(/watches from Virello/i);
+    expect(result.analysis.purchaseMotivation).toMatch(/stainless steel|40 mm|quartz|leather/i);
   });
 
   it("does not duplicate a vendor-missing score cap when the model repeats the same gap", () => {
