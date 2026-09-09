@@ -58,7 +58,7 @@ export function scoreLimitExplanation(missing: string[]): string[] {
 }
 
 function isGenericMerchantNote(value: string): boolean {
-  return /keep the listing factual|no further listed specifications|score is limited|use these listed facts|customer copy|only the product name and type are listed|\blists introducing\b|\w+\s+lists\s+(?:introducing|the)\b/i.test(
+  return /keep the listing factual|no further listed specifications|score is limited|use these listed facts|customer copy|only the product name and type are listed|\bthis product has\b|\blists introducing\b|\w+\s+lists\s+(?:introducing|the)\b/i.test(
     value
   );
 }
