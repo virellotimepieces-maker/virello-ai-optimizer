@@ -14,7 +14,7 @@ const EMPTY_POINTING = /\b(?:with|for)\s+(?:this|that|it)(?=\s*[.!?]|,$|$)/i;
 const LISTS_CONCAT = /\blists\s+(?:introducing|the)\b/i;
 const ITS_FRAGMENT = /\bIts\s+[a-z]+(?:s|ed|ing)\b/;
 const VAGUE_BRAND =
-  /\b(?:comprehensive\s+brand\s+identity|lack of comprehensive brand|limited product details may affect purchasing(?: decisions)?)\b/i;
+  /\b(?:comprehensive\s+brand\s+identity|lack of comprehensive brand|limited product details may affect purchasing(?: decisions)?|comprehensive\s+vendor\s+details|vendor details could enhance|enhance credibility(?: and customer confidence)?)\b/i;
 
 export type CopyQualityReport = {
   text: string;

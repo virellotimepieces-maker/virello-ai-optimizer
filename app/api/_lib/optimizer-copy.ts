@@ -7,9 +7,8 @@ import {
   merchantFactFieldPresent,
   merchantFactHaystack,
   merchantFactLines,
+  hasMerchantFacts,
   parseMerchantFacts,
-  MERCHANT_FACT_FIELDS,
-  MERCHANT_FACT_LABELS,
 } from "./merchant-facts";
 import { repairCopyQuality, rewriteMerchantInsight, isVagueBrandIdentityWarning } from "./copy-quality";
 
@@ -588,7 +587,10 @@ function sparseMissingDetails(product?: OptimizerProduct): string[] {
   const hay = genuineProductHaystack(product);
   const facts = parseMerchantFacts(product.merchantFacts);
   const missing: string[] = [];
-  if (!cleanCopyText(product.description) || cleanCopyText(product.description).length < 24) {
+  if (
+    !hasMerchantFacts(product.merchantFacts) &&
+    (!cleanCopyText(product.description) || cleanCopyText(product.description).length < 24)
+  ) {
     missing.push("A detailed product description is not listed.");
   }
   if (!merchantFactFieldPresent(facts, "material") && !/\b(steel|leather|gold|silver|titanium|brass|ceramic|nylon|silicone|cotton|wool|wood|glass|plastic|linen|canvas)\b/i.test(hay)) {
@@ -651,16 +653,77 @@ function extraFacts(
   return uniqueTexts([...merchant, ...extra]);
 }
 
-function merchantFactSentences(product?: OptimizerProduct, shop?: string): string[] {
+function embedFactValue(value: string): string {
+  return cleanCopyText(value).replace(/[.]+$/g, "");
+}
+
+function listedWithFacts(values: string[]): string {
+  const embedded = values.map(embedFactValue).filter(Boolean);
+  if (!embedded.length) return "";
+  return `listed with ${joinList(embedded)}`;
+}
+
+function composeVerifiedCopy(
+  product?: OptimizerProduct,
+  shop?: string,
+  voice: BrandVoice = DEFAULT_BRAND_VOICE
+): { lead: string; sentences: string[] } {
+  const title = stripDirtyMarketing(
+    stripShopLeaks(cleanCopyText(product?.title || "This product"), product, shop),
+    product
+  );
+  const type = stripDirtyMarketing(
+    stripShopLeaks(cleanCopyText(product?.productType || ""), product, shop),
+    product
+  );
+  const vendor = stripShopLeaks(cleanCopyText(product?.vendor || ""), product, shop);
+  const typePhrase = type ? withArticle(type) : "";
   const facts = parseMerchantFacts(product?.merchantFacts);
+  const cleanFact = (field: keyof typeof facts): string =>
+    stripShopLeaks(cleanCopyText(facts[field] || ""), product, shop).replace(/[.]+$/g, "");
+  const material = cleanFact("material");
+  const dimensions = cleanFact("dimensions");
+  const movement = cleanFact("movement");
+  const water = cleanFact("waterResistance");
+  const warranty = cleanFact("warranty");
+  const intendedUse = cleanFact("intendedUse");
+
   const sentences: string[] = [];
-  for (const field of MERCHANT_FACT_FIELDS) {
-    const value = stripShopLeaks(cleanCopyText(facts[field] || ""), product, shop);
-    if (!value) continue;
-    const label = MERCHANT_FACT_LABELS[field].toLowerCase();
-    sentences.push(`The listed ${label} is ${value.replace(/[.]+$/g, "")}.`);
+  if (vendor && typePhrase && !title.toLowerCase().includes(vendor.toLowerCase())) {
+    sentences.push(`${title} is ${typePhrase} from ${vendor}.`);
+  } else if (typePhrase) {
+    sentences.push(`${title} is ${typePhrase}.`);
+  } else {
+    sentences.push(`${title} is the product named on this listing.`);
   }
-  return sentences;
+
+  const physical = [material, dimensions, movement].filter(Boolean);
+  if (physical.length) {
+    sentences.push(`It is ${listedWithFacts(physical)}.`);
+  }
+  if (water) {
+    sentences.push(`Water resistance is listed as ${embedFactValue(water)}.`);
+  }
+  if (intendedUse && warranty) {
+    sentences.push(
+      `It is listed for ${embedFactValue(intendedUse)}, and includes ${embedFactValue(warranty)}.`
+    );
+  } else if (intendedUse) {
+    sentences.push(`It is listed for ${embedFactValue(intendedUse)}.`);
+  } else if (warranty) {
+    sentences.push(`It includes ${embedFactValue(warranty)}.`);
+  }
+
+  if (sentences.length <= 1) {
+    const named = extraFacts(product, shop, voice).filter((item) => !looksLikeRemnant(item));
+    if (named.length) {
+      sentences.push(`It is ${listedWithFacts(named.slice(0, 6))}.`);
+    } else {
+      sentences.push("No further specifications are provided on this listing.");
+    }
+  }
+
+  return { lead: title, sentences };
 }
 
 function factualTitle(product?: OptimizerProduct, shop?: string): string {
@@ -687,36 +750,7 @@ function factualDescription(
   shop?: string,
   voice: BrandVoice = DEFAULT_BRAND_VOICE
 ): string {
-  const title = stripDirtyMarketing(
-    stripShopLeaks(cleanCopyText(product?.title || "This product"), product, shop),
-    product
-  );
-  const type = stripDirtyMarketing(
-    stripShopLeaks(cleanCopyText(product?.productType || ""), product, shop),
-    product
-  );
-  const vendor = stripShopLeaks(cleanCopyText(product?.vendor || ""), product, shop);
-  const typePhrase = type ? withArticle(type) : "";
-  const sentences: string[] = [];
-  if (vendor && typePhrase && !title.toLowerCase().includes(vendor.toLowerCase())) {
-    sentences.push(`${title} is ${typePhrase} from ${vendor}.`);
-  } else if (typePhrase) {
-    sentences.push(`${title} is ${typePhrase}.`);
-  } else {
-    sentences.push(`${title} is the product named on this listing.`);
-  }
-  const factSentences = merchantFactSentences(product, shop);
-  if (factSentences.length) {
-    sentences.push(...factSentences);
-  } else {
-    const named = extraFacts(product, shop, voice).filter((item) => !looksLikeRemnant(item));
-    if (named.length) {
-      sentences.push(`The listing includes ${joinList(named.slice(0, 6))}.`);
-    } else {
-      sentences.push("No further specifications are provided on this listing.");
-    }
-  }
-  return polishPunctuation(sentences.join(" "));
+  return polishPunctuation(composeVerifiedCopy(product, shop, voice).sentences.join(" "));
 }
 
 function factualCta(product?: OptimizerProduct, shop?: string): string {
@@ -727,18 +761,49 @@ function factualCta(product?: OptimizerProduct, shop?: string): string {
   return `Review the listed details for ${title}.`.slice(0, 120);
 }
 
-function factualConversionCopy(
+export function factualConversionCopy(
   product?: OptimizerProduct,
   shop?: string
 ): string {
-  const lines = verifiedMerchantLines(product, shop);
-  if (lines.length) {
-    return polishPunctuation(`This product has ${joinList(lines.slice(0, 4))}.`);
+  const title = stripDirtyMarketing(
+    stripShopLeaks(cleanCopyText(product?.title || "This product"), product, shop),
+    product
+  );
+  const type = stripDirtyMarketing(
+    stripShopLeaks(cleanCopyText(product?.productType || ""), product, shop),
+    product
+  );
+  const facts = parseMerchantFacts(product?.merchantFacts);
+  const cleanFact = (field: "material" | "dimensions" | "movement" | "waterResistance" | "warranty" | "intendedUse"): string =>
+    stripShopLeaks(cleanCopyText(facts[field] || ""), product, shop).replace(/[.]+$/g, "");
+  const physical = [cleanFact("material"), cleanFact("dimensions"), cleanFact("movement")].filter(Boolean);
+  const water = cleanFact("waterResistance");
+  const warranty = cleanFact("warranty");
+  const intendedUse = cleanFact("intendedUse");
+  const sentences: string[] = [];
+  if (physical.length) {
+    sentences.push(`${title} is ${listedWithFacts(physical)}.`);
+  } else if (type) {
+    sentences.push(`${title} is listed as ${withArticle(type)}.`);
   }
-  const type = stripShopLeaks(cleanCopyText(product?.productType || ""), product, shop);
-  const title = stripShopLeaks(cleanCopyText(product?.title || "This product"), product, shop);
-  if (type) return polishPunctuation(`${title} is listed as ${withArticle(type)}.`);
-  return "Only the product name and type are listed, so this draft stays factual.";
+  if (water) {
+    sentences.push(`Water resistance is listed as ${embedFactValue(water)}.`);
+  }
+  if (intendedUse && warranty) {
+    sentences.push(
+      `It is listed for ${embedFactValue(intendedUse)}, and includes ${embedFactValue(warranty)}.`
+    );
+  } else if (intendedUse) {
+    sentences.push(`It is listed for ${embedFactValue(intendedUse)}.`);
+  } else if (warranty) {
+    sentences.push(`It includes ${embedFactValue(warranty)}.`);
+  }
+  if (!sentences.length) {
+    return type
+      ? polishPunctuation(`${title} is listed as ${withArticle(type)}.`)
+      : "Only the product name and type are listed, so this draft stays factual.";
+  }
+  return polishPunctuation(sentences.join(" "));
 }
 
 function factualMeta(
@@ -757,12 +822,16 @@ function factualMeta(
   const vendor = stripShopLeaks(cleanCopyText(product?.vendor || ""), product, shop);
   const lines = verifiedMerchantLines(product, shop);
   const named = lines.length ? lines : extraFacts(product, shop, voice);
+  const lead = vendor && !title.toLowerCase().includes(vendor.toLowerCase()) ? `${title} from ${vendor}` : title;
   if (!named.length) {
     const kind = type ? withArticle(type) : "a listed product";
     return `${title} appears as ${kind} on this product page, with no further specifications.`.slice(0, 160);
   }
-  const lead = vendor && !title.toLowerCase().includes(vendor.toLowerCase()) ? `${title} from ${vendor}` : title;
-  return `${lead}, with ${joinList(named.slice(0, 2))}.`.slice(0, 160);
+  let text = `${lead} is listed with ${joinList(named.slice(0, 3).map(embedFactValue))}.`;
+  if (text.length < 120 && named.length > 3) {
+    text = `${lead} is listed with ${joinList(named.slice(0, 4).map(embedFactValue))}.`;
+  }
+  return text.slice(0, 160);
 }
 
 function factualSeoTitle(product?: OptimizerProduct, shop?: string): string {
@@ -839,7 +908,7 @@ export function applyCopyGuards(
   const rawDescription = cleanCopyText(result.optimization.description);
 
   if (options.fallback) {
-    const factBullets = merchantFactSentences(source, shop);
+    const factBullets = verifiedMerchantLines(source, shop).filter((item) => !looksLikeRemnant(item));
     result.optimization.title = factualTitle(source, shop);
     result.optimization.description = factualDescription(source, shop, voice);
     result.optimization.benefitBullets = uniqueTexts(
@@ -979,6 +1048,7 @@ export function applyCopyGuards(
     repairCopyQuality(conversionCopy).issues.length > 0 ||
     hasInternalInstruction(conversionCopy) ||
     /\blists\s+(?:introducing|the)\b/i.test(conversionCopy) ||
+    /^this product has\b/i.test(conversionCopy) ||
     sharesSentence(conversionCopy, title) ||
     sharesSentence(conversionCopy, description) ||
     hasDropshippingLanguage(conversionCopy) ||
@@ -1056,6 +1126,7 @@ export function applyCopyGuards(
       .filter((item) => !/missing product information:/i.test(item))
       .filter((item) => !/limited by missing product facts/i.test(item))
       .filter((item) => !/would improve the score:/i.test(item))
+      .filter((item) => !/omitted the title or description/i.test(item))
       .filter(
         (item) =>
           !isVagueBrandIdentityWarning(item) ||
